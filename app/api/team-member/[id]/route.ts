@@ -20,7 +20,6 @@ export const GET = apiHandler(async (req: Request, context: any) => {
 });
 
 export const PUT = apiHandler(async (req: Request, context: any) => {
-  console.log(context);
   const { id } = await context.params;
   const body = await req.json();
 
