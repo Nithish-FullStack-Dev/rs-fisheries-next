@@ -42,7 +42,7 @@ model FormerLoading {
   vehicleNo  String
 
   totalTrays    Int   @default(0)
-  totalLooseKgs Float @default(0)
+  totalLooseKgs Float @default(0) 
   totalTrayKgs  Float @default(0)
   totalKgs      Float @default(0)
   totalPrice    Float @default(0)
@@ -53,15 +53,16 @@ model FormerLoading {
 }
 
 model FormerItem {
-  id              String @id @default(uuid())
+  id              String        @id @default(uuid())
   formerLoadingId String // ← changed from Int to String
   varietyCode     String
   noTrays         Int
   trayKgs         Float
   loose           Float
   totalKgs        Float
-
-  loading FormerLoading @relation(fields: [formerLoadingId], references: [id], onDelete: Cascade)
+  pricePerKg      Float         @default(0)
+  totalPrice      Float         @default(0)
+  loading         FormerLoading @relation(fields: [formerLoadingId], references: [id], onDelete: Cascade)
 
   @@index([formerLoadingId])
 }
@@ -107,12 +108,12 @@ model AgentItem {
 }
 
 model ClientLoading {
-  id            String   @id @default(uuid())
-  clientName    String
-  billNo        String   @unique
-  date          DateTime
-  vehicleNo     String
-  fishCode      String
+  id         String   @id @default(uuid())
+  clientName String
+  billNo     String   @unique
+  date       DateTime
+  vehicleNo  String
+  fishCode   String
 
   totalTrays    Int   @default(0)
   totalLooseKgs Float @default(0)

@@ -33,7 +33,7 @@ export async function POST(req: Request) {
       include: { items: true },
     });
 
-    return NextResponse.json({ success:true, loading });
+    return NextResponse.json({ success: true, loading });
   } catch (error: any) {
     if (error.code === "P2002") {
       return NextResponse.json(
@@ -43,6 +43,36 @@ export async function POST(req: Request) {
     }
     return NextResponse.json(
       { success: false, message: "Save failed" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function GET() {
+  try {
+    const loadings = await prisma.formerLoading.findMany({
+      include: {
+        items: {
+          select: {
+            id: true,
+            varietyCode: true,
+            noTrays: true,
+            trayKgs: true,
+            loose: true,
+            totalKgs: true,
+            pricePerKg: true,
+            totalPrice: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return NextResponse.json({ data: loadings });
+  } catch (error) {
+    console.error("Error fetching agent loadings:", error);
+    return NextResponse.json(
+      { message: "Failed to fetch agent loadings" },
       { status: 500 }
     );
   }
