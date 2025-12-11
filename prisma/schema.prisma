@@ -114,6 +114,9 @@ model ClientLoading {
   date       DateTime
   vehicleNo  String
   fishCode   String
+  village    String
+
+  // SAME TOTALS AS FARMER — REQUIRED
 
   totalTrays    Int   @default(0)
   totalLooseKgs Float @default(0)

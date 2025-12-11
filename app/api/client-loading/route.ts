@@ -26,6 +26,7 @@ export async function POST(req: Request) {
         billNo: data.billNo,                    // ← from frontend
         date: new Date(data.date),
         vehicleNo: data.vehicleNo || "",
+        village: data.village || "",
         fishCode: data.fishCode || "",
         totalTrays,
         totalLooseKgs,

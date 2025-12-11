@@ -165,9 +165,10 @@ export default function ClientBillsPage() {
 
       if (!item?.totalKgs) return prev;
 
-      const updates = { ...current, pricePerKg: num };
+      const updates: Partial<ClientItem> = { ...current, pricePerKg: num };
       if (num !== undefined) {
-        updates.totalPrice = Number((item.totalKgs * num).toFixed(2));
+        const netKgs = item.totalKgs * 0.95; // <-- 5% loss here
+        updates.totalPrice = Number((netKgs * num).toFixed(2));
       }
 
       return { ...prev, [id]: updates };
@@ -362,7 +363,7 @@ export default function ClientBillsPage() {
                         <td className="p-4 text-right">{it.noTrays ?? "-"}</td>
                         <td className="p-4 text-right">{it.trayKgs ?? "-"}</td>
                         <td className="p-4 text-right">{it.loose ?? "-"}</td>
-                        <td className="p-4 text-right font-bold text-indigo-600">
+                        <td className="p-4 text-right font-bold ">
                           {it.totalKgs ?? "-"}
                         </td>
                         <td className="p-4 text-right">
