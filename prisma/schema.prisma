@@ -141,8 +141,9 @@ model ClientLoading {
   bankName      String?
   bankAddress   String?
 
-  items     ClientItem[]
-  createdAt DateTime     @default(now())
+  items          ClientItem[]
+  createdAt      DateTime        @default(now())
+  clientPayments ClientPayment[]
 }
 
 model ClientItem {
@@ -187,7 +188,7 @@ model VendorPayment {
   bankName          String?
   bankAddress       String?
   paymentdetails    String?
-  paymentRef    String?
+  paymentRef        String?
   isInstallment     Boolean  @default(false)
   installments      Int?
   installmentNumber Int?
@@ -197,6 +198,26 @@ model VendorPayment {
   @@index([vendorId])
   @@index([source])
 }
+
+model ClientPayment {
+  id            String      @id @default(uuid())
+  clientId      String
+  clientName    String
+  date          DateTime
+  amount        Float
+  paymentMode   PaymentMode
+  reference     String?
+  imageUrl      String?
+  isInstallment Boolean     @default(false) // NEW
+  createdAt     DateTime    @default(now())
+
+  // Relation to ClientLoading (safe even if not migrated yet)
+  client ClientLoading? @relation(fields: [clientId], references: [id], onDelete: Restrict)
+
+  @@index([clientId])
+  @@index([date])
+}
+
 // ! VEHICLE 
 
 enum VehicleOwnership {
@@ -220,6 +241,7 @@ enum PaymentMode {
   AC
   UPI
   CASH
+  CHEQUE
 }
 
 model Driver {
