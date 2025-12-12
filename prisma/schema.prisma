@@ -16,14 +16,16 @@ enum Role {
 }
 
 model User {
-  id        String     @id @default(cuid())
-  email     String     @unique
-  password  String
-  name      String?
-  role      Role       @default(readOnly)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  salaries  Salaries[]
+  id               String            @id @default(cuid())
+  email            String            @unique
+  password         String
+  name             String?
+  role             Role              @default(readOnly)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  salaries         Salaries[]
+  employeePayments EmployeePayment[]
+  packingAmounts   PackingAmount[]
 }
 
 model FishVariety {
@@ -40,7 +42,8 @@ model FormerLoading {
   FarmerName String?
   village    String
   date       DateTime
-  vehicleNo  String
+  vehicleId  String   @unique // Foreign key (ONE loading → ONE vehicle)
+  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id])
 
   totalTrays    Int   @default(0)
   totalLooseKgs Float @default(0)
@@ -80,7 +83,8 @@ model AgentLoading {
   billNo    String   @unique
   village   String
   date      DateTime
-  vehicleNo String
+  vehicleId String   @unique // Foreign key (ONE loading → ONE vehicle)
+  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id])
 
   // SAME TOTALS AS FARMER — REQUIRED
   totalTrays    Int   @default(0)
@@ -123,7 +127,8 @@ model ClientLoading {
   clientName String
   billNo     String   @unique
   date       DateTime
-  vehicleNo  String
+  vehicleId  String   @unique // Foreign key (ONE loading → ONE vehicle)
+  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id])
   fishCode   String
   village    String
 
@@ -283,8 +288,8 @@ model Vehicle {
   model             String?
   yearOfManufacture Int?
   fuelType          FuelType?
-  engineNumber      String?
-  chassisNumber     String?
+  engineNumber      String?   @unique
+  chassisNumber     String?   @unique
 
   // Transport details
   capacityInTons Float?
@@ -313,6 +318,10 @@ model Vehicle {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  farmerLoadings FormerLoading?
+  agentLoadings  AgentLoading?
+  clientLoadings ClientLoading?
+
   // 1 Vehicle → Many Trips
   trips VehicleEntry[]
 }
@@ -328,4 +337,55 @@ model Driver {
   createdAt     DateTime @default(now())
 
   assignedVehicle Vehicle?
+}
+
+model EmployeePayment {
+  id           String      @id @default(uuid())
+  userId       String
+  employeeName String
+  date         DateTime
+  amount       Float
+  paymentMode  PaymentMode
+  reference    String? // UTR, Cheque No., etc.
+  createdAt    DateTime    @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@index([date])
+}
+
+model PackingAmount {
+  id             String   @id @default(uuid())
+  mode           String // "loading" or "unloading"
+  sourceRecordId String? // Optional bill reference
+  workers        Int
+  temperature    Float
+  totalAmount    Float
+  createdAt      DateTime @default(now())
+  createdById    String?
+  createdBy      User?    @relation(fields: [createdById], references: [id])
+
+  @@index([mode])
+  @@index([createdAt])
+}
+
+model InvoiceCounter {
+  id    Int @id @default(1)
+  count Int @default(0)
+}
+
+model Invoice {
+  id            String   @id @default(uuid())
+  invoiceNumber String   @unique
+  seq           Int
+  prefix        String   @default("RS-Fisheries-")
+  partyName     String?
+  partyAddress  String?
+  date          DateTime @default(now())
+  items         Json // array of { description, hsn, qty, rate, amount }
+  subtotal      Float
+  taxAmount     Float
+  total         Float
+  createdAt     DateTime @default(now())
 }

@@ -15,9 +15,6 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "RS Fisheries",
   description: "RS Fisheries Admin Dashboard",
-  icons: {
-    icon: "/favicon.jpg",
-  },
 };
 
 export default function RootLayout({
@@ -27,6 +24,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+      <link rel="icon" href="/favicon.jpg" />
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >

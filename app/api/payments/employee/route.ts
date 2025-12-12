@@ -1,41 +1,115 @@
 // app/api/payments/employee/route.ts
+
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { PaymentMode } from "@prisma/client";
+
 
 export async function POST(req: NextRequest) {
     try {
         const formData = await req.formData();
+
         const userId = formData.get("userId") as string;
         const employeeName = formData.get("employeeName") as string;
-        const date = formData.get("date") as string;
-        const amount = parseFloat(formData.get("amount") as string);
+        const dateStr = formData.get("date") as string;
+        const amountStr = formData.get("amount") as string;
+        const paymentModeStr = formData.get("paymentMode") as string;
+        const reference = (formData.get("reference") as string) || null;
 
-        if (!userId || !employeeName || !date || isNaN(amount) || amount <= 0) {
-            return NextResponse.json({ error: "Invalid data" }, { status: 400 });
+        // Validation
+        if (!userId || !employeeName || !dateStr || !amountStr || !paymentModeStr) {
+            return NextResponse.json(
+                { error: "Missing required fields" },
+                { status: 400 }
+            );
         }
 
-        // You can create a new model later, or just saving in logs for now
-        // Or create a new table EmployeePayment if needed
+        const amount = parseFloat(amountStr);
+        if (isNaN(amount) || amount <= 0) {
+            return NextResponse.json(
+                { error: "Invalid amount" },
+                { status: 400 }
+            );
+        }
 
-        console.log("Employee Payment Recorded:", {
-            userId,
-            employeeName,
-            date: new Date(date),
-            amount,
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) {
+            return NextResponse.json(
+                { error: "Invalid date" },
+                { status: 400 }
+            );
+        }
+
+        const paymentMode = paymentModeStr.toUpperCase() as PaymentMode;
+        if (!["CASH", "AC", "UPI", "CHEQUE"].includes(paymentMode)) {
+            return NextResponse.json(
+                { error: "Invalid payment mode" },
+                { status: 400 }
+            );
+        }
+
+        // Save to database
+        const payment = await prisma.employeePayment.create({
+            data: {
+                userId,
+                employeeName,
+                date,
+                amount,
+                paymentMode,
+                reference: reference || undefined,
+            },
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        role: true,
+                    },
+                },
+            },
         });
 
-        return NextResponse.json({ success: true, message: "Payment recorded" });
-    } catch (error) {
-        console.error(error);
-        return NextResponse.json({ error: "Failed" }, { status: 500 });
+        return NextResponse.json(
+            {
+                success: true,
+                message: "Salary payment recorded successfully",
+                payment,
+            },
+            { status: 201 }
+        );
+    } catch (error: any) {
+        console.error("Employee payment save error:", error);
+        return NextResponse.json(
+            { error: "Failed to save payment", details: error.message },
+            { status: 500 }
+        );
     }
 }
-// const async function handleGET() {
-//     try {
-//         // For now, just return a static message or empty list
-//         return NextResponse.json({ success: true, payments: [] });
-//     } catch (error) {
-//         console.error(error);
-//         return NextResponse.json({ error: "Failed to fetch payments" }, { status: 500 });
-//     }
-// }
+
+// Optional: GET all employee payments (for history page later)
+export async function GET() {
+    try {
+        const payments = await prisma.employeePayment.findMany({
+            include: {
+                user: {
+                    select: {
+                        id: true,
+                        name: true,
+                        email: true,
+                        role: true,
+                    },
+                },
+            },
+            orderBy: { date: "desc" },
+        });
+
+        return NextResponse.json({ success: true, payments });
+    } catch (error: any) {
+        console.error("Employee payments fetch error:", error);
+        return NextResponse.json(
+            { error: "Failed to fetch payments" },
+            { status: 500 }
+        );
+    }
+}

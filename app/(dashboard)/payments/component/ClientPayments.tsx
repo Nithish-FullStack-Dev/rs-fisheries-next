@@ -195,7 +195,7 @@ export function ClientPayments() {
 
   return (
     <CardCustom
-      title="3B. Client Payments"
+      title="Client Payments"
       actions={
         <Button
           size="sm"
@@ -209,7 +209,7 @@ export function ClientPayments() {
         </Button>
       }
     >
-      <div className="space-y-7 max-w-4xl mx-auto">
+      <div className="space-y-7">
         {/* Client + Date */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-2">

@@ -205,7 +205,7 @@ export function VendorPayments() {
 
   return (
     <CardCustom
-      title="3A. Vendor Payments"
+      title="Vendor Payments"
       actions={
         <div className="flex gap-3">
           <Button

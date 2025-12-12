@@ -112,25 +112,10 @@ export function EmployeePayments() {
       toast.error("Please fill all required fields");
       return;
     }
-
-    // Reference required for non-cash payments
     if (paymentMode !== "cash" && !reference.trim()) {
       toast.error("Please enter reference number / UTR / Cheque no.");
       return;
     }
-
-    // if (selectedEmployee && amount > selectedEmployee.pendingSalary) {
-    //   if (
-    //     !confirm(
-    //       `Amount exceeds pending salary of ${formatCurrency(
-    //         selectedEmployee.pendingSalary
-    //       )}. Continue?`
-    //     )
-    //   ) {
-    //     return;
-    //   }
-    // }
-
     setIsSubmitting(true);
 
     const formData = new FormData();
@@ -176,7 +161,7 @@ export function EmployeePayments() {
 
   return (
     <CardCustom
-      title="3C. Employee Payments"
+      title="Employee Payments"
       actions={
         <Button
           size="sm"
@@ -193,7 +178,7 @@ export function EmployeePayments() {
         </Button>
       }
     >
-      <div className="space-y-7 max-w-4xl mx-auto">
+      <div className="space-y-7">
         {/* Employee + Date */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="space-y-3">
