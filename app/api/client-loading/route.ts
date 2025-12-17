@@ -59,12 +59,12 @@ async function getNetKgsByCodes(codes: string[]) {
     ])
   );
 
-const clientMap = Object.fromEntries(
-  outClient.map((x: GroupedResult) => [
-    x.varietyCode,
-    Number(x._sum.totalKgs ?? 0),
-  ])
-);
+  const clientMap = Object.fromEntries(
+    outClient.map((x: GroupedResult) => [
+      x.varietyCode,
+      Number(x._sum.totalKgs ?? 0),
+    ])
+  );
 
 
   const netMap: Record<string, number> = {};
@@ -199,12 +199,14 @@ export async function GET(req: Request) {
       orderBy: { date: "desc" },
     });
 
-    const formatted = loadings.map((l) => ({
+    type ClientLoadingWithVehicle = typeof loadings[number];
+
+    const formatted = loadings.map((l: ClientLoadingWithVehicle) => ({
       ...l,
       vehicleNo: l.vehicle?.vehicleNumber ?? "",
-      // Optional: clean up nested vehicle object if not needed on frontend
       vehicle: undefined,
     }));
+
 
     return NextResponse.json({ success: true, data: formatted });
   } catch (error) {
