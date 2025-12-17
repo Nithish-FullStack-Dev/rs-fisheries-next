@@ -1,4 +1,3 @@
-// app\api\invoices\vendor\route.tsx
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -8,7 +7,8 @@ export async function POST(req: NextRequest) {
       paymentId,
       vendorId,
       vendorName,
-      source,
+      source, // "farmer" | "agent" | "client"
+      sourceRecordId, // ✅ IMPORTANT (loadingId)
       invoiceNo,
       hsn,
       gstPercent,
@@ -16,7 +16,7 @@ export async function POST(req: NextRequest) {
       shipTo,
     } = await req.json();
 
-    if (!paymentId || !invoiceNo || !hsn || !billTo) {
+    if (!paymentId || !invoiceNo || !hsn || !billTo || !source) {
       return NextResponse.json({ message: "Missing fields" }, { status: 400 });
     }
 
@@ -32,14 +32,18 @@ export async function POST(req: NextRequest) {
     }
 
     const taxableValue = payment.amount;
-    const gstAmount = taxableValue * (gstPercent / 100);
+    const gstAmount = taxableValue * (Number(gstPercent) / 100);
     const totalAmount = taxableValue + gstAmount;
 
     const invoice = await prisma.vendorInvoice.upsert({
       where: { paymentId },
       update: {
+        vendorId,
+        vendorName,
+        source,
+        sourceRecordId: sourceRecordId || null, // ✅ STORE IT
         hsn,
-        gstPercent,
+        gstPercent: Number(gstPercent),
         taxableValue,
         gstAmount,
         totalAmount,
@@ -52,10 +56,11 @@ export async function POST(req: NextRequest) {
         vendorId,
         vendorName,
         source,
+        sourceRecordId: sourceRecordId || null, // ✅ STORE IT
         invoiceNo,
         invoiceDate: new Date(),
         hsn,
-        gstPercent,
+        gstPercent: Number(gstPercent),
         taxableValue,
         gstAmount,
         totalAmount,

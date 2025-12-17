@@ -1,3 +1,4 @@
+// lib/pdf/vendor-invoice.ts
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -52,7 +53,10 @@ type Doc = InstanceType<typeof jsPDF>;
 /* ---------------- HELPERS ---------------- */
 
 const money = (n?: number) =>
-    (n ?? 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    (n ?? 0).toLocaleString("en-IN", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    });
 
 function amountToWords(num: number): string {
     const a = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
@@ -76,13 +80,10 @@ function setInnerLine(doc: Doc) { doc.setLineWidth(0.25); }
 function rectOuter(doc: Doc, x: number, y: number, w: number, h: number) { setOuterLine(doc); doc.rect(x, y, w, h); }
 function lineInner(doc: Doc, x1: number, y1: number, x2: number, y2: number) { setInnerLine(doc); doc.line(x1, y1, x2, y2); }
 
-/** Fit single-line text into width; adds … if needed */
 function fitOneLine(doc: Doc, text: string, maxWidth: number) {
     let t = text ?? "";
     const ell = "…";
-    while (doc.getTextWidth(t) > maxWidth && t.length > 0) {
-        t = t.slice(0, -1);
-    }
+    while (doc.getTextWidth(t) > maxWidth && t.length > 0) t = t.slice(0, -1);
     if (doc.getTextWidth(text) > maxWidth) {
         while (doc.getTextWidth(t + ell) > maxWidth && t.length > 0) t = t.slice(0, -1);
         return t + ell;
@@ -90,7 +91,6 @@ function fitOneLine(doc: Doc, text: string, maxWidth: number) {
     return t;
 }
 
-/** Draw multi-line text within a box (wrap + limited lines) */
 function textBox(doc: Doc, text: string, x: number, y: number, w: number, h: number, fontSize = 8, lineH = 3.8) {
     const pad = 2.2;
     doc.setFontSize(fontSize);
@@ -117,7 +117,6 @@ function textBox(doc: Doc, text: string, x: number, y: number, w: number, h: num
     }
 }
 
-/** META CELL: render as one line "Label : Value" (prevents missing invoice/date) */
 function metaCell(doc: Doc, label: string, value: string, x: number, y: number, w: number, h: number) {
     const pad = 2.2;
     const fontSize = 8;
@@ -127,20 +126,15 @@ function metaCell(doc: Doc, label: string, value: string, x: number, y: number, 
     const content = value ? `${label} : ${value}` : `${label} :`;
     const maxW = w - pad * 2;
     const maxH = h - pad * 2;
-
-    // always single line; center vertically
-    const lineY = y + pad + Math.min(maxH, (h / 2)) + 1.0;
+    const lineY = y + pad + Math.min(maxH, h / 2) + 1.0;
     const txt = fitOneLine(doc, content, maxW);
 
     doc.text(txt, x + pad, lineY);
 }
 
-/* ---------------- MAIN PDF ---------------- */
+/* ---------------- CORE RENDER ---------------- */
 
-export async function generateVendorInvoicePDF(JsPDF: typeof jsPDF, data: VendorInvoiceData) {
-    const doc: Doc = new JsPDF("p", "mm", "a4");
-    doc.setTextColor(0);
-
+async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData) {
     const L = 10;
     const R = 200;
     const W = R - L;
@@ -158,7 +152,7 @@ export async function generateVendorInvoicePDF(JsPDF: typeof jsPDF, data: Vendor
 
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(9);
-    doc.text("e-Invoice", R - 20, T + 6);
+    // doc.text("e-Invoice", R - 20, T + 6);
 
     // QR
     const qrBoxW = 42;
@@ -185,22 +179,18 @@ export async function generateVendorInvoicePDF(JsPDF: typeof jsPDF, data: Vendor
 
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(8);
-    const irnBlock =
-        `IRN : ${data.irn ?? ""}\n` +
-        `Ack No. : ${data.ackNo ?? ""}\n` +
-        `Ack Date : ${data.ackDate ?? ""}`;
+    const irnBlock = `IRN : ${data.irn ?? ""}\nAck No. : ${data.ackNo ?? ""}\nAck Date : ${data.ackDate ?? ""}`;
     textBox(doc, irnBlock, irnBoxX, irnBoxY, irnBoxW, irnBoxH, 8, 4);
 
     // MAIN BOX
     const mainBoxY = T + 48;
-    const mainBoxH = 78; // ✅ a bit more height to fit addresses better
+    const mainBoxH = 78;
     rectOuter(doc, L, mainBoxY, W, mainBoxH);
 
     const leftW = 110;
     const rightX = L + leftW;
     lineInner(doc, rightX, mainBoxY, rightX, mainBoxY + mainBoxH);
 
-    // Left fixed heights (more space for addresses)
     const sellerH = 26;
     const shipH = 26;
     const billH = mainBoxH - sellerH - shipH;
@@ -225,14 +215,12 @@ export async function generateVendorInvoicePDF(JsPDF: typeof jsPDF, data: Vendor
     if (data.vendorEmail) sellerLines.push(`E-Mail : ${data.vendorEmail}`);
     textBox(doc, sellerLines.join("\n"), L, sellerY, leftW, sellerH, 9, 4);
 
-    // Ship To (smaller font so more fits)
+    // Ship To / Bill To
     doc.setFont("Helvetica", "normal");
     textBox(doc, `Consignee (Ship to)\n${data.shipTo || ""}`, L, shipY, leftW, shipH, 7.8, 3.6);
-
-    // Bill To (smaller font so more fits)
     textBox(doc, `Buyer (Bill to)\n${data.billTo || ""}`, L, billY, leftW, billH, 7.8, 3.6);
 
-    // RIGHT META GRID (values will NOT disappear now)
+    // RIGHT META GRID
     const metaX = rightX;
     const metaY = mainBoxY;
     const metaW = R - rightX;
@@ -243,10 +231,7 @@ export async function generateVendorInvoicePDF(JsPDF: typeof jsPDF, data: Vendor
 
     const rows = 8;
     const rowH = metaH / rows;
-
-    for (let i = 1; i < rows; i++) {
-        lineInner(doc, metaX, metaY + i * rowH, R, metaY + i * rowH);
-    }
+    for (let i = 1; i < rows; i++) lineInner(doc, metaX, metaY + i * rowH, R, metaY + i * rowH);
 
     const fmtDate = data.invoiceDate ? new Date(data.invoiceDate).toLocaleDateString("en-IN") : "";
 
@@ -278,25 +263,39 @@ export async function generateVendorInvoicePDF(JsPDF: typeof jsPDF, data: Vendor
         metaCell(doc, rightMeta[i][0], rightMeta[i][1], midX, cellY, R - midX, rowH);
     }
 
-    // ITEMS TABLE (no colors)
+    // ITEMS TABLE
     const itemsStartY = mainBoxY + mainBoxH + 6;
+    const normalizedItems = (data.items?.length ? data.items : []).map((it: any) => {
+        const qty = Number(it.qty ?? it.totalKgs) || 0;
+        const amount = Number(it.amount ?? it.totalPrice ?? 0) || 0;
+        const rate = qty ? amount / qty : amount;
 
-    const normalizedItems =
-        (data.items?.length ? data.items : []).map((it: any) => {
-            const qty = Number(it.qty ?? it.totalKgs ?? 1);
-            const amount = Number(it.amount ?? it.totalPrice ?? data.taxableValue ?? 0);
-            const rate = qty ? amount / qty : amount;
+        const code = String(it.varietyCode ?? "").trim();
+        const name = String(it.varietyName ?? "").trim();
 
-            return {
-                description: String(it.description ?? it.varietyCode ?? "Item"),
-                hsn: String(it.hsn ?? data.hsn ?? ""),
-                qty,
-                uom: String(it.uom ?? "KGS"),
-                rateInclTax: it.rateInclTax != null ? Number(it.rateInclTax) : undefined,
-                rate,
-                amount,
-            };
-        });
+        const bad = new Set(["farmer", "agent", "client"]);
+
+        const safeCode = bad.has(code.toLowerCase()) ? "" : code;
+        const safeName = bad.has(name.toLowerCase()) ? "" : name;
+
+        const description =
+            safeName && safeCode ? `${safeName} (${safeCode})`
+                : safeName ? safeName
+                    : safeCode ? safeCode
+                        : "Item";
+
+
+        return {
+            description,
+            hsn: String(it.hsn ?? data.hsn ?? ""),
+            qty,
+            uom: String(it.uom ?? "KGS"),
+            rateInclTax: it.rateInclTax != null ? Number(it.rateInclTax) : undefined,
+            rate,
+            amount,
+        };
+    });
+
 
     const items =
         normalizedItems.length > 0
@@ -314,11 +313,24 @@ export async function generateVendorInvoicePDF(JsPDF: typeof jsPDF, data: Vendor
     autoTable(doc, {
         startY: itemsStartY,
         theme: "grid",
-        styles: { fontSize: 8, cellPadding: 1.8, lineWidth: 0.35, textColor: 0, fillColor: 255 },
-        headStyles: { fontStyle: "bold", halign: "center", lineWidth: 0.45, fillColor: 255, textColor: 0 },
+        styles: {
+            fontSize: 8,
+            cellPadding: 1.8,
+            lineWidth: 0.35,
+            textColor: 0,
+            fillColor: 255,
+            overflow: "linebreak",
+        },
+        headStyles: {
+            fontStyle: "bold",
+            halign: "center",
+            lineWidth: 0.45,
+            fillColor: 255,
+            textColor: 0,
+        },
         columnStyles: {
             0: { cellWidth: 10, halign: "center" },
-            1: { cellWidth: 62 },
+            1: { cellWidth: 62, overflow: "linebreak" },
             2: { cellWidth: 22, halign: "center" },
             3: { cellWidth: 22, halign: "right" },
             4: { cellWidth: 22, halign: "right" },
@@ -364,7 +376,7 @@ export async function generateVendorInvoicePDF(JsPDF: typeof jsPDF, data: Vendor
     textBox(doc, `Amount Chargeable (in words)\n${amountToWords(data.totalAmount)}`, L, y, W, wordsBoxH, 8, 4);
     y += wordsBoxH + 6;
 
-    // Tax summary table (no colors)
+    // Tax summary table
     autoTable(doc, {
         startY: y,
         theme: "grid",
@@ -379,20 +391,8 @@ export async function generateVendorInvoicePDF(JsPDF: typeof jsPDF, data: Vendor
             4: { cellWidth: 35, halign: "right" },
         },
         head: [["HSN/SAC", "Taxable Value", "IGST Rate", "IGST Amount", "Total Tax Amount"]],
-        body: [[
-            data.hsn,
-            money(data.taxableValue),
-            `${data.gstPercent}%`,
-            money(data.gstAmount),
-            money(data.gstAmount),
-        ]],
-        foot: [[
-            "Total",
-            money(data.taxableValue),
-            "",
-            money(data.gstAmount),
-            money(data.gstAmount),
-        ]],
+        body: [[data.hsn, money(data.taxableValue), `${data.gstPercent}%`, money(data.gstAmount), money(data.gstAmount)]],
+        foot: [["Total", money(data.taxableValue), "", money(data.gstAmount), money(data.gstAmount)]],
     });
 
     y = (doc as any).lastAutoTable.finalY + 4;
@@ -438,6 +438,28 @@ export async function generateVendorInvoicePDF(JsPDF: typeof jsPDF, data: Vendor
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(8);
     doc.text("This is a Computer Generated Invoice", 105, 292, { align: "center" });
+}
 
-    doc.save(`Invoice_${data.invoiceNo}.pdf`);
+/* ---------------- EXPORTS ---------------- */
+
+// ✅ SERVER: use in API / QR scan
+export async function buildVendorInvoicePDF(JsPDF: typeof jsPDF, data: VendorInvoiceData) {
+    const doc: Doc = new JsPDF("p", "mm", "a4");
+    doc.setTextColor(0);
+    await renderVendorInvoice(doc, data);
+    return doc.output("arraybuffer");
+}
+
+// ✅ CLIENT: use in button click
+export async function generateVendorInvoicePDF(JsPDF: typeof jsPDF, data: VendorInvoiceData) {
+    const buf = await buildVendorInvoicePDF(JsPDF, data);
+    const blob = new Blob([buf], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `Invoice_${data.invoiceNo}.pdf`;
+    a.click();
+
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
