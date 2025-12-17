@@ -50,22 +50,22 @@ export default function UserDialog({
     });
 
   useEffect(() => {
-    if (open) {
-      if (mode === "edit" && defaultValues) {
-        reset({
-          email: defaultValues.email,
-          name: defaultValues.name || "",
-          role: defaultValues.role,
-          password: "",
-        });
-      } else {
-        reset({
-          email: "",
-          name: "",
-          role: "readOnly",
-          password: "",
-        });
-      }
+    if (!open) return;
+
+    if (mode === "edit" && defaultValues) {
+      reset({
+        email: defaultValues.email,
+        name: defaultValues.name || "",
+        role: defaultValues.role,
+        password: "", // ✅ keep empty (optional update)
+      });
+    } else {
+      reset({
+        email: "",
+        name: "",
+        role: "readOnly",
+        password: "",
+      });
     }
   }, [open, mode, defaultValues, reset]);
 
@@ -87,7 +87,20 @@ export default function UserDialog({
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit(onSubmit)} className="p-6 space-y-5">
+        <form
+          onSubmit={handleSubmit((data) => {
+            // ✅ If edit mode and password is empty, remove it so API won't update it
+            const payload = { ...data };
+            if (
+              mode === "edit" &&
+              (!payload.password || payload.password.trim() === "")
+            ) {
+              delete (payload as any).password;
+            }
+            onSubmit(payload);
+          })}
+          className="p-6 space-y-5"
+        >
           <div className="space-y-2">
             <label className="text-sm font-medium text-slate-700">Email</label>
             <Input
@@ -97,22 +110,29 @@ export default function UserDialog({
             />
           </div>
 
-          {mode === "add" && (
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-700">
-                Password
-              </label>
-              <Input
-                type="password"
-                {...register("password")}
-                placeholder="Enter password"
-                className="h-11 border-slate-200 bg-white shadow-sm focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
-              />
-              <p className="text-xs text-slate-500">
-                Use a strong password (minimum 8 characters recommended).
-              </p>
-            </div>
-          )}
+          {/* ✅ Password field: Add mode = required visually, Edit mode = optional */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-slate-700">
+              {mode === "add" ? "Password" : "New Password (optional)"}
+            </label>
+
+            <Input
+              type="password"
+              {...register("password")}
+              placeholder={
+                mode === "add"
+                  ? "Enter password"
+                  : "Leave blank to keep current password"
+              }
+              className="h-11 border-slate-200 bg-white shadow-sm focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
+            />
+
+            <p className="text-xs text-slate-500">
+              {mode === "add"
+                ? "Use a strong password (minimum 8 characters recommended)."
+                : "If you enter a password, it will replace the current one."}
+            </p>
+          </div>
 
           <div className="space-y-2">
             <label className="text-sm font-medium text-slate-700">Name</label>
@@ -126,7 +146,7 @@ export default function UserDialog({
           <div className="space-y-2">
             <label className="text-sm font-medium text-slate-700">Role</label>
             <Select
-              defaultValue={watch("role")}
+              value={watch("role")}
               onValueChange={(value) => setValue("role", value as any)}
             >
               <SelectTrigger className="h-11 border-slate-200 bg-white shadow-sm focus:ring-2 focus:ring-[#139BC3]/30">
