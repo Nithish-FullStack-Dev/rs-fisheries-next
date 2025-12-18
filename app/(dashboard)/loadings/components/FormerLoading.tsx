@@ -197,15 +197,9 @@ export default function FormerLoading() {
   };
 
   return (
-    <Card
-      className="
-    p-6 rounded-2xl space-y-6
-    border border-blue-100/70 bg-white
-    shadow-[0_18px_45px_-30px_rgba(37,99,235,0.35)]
-  "
-    >
+    <Card className="p-4 sm:p-6 rounded-2xl space-y-6 border border-[#139BC3]/15 bg-white shadow-[0_18px_45px_-30px_rgba(19,155,195,0.35)]">
       {/* HEADER */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="space-y-1">
           <h2 className="text-xl font-semibold text-slate-900">
             Farmer Loading
@@ -217,12 +211,7 @@ export default function FormerLoading() {
 
         <Button
           onClick={handleSave}
-          className="
-        rounded-xl px-5
-        bg-blue-600 text-white
-        hover:bg-blue-700
-        shadow-[0_12px_24px_-14px_rgba(37,99,235,0.7)]
-      "
+          className="w-full sm:w-auto rounded-xl px-5 bg-[#139BC3] text-white hover:bg-[#1088AA] shadow-[0_12px_24px_-14px_rgba(19,155,195,0.7)]"
         >
           <Save className="h-4 w-4 mr-2" />
           Save
@@ -230,17 +219,13 @@ export default function FormerLoading() {
       </div>
 
       {/* INPUTS */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
         <Field>
           <FieldLabel>Farmer Bill No</FieldLabel>
           <Input
             readOnly
             value={billNo}
-            className="
-          bg-slate-50 font-semibold
-          border-slate-200
-          focus-visible:ring-blue-300
-        "
+            className="bg-slate-50 font-semibold border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
           />
         </Field>
 
@@ -249,7 +234,7 @@ export default function FormerLoading() {
           <Input
             value={FarmerName}
             onChange={(e) => setFarmerName(e.target.value)}
-            className="border-slate-200 focus-visible:ring-blue-300"
+            className="border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
           />
         </Field>
 
@@ -258,7 +243,7 @@ export default function FormerLoading() {
           <Input
             value={village}
             onChange={(e) => setVillage(e.target.value)}
-            className="border-slate-200 focus-visible:ring-blue-300"
+            className="border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
           />
         </Field>
 
@@ -268,15 +253,15 @@ export default function FormerLoading() {
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            className="border-slate-200 focus-visible:ring-blue-300"
+            className="border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
           />
         </Field>
 
-        <Field>
+        <Field className="sm:col-span-2 md:col-span-1">
           <FieldLabel>Select Vehicle</FieldLabel>
 
           <Select value={vehicleId} onValueChange={setVehicleId}>
-            <SelectTrigger className="border-slate-200 focus:ring-blue-300">
+            <SelectTrigger className="border-slate-200 focus:ring-2 focus:ring-[#139BC3]/30">
               <SelectValue placeholder="Select Vehicle" />
             </SelectTrigger>
 
@@ -291,11 +276,103 @@ export default function FormerLoading() {
         </Field>
       </div>
 
-      {/* TABLE */}
-      <div className="overflow-x-auto rounded-2xl border border-blue-100/70">
-        <table className="w-full">
+      {/* ✅ MOBILE CARDS (no scroll) */}
+      <div className="grid grid-cols-1 gap-3 md:hidden">
+        {items.map((item, i) => (
+          <div
+            key={item.id}
+            className="rounded-2xl border border-[#139BC3]/15 bg-white p-4 shadow-sm"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="text-sm font-semibold text-slate-700">
+                Row #{i + 1}
+              </div>
+
+              <Button
+                size="icon"
+                variant="ghost"
+                disabled={items.length === 1}
+                onClick={() => removeRow(item.id)}
+                className="rounded-xl hover:bg-red-50"
+              >
+                <Trash2 className="h-4 w-4 text-red-500" />
+              </Button>
+            </div>
+
+            <div className="mt-3 space-y-3">
+              <div>
+                <div className="text-xs font-semibold text-slate-500 mb-1">
+                  Variety
+                </div>
+                <Select
+                  value={item.varietyCode}
+                  onValueChange={(v) => updateRow(item.id, "varietyCode", v)}
+                >
+                  <SelectTrigger className="h-11 rounded-xl border-slate-200 focus:ring-2 focus:ring-[#139BC3]/30">
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {varieties.map((v: any) => (
+                      <SelectItem value={v.code} key={v.code}>
+                        {v.code}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <div className="mt-2 text-sm text-slate-700">
+                  {getVarietyName(item.varietyCode)}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-xs font-semibold text-slate-500 mb-1">
+                    Trays
+                  </div>
+                  <Input
+                    type="number"
+                    className="h-11 w-full rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
+                    value={item.noTrays}
+                    min={0}
+                    onChange={(e) =>
+                      updateRow(item.id, "noTrays", Number(e.target.value))
+                    }
+                  />
+                </div>
+
+                <div>
+                  <div className="text-xs font-semibold text-slate-500 mb-1">
+                    Loose
+                  </div>
+                  <Input
+                    type="number"
+                    className="h-11 w-full rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
+                    value={item.loose}
+                    min={0}
+                    onChange={(e) =>
+                      updateRow(item.id, "loose", Number(e.target.value))
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between">
+                <div className="text-sm text-slate-600">Total</div>
+                <div className="text-lg font-extrabold text-slate-900">
+                  {calculateTotal(item).toFixed(2)}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ✅ DESKTOP TABLE (md+) */}
+      <div className="hidden md:block overflow-x-auto rounded-2xl border border-[#139BC3]/15">
+        <table className="w-full min-w-[900px]">
           <thead>
-            <tr className="border-b bg-blue-50/60">
+            <tr className="border-b bg-[#139BC3]/10">
               <th className="px-3 py-3 text-left text-sm font-semibold text-slate-700">
                 S.No
               </th>
@@ -324,20 +401,18 @@ export default function FormerLoading() {
             {items.map((item, i) => (
               <tr
                 key={item.id}
-                className="hover:bg-blue-50/40 transition-colors"
+                className="hover:bg-[#139BC3]/5 transition-colors"
               >
                 <td className="px-3 py-3 text-sm text-slate-800">{i + 1}</td>
 
-                {/* Variety Select */}
                 <td className="px-3 py-3">
                   <Select
                     value={item.varietyCode}
                     onValueChange={(v) => updateRow(item.id, "varietyCode", v)}
                   >
-                    <SelectTrigger className="h-10 rounded-xl border-slate-200 focus:ring-blue-300">
+                    <SelectTrigger className="h-10 rounded-xl border-slate-200 focus:ring-2 focus:ring-[#139BC3]/30">
                       <SelectValue placeholder="Select" />
                     </SelectTrigger>
-
                     <SelectContent>
                       {varieties.map((v: any) => (
                         <SelectItem value={v.code} key={v.code}>
@@ -348,16 +423,14 @@ export default function FormerLoading() {
                   </Select>
                 </td>
 
-                {/* Name */}
                 <td className="px-3 py-3 text-sm text-slate-700">
                   {getVarietyName(item.varietyCode)}
                 </td>
 
-                {/* Trays */}
                 <td className="px-3 py-3">
                   <Input
                     type="number"
-                    className="h-10 w-24 rounded-xl border-slate-200 focus-visible:ring-blue-300"
+                    className="h-10 w-24 rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
                     value={item.noTrays}
                     min={0}
                     onChange={(e) =>
@@ -366,11 +439,10 @@ export default function FormerLoading() {
                   />
                 </td>
 
-                {/* Loose */}
                 <td className="px-3 py-3">
                   <Input
                     type="number"
-                    className="h-10 w-24 rounded-xl border-slate-200 focus-visible:ring-blue-300"
+                    className="h-10 w-24 rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
                     value={item.loose}
                     min={0}
                     onChange={(e) =>
@@ -379,12 +451,10 @@ export default function FormerLoading() {
                   />
                 </td>
 
-                {/* Total */}
                 <td className="px-3 py-3 font-semibold text-slate-900">
                   {calculateTotal(item).toFixed(2)}
                 </td>
 
-                {/* Delete */}
                 <td className="px-3 py-3">
                   <Button
                     size="icon"
@@ -403,21 +473,17 @@ export default function FormerLoading() {
       </div>
 
       {/* FOOTER */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <Button
           variant="outline"
           onClick={addRow}
-          className="
-        rounded-xl border-blue-200
-        text-blue-700 hover:text-blue-800
-        hover:bg-blue-50
-      "
+          className="w-full sm:w-auto rounded-xl border-[#139BC3]/30 text-[#139BC3] hover:text-[#1088AA] hover:bg-[#139BC3]/10"
         >
           <Plus className="h-4 w-4 mr-2" />
           Add Row
         </Button>
 
-        <div className="text-right">
+        <div className="text-left sm:text-right">
           <p className="text-sm text-slate-500">Grand Total</p>
           <p className="text-2xl font-bold text-slate-900">
             {grandTotal.toFixed(2)} <span className="text-slate-500">kgs</span>

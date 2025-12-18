@@ -227,8 +227,9 @@ export default function ClientLoadingForm() {
   };
 
   return (
-    <Card className="rounded-2xl p-6 border border-blue-100/70 bg-white shadow-[0_18px_45px_-30px_rgba(37,99,235,0.35)]">
-      <div className="flex justify-between items-center">
+    <Card className="p-4 sm:p-6 rounded-2xl space-y-6 border border-[#139BC3]/15 bg-white shadow-[0_18px_45px_-30px_rgba(19,155,195,0.35)]">
+      {/* HEADER */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="space-y-1">
           <h2 className="text-xl font-semibold text-slate-900">
             Client Loading
@@ -240,14 +241,16 @@ export default function ClientLoadingForm() {
 
         <Button
           onClick={handleSave}
-          className="rounded-xl px-5 bg-blue-600 text-white hover:bg-blue-700 shadow-[0_12px_24px_-14px_rgba(37,99,235,0.7)]"
+          className="w-full sm:w-auto rounded-xl px-5 bg-[#139BC3] text-white hover:bg-[#1088AA] shadow-[0_12px_24px_-14px_rgba(19,155,195,0.7)]"
         >
-          <Save className="h-4 w-4 mr-2" /> Save
+          <Save className="h-4 w-4 mr-2" />
+          Save
         </Button>
       </div>
 
-      <CardContent className="space-y-6 pt-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <CardContent className="space-y-6 pt-0 sm:pt-6">
+        {/* INPUTS */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <Field>
             <FieldLabel>Client Bill No</FieldLabel>
             <Input
@@ -262,7 +265,7 @@ export default function ClientLoadingForm() {
             <Input
               value={clientName}
               onChange={(e) => setClientName(e.target.value)}
-              className="border-slate-200"
+              className="border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
             />
           </Field>
 
@@ -271,7 +274,7 @@ export default function ClientLoadingForm() {
             <Input
               value={village}
               onChange={(e) => setVillage(e.target.value)}
-              className="border-slate-200"
+              className="border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
             />
           </Field>
 
@@ -281,14 +284,14 @@ export default function ClientLoadingForm() {
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="border-slate-200"
+              className="border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
             />
           </Field>
 
-          <Field>
+          <Field className="sm:col-span-2 md:col-span-1">
             <FieldLabel>Select Vehicle</FieldLabel>
             <Select value={vehicleNo} onValueChange={setVehicleNo}>
-              <SelectTrigger className="border-slate-200">
+              <SelectTrigger className="border-slate-200 focus:ring-2 focus:ring-[#139BC3]/30">
                 <SelectValue placeholder="Select Vehicle" />
               </SelectTrigger>
               <SelectContent>
@@ -302,10 +305,129 @@ export default function ClientLoadingForm() {
           </Field>
         </div>
 
-        <div className="mt-4 overflow-x-auto rounded-2xl border border-blue-100/70">
-          <table className="w-full text-sm">
+        {/* ✅ MOBILE CARDS */}
+        <div className="grid grid-cols-1 gap-3 md:hidden">
+          {items.map((row, index) => (
+            <div
+              key={row.id}
+              className="rounded-2xl border border-[#139BC3]/15 bg-white p-4 shadow-sm"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="text-sm font-semibold text-slate-700">
+                  Row #{index + 1}
+                </div>
+
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  disabled={items.length === 1}
+                  onClick={() => deleteRow(row.id)}
+                  className="rounded-xl hover:bg-red-50"
+                >
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </div>
+
+              <div className="mt-3 space-y-3">
+                {/* Variety */}
+                <div>
+                  <div className="text-xs font-semibold text-slate-500 mb-1">
+                    Variety
+                  </div>
+
+                  <Select
+                    value={row.varietyCode}
+                    onValueChange={(code) => {
+                      updateRow(row.id, "varietyCode", code);
+                      updateRow(row.id, "name", getVarietyName(code));
+                      updateRow(row.id, "noTrays", 0);
+                      updateRow(row.id, "loose", 0);
+                    }}
+                  >
+                    <SelectTrigger className="h-11 rounded-xl border-slate-200 focus:ring-2 focus:ring-[#139BC3]/30">
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableVarieties.map((v) => (
+                        <SelectItem key={v.code} value={v.code}>
+                          {v.code} ({v.netTrays} trays)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <div className="mt-2 text-sm text-slate-700">
+                    {row.name || "—"}
+                  </div>
+                </div>
+
+                {/* Qty */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-xs font-semibold text-slate-500 mb-1">
+                      Trays
+                    </div>
+                    <Input
+                      type="number"
+                      className="h-11 w-full rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
+                      value={row.noTrays}
+                      min={0}
+                      disabled={!row.varietyCode}
+                      onChange={(e) => {
+                        const next = Math.max(0, Number(e.target.value) || 0);
+                        const clamped = clampRow(row.id, next, row.loose);
+                        updateRow(row.id, "noTrays", clamped.trays);
+                        updateRow(row.id, "loose", clamped.loose);
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-semibold text-slate-500 mb-1">
+                      Loose
+                    </div>
+                    <Input
+                      type="number"
+                      className="h-11 w-full rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
+                      value={row.loose}
+                      min={0}
+                      disabled={!row.varietyCode}
+                      onChange={(e) => {
+                        const next = Math.max(0, Number(e.target.value) || 0);
+                        const clamped = clampRow(row.id, row.noTrays, next);
+                        updateRow(row.id, "noTrays", clamped.trays);
+                        updateRow(row.id, "loose", clamped.loose);
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Total */}
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between">
+                  <div className="text-sm text-slate-600">Total</div>
+                  <div className="text-lg font-extrabold text-slate-900">
+                    {row.totalKgs}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          <Button
+            onClick={addRow}
+            variant="outline"
+            className="w-full rounded-xl border-[#139BC3]/30 text-[#139BC3] hover:text-[#1088AA] hover:bg-[#139BC3]/10 flex items-center justify-center gap-2"
+          >
+            <PlusCircle className="w-4 h-4" />
+            Add Row
+          </Button>
+        </div>
+
+        {/* ✅ DESKTOP TABLE */}
+        <div className="hidden md:block overflow-x-auto rounded-2xl border border-[#139BC3]/15">
+          <table className="w-full text-sm min-w-[900px]">
             <thead>
-              <tr className="border-b bg-blue-50/60">
+              <tr className="border-b bg-[#139BC3]/10">
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">
                   S.No
                 </th>
@@ -334,7 +456,7 @@ export default function ClientLoadingForm() {
               {items.map((row, index) => (
                 <tr
                   key={row.id}
-                  className="hover:bg-blue-50/40 transition-colors"
+                  className="hover:bg-[#139BC3]/5 transition-colors"
                 >
                   <td className="px-3 py-3 text-slate-800">{index + 1}</td>
 
@@ -344,12 +466,11 @@ export default function ClientLoadingForm() {
                       onValueChange={(code) => {
                         updateRow(row.id, "varietyCode", code);
                         updateRow(row.id, "name", getVarietyName(code));
-                        // reset qty when changing variety
                         updateRow(row.id, "noTrays", 0);
                         updateRow(row.id, "loose", 0);
                       }}
                     >
-                      <SelectTrigger className="h-10 rounded-xl border-slate-200">
+                      <SelectTrigger className="h-10 rounded-xl border-slate-200 focus:ring-2 focus:ring-[#139BC3]/30">
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
                       <SelectContent>
@@ -367,32 +488,32 @@ export default function ClientLoadingForm() {
                   <td className="px-3 py-3">
                     <Input
                       type="number"
-                      className="h-10 w-24 rounded-xl border-slate-200"
+                      className="h-10 w-24 rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
                       value={row.noTrays}
                       min={0}
+                      disabled={!row.varietyCode}
                       onChange={(e) => {
                         const next = Math.max(0, Number(e.target.value) || 0);
                         const clamped = clampRow(row.id, next, row.loose);
                         updateRow(row.id, "noTrays", clamped.trays);
                         updateRow(row.id, "loose", clamped.loose);
                       }}
-                      disabled={!row.varietyCode}
                     />
                   </td>
 
                   <td className="px-3 py-3">
                     <Input
                       type="number"
-                      className="h-10 w-24 rounded-xl border-slate-200"
+                      className="h-10 w-24 rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
                       value={row.loose}
                       min={0}
+                      disabled={!row.varietyCode}
                       onChange={(e) => {
                         const next = Math.max(0, Number(e.target.value) || 0);
                         const clamped = clampRow(row.id, row.noTrays, next);
                         updateRow(row.id, "noTrays", clamped.trays);
                         updateRow(row.id, "loose", clamped.loose);
                       }}
-                      disabled={!row.varietyCode}
                     />
                   </td>
 
@@ -408,7 +529,7 @@ export default function ClientLoadingForm() {
                       onClick={() => deleteRow(row.id)}
                       className="rounded-xl hover:bg-red-50"
                     >
-                      <Trash2 className="h-4 w-4 text-red-500" />
+                      <Trash2 className="h-4 h-4 text-red-500" />
                     </Button>
                   </td>
                 </tr>
@@ -420,15 +541,18 @@ export default function ClientLoadingForm() {
             <Button
               onClick={addRow}
               variant="outline"
-              className="rounded-xl border-blue-200 text-blue-700 hover:text-blue-800 hover:bg-blue-50 flex items-center gap-2"
+              className="rounded-xl border-[#139BC3]/30 text-[#139BC3] hover:text-[#1088AA] hover:bg-[#139BC3]/10 flex items-center gap-2"
             >
-              <PlusCircle className="w-4 h-4" /> Add Row
+              <PlusCircle className="w-4 h-4" />
+              Add Row
             </Button>
           </div>
         </div>
 
-        <div className="flex justify-end">
-          <div className="text-right">
+        {/* FOOTER */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="hidden md:block" />
+          <div className="text-left sm:text-right">
             <p className="text-sm text-slate-500">Grand Total</p>
             <p className="text-2xl font-bold text-slate-900">
               {grandTotal} <span className="text-slate-500">Kgs</span>
