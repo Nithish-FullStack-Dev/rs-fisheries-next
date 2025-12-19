@@ -166,7 +166,7 @@ export function DriverTable({ onRequestEdit }: DriverTableProps = {}) {
               size="sm"
               onClick={() => window.open(url, "_blank", "noopener,noreferrer")}
             >
-              {isPdf ? "View PDF" : "View Full Image"}
+              {isPdf ? "View PDF" : "View Image"}
             </Button>
           </div>
         );
@@ -409,7 +409,7 @@ export function DriverTable({ onRequestEdit }: DriverTableProps = {}) {
                               )
                             }
                           >
-                            View Full Image
+                            View Image
                           </Button>
                         </div>
                       );

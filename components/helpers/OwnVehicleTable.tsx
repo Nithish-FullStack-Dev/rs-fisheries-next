@@ -156,7 +156,7 @@ export function OwnVehicleTable() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3">
         <div className="lg:col-span-4">
           <Input
-            className="h-11 w-full border-slate-200 bg-white shadow-sm focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
+            className=" w-full border-slate-200 bg-white shadow-sm focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
             placeholder="Search vehicle / driver / manufacturer"
             value={filters.search}
             onChange={(e) => setFilters({ ...filters, search: e.target.value })}
