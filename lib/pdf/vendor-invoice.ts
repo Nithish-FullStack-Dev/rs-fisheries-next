@@ -17,7 +17,7 @@ export interface VendorInvoiceData {
 
     billTo: string;
     shipTo: string;
-
+    description?: string;
     hsn: string;
     gstPercent: number;
 
@@ -46,6 +46,7 @@ export interface VendorInvoiceData {
 
     items?: any[];
     qrText?: string;
+    qrDataUrl?: string;
 }
 
 type Doc = InstanceType<typeof jsPDF>;
@@ -59,39 +60,100 @@ const money = (n?: number) =>
     });
 
 function amountToWords(num: number): string {
-    const a = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen"];
-    const b = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+    const a = [
+        "",
+        "One",
+        "Two",
+        "Three",
+        "Four",
+        "Five",
+        "Six",
+        "Seven",
+        "Eight",
+        "Nine",
+        "Ten",
+        "Eleven",
+        "Twelve",
+        "Thirteen",
+        "Fourteen",
+        "Fifteen",
+        "Sixteen",
+        "Seventeen",
+        "Eighteen",
+        "Nineteen",
+    ];
+    const b = [
+        "",
+        "",
+        "Twenty",
+        "Thirty",
+        "Forty",
+        "Fifty",
+        "Sixty",
+        "Seventy",
+        "Eighty",
+        "Ninety",
+    ];
     if (!num || num === 0) return "INR Zero Only";
 
     const inWords = (n: number): string => {
         if (n < 20) return a[n];
         if (n < 100) return (b[Math.floor(n / 10)] + " " + a[n % 10]).trim();
-        if (n < 1000) return (a[Math.floor(n / 100)] + " Hundred " + inWords(n % 100)).trim();
-        if (n < 100000) return (inWords(Math.floor(n / 1000)) + " Thousand " + inWords(n % 1000)).trim();
-        if (n < 10000000) return (inWords(Math.floor(n / 100000)) + " Lakh " + inWords(n % 100000)).trim();
-        return (inWords(Math.floor(n / 10000000)) + " Crore " + inWords(n % 10000000)).trim();
+        if (n < 1000)
+            return (a[Math.floor(n / 100)] + " Hundred " + inWords(n % 100)).trim();
+        if (n < 100000)
+            return (
+                inWords(Math.floor(n / 1000)) + " Thousand " + inWords(n % 1000)
+            ).trim();
+        if (n < 10000000)
+            return (
+                inWords(Math.floor(n / 100000)) + " Lakh " + inWords(n % 100000)
+            ).trim();
+        return (
+            inWords(Math.floor(n / 10000000)) + " Crore " + inWords(n % 10000000)
+        ).trim();
     };
 
     return `INR ${inWords(Math.floor(num))} Only`;
 }
 
-function setOuterLine(doc: Doc) { doc.setLineWidth(0.45); }
-function setInnerLine(doc: Doc) { doc.setLineWidth(0.25); }
-function rectOuter(doc: Doc, x: number, y: number, w: number, h: number) { setOuterLine(doc); doc.rect(x, y, w, h); }
-function lineInner(doc: Doc, x1: number, y1: number, x2: number, y2: number) { setInnerLine(doc); doc.line(x1, y1, x2, y2); }
+function setOuterLine(doc: Doc) {
+    doc.setLineWidth(0.45);
+}
+function setInnerLine(doc: Doc) {
+    doc.setLineWidth(0.25);
+}
+function rectOuter(doc: Doc, x: number, y: number, w: number, h: number) {
+    setOuterLine(doc);
+    doc.rect(x, y, w, h);
+}
+function lineInner(doc: Doc, x1: number, y1: number, x2: number, y2: number) {
+    setInnerLine(doc);
+    doc.line(x1, y1, x2, y2);
+}
 
 function fitOneLine(doc: Doc, text: string, maxWidth: number) {
     let t = text ?? "";
     const ell = "…";
     while (doc.getTextWidth(t) > maxWidth && t.length > 0) t = t.slice(0, -1);
     if (doc.getTextWidth(text) > maxWidth) {
-        while (doc.getTextWidth(t + ell) > maxWidth && t.length > 0) t = t.slice(0, -1);
+        while (doc.getTextWidth(t + ell) > maxWidth && t.length > 0)
+            t = t.slice(0, -1);
         return t + ell;
     }
     return t;
 }
 
-function textBox(doc: Doc, text: string, x: number, y: number, w: number, h: number, fontSize = 8, lineH = 3.8) {
+function textBox(
+    doc: Doc,
+    text: string,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    fontSize = 8,
+    lineH = 3.8
+) {
     const pad = 2.2;
     doc.setFontSize(fontSize);
     const maxW = w - pad * 2;
@@ -117,7 +179,15 @@ function textBox(doc: Doc, text: string, x: number, y: number, w: number, h: num
     }
 }
 
-function metaCell(doc: Doc, label: string, value: string, x: number, y: number, w: number, h: number) {
+function metaCell(
+    doc: Doc,
+    label: string,
+    value: string,
+    x: number,
+    y: number,
+    w: number,
+    h: number
+) {
     const pad = 2.2;
     const fontSize = 8;
     doc.setFont("Helvetica", "normal");
@@ -152,7 +222,6 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData) {
 
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(9);
-    // doc.text("e-Invoice", R - 20, T + 6);
 
     // QR
     const qrBoxW = 42;
@@ -161,14 +230,40 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData) {
     const qrY = T + 10;
     rectOuter(doc, qrX, qrY, qrBoxW, qrBoxH);
 
-    const qrPayload = (data.qrText || data.irn || data.invoiceNo || "").toString();
-    if (qrPayload) {
-        try {
-            const QRCode = (await import("qrcode")).default;
-            const qrDataUrl = await QRCode.toDataURL(qrPayload, { margin: 0, scale: 5 });
-            doc.addImage(qrDataUrl, "PNG", qrX + 2, qrY + 2, qrBoxW - 4, qrBoxH - 4);
-        } catch { }
+    try {
+        // ✅ best: use pre-generated dataUrl from API route
+        if (data.qrDataUrl) {
+            doc.addImage(
+                data.qrDataUrl,
+                "PNG",
+                qrX + 2,
+                qrY + 2,
+                qrBoxW - 4,
+                qrBoxH - 4
+            );
+        } else {
+            // fallback (if you ever call pdf builder somewhere else)
+            const qrPayload = (data.qrText || data.irn || data.invoiceNo || "")
+                .toString()
+                .trim();
+
+            if (qrPayload) {
+                const mod: any = await import("qrcode");
+                const QR = mod?.default ?? mod;
+
+                const qrDataUrl = await QR.toDataURL(qrPayload, {
+                    errorCorrectionLevel: "M",
+                    margin: 0,
+                    scale: 6,
+                });
+
+                doc.addImage(qrDataUrl, "PNG", qrX + 2, qrY + 2, qrBoxW - 4, qrBoxH - 4);
+            }
+        }
+    } catch (e) {
+        console.error("QR render failed:", e);
     }
+
 
     // IRN/Ack box
     const irnBoxX = L;
@@ -210,7 +305,9 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData) {
     if (data.vendorAddress) sellerLines.push(data.vendorAddress);
     if (data.vendorGSTIN) sellerLines.push(`GSTIN/UIN : ${data.vendorGSTIN}`);
     if (data.vendorStateName || data.vendorStateCode) {
-        sellerLines.push(`State Name : ${data.vendorStateName ?? ""}, Code : ${data.vendorStateCode ?? ""}`.trim());
+        sellerLines.push(
+            `State Name : ${data.vendorStateName ?? ""}, Code : ${data.vendorStateCode ?? ""}`.trim()
+        );
     }
     if (data.vendorEmail) sellerLines.push(`E-Mail : ${data.vendorEmail}`);
     textBox(doc, sellerLines.join("\n"), L, sellerY, leftW, sellerH, 9, 4);
@@ -274,16 +371,21 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData) {
         const name = String(it.varietyName ?? "").trim();
 
         const bad = new Set(["farmer", "agent", "client"]);
-
         const safeCode = bad.has(code.toLowerCase()) ? "" : code;
         const safeName = bad.has(name.toLowerCase()) ? "" : name;
 
-        const description =
-            safeName && safeCode ? `${safeName} (${safeCode})`
-                : safeName ? safeName
-                    : safeCode ? safeCode
-                        : "Item";
+        const descFromItem = String(it.description ?? "").trim();
 
+        const description =
+            descFromItem
+                ? descFromItem
+                : safeName && safeCode
+                    ? `${safeName} (${safeCode})`
+                    : safeName
+                        ? safeName
+                        : safeCode
+                            ? safeCode
+                            : (data.description ?? "Goods / Service");
 
         return {
             description,
@@ -296,12 +398,11 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData) {
         };
     });
 
-
     const items =
         normalizedItems.length > 0
             ? normalizedItems
             : [{
-                description: "Goods / Service",
+                description: data.description ?? "Goods / Service",
                 hsn: data.hsn,
                 qty: 1,
                 uom: "NOS",

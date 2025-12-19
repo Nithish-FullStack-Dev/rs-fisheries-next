@@ -13,7 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea"; // ← Add this
+import { Textarea } from "@/components/ui/textarea";
 
 interface Props {
   open: boolean;
@@ -36,39 +36,91 @@ export function VendorInvoiceModal({
 }: Props) {
   const [invoiceNo, setInvoiceNo] = useState("");
   const [hsn, setHsn] = useState("");
-  const [gstPercent, setGstPercent] = useState(18); // default 18%
+  const [gstPercent, setGstPercent] = useState(18);
   const [billTo, setBillTo] = useState("");
   const [shipTo, setShipTo] = useState("");
+  const [description, setDescription] = useState("");
   const [saving, setSaving] = useState(false);
+
+  const [existingInvoiceNo, setExistingInvoiceNo] = useState<string | null>(
+    null
+  ); // ✅ tells us if invoice already exists
 
   useEffect(() => {
     if (!open) return;
 
-    axios
-      .get("/api/invoices/next-number")
-      .then((res) => setInvoiceNo(res.data.invoiceNumber))
-      .catch(() => setInvoiceNo(""));
-  }, [open]);
+    // ✅ reset "existing" marker each open
+    setExistingInvoiceNo(null);
+
+    (async () => {
+      try {
+        // 1) check if invoice already exists for this paymentId
+        const res = await axios.get(
+          `/api/invoices/vendor/by-payment?paymentId=${paymentId}`
+        );
+
+        const inv = res.data.invoice;
+
+        // ✅ load existing invoice values
+        setInvoiceNo(inv.invoiceNo);
+        setExistingInvoiceNo(inv.invoiceNo);
+
+        setHsn(inv.hsn ?? "");
+        setGstPercent(Number(inv.gstPercent ?? 0));
+        setBillTo(inv.billTo ?? "");
+        setShipTo(inv.shipTo ?? "");
+        setDescription(inv.description ?? "");
+      } catch (err: any) {
+        // 2) if not found, show next preview invoice number
+        if (err?.response?.status === 404) {
+          try {
+            const next = await axios.get("/api/invoices/next-number");
+            setInvoiceNo(next.data.invoiceNumber);
+          } catch {
+            setInvoiceNo("");
+          }
+
+          // clear fields for new invoice
+          setHsn("");
+          setGstPercent(18);
+          setBillTo("");
+          setShipTo("");
+          setDescription("");
+        } else {
+          console.error(err);
+          setInvoiceNo("");
+        }
+      }
+    })();
+  }, [open, paymentId]);
 
   const saveInvoice = async () => {
     try {
       setSaving(true);
 
-      // ✅ Reserve invoice number ONLY on save
-      const reserve = await axios.post("/api/invoices/next-number");
-      const finalInvoiceNo = reserve.data.invoiceNumber;
+      let finalInvoiceNo = invoiceNo;
+
+      // ✅ ONLY reserve a new number if invoice DOES NOT exist yet
+      if (!existingInvoiceNo) {
+        const reserve = await axios.post("/api/invoices/next-number");
+        finalInvoiceNo = reserve.data.invoiceNumber;
+      }
 
       await axios.post("/api/invoices/vendor", {
         paymentId,
         vendorId,
         vendorName,
         source,
-        invoiceNo: finalInvoiceNo, // ✅ guaranteed unique
+        invoiceNo: finalInvoiceNo, // ✅ same invoice no if editing
         hsn,
         gstPercent,
         billTo,
         shipTo,
+        description,
       });
+
+      setInvoiceNo(finalInvoiceNo);
+      setExistingInvoiceNo(finalInvoiceNo); // ✅ mark as existing after save
 
       onSaved();
       onClose();
@@ -93,10 +145,23 @@ export function VendorInvoiceModal({
               <Label>Invoice No</Label>
               <Input value={invoiceNo} disabled />
             </div>
+
             <div>
               <Label>Vendor Name</Label>
               <Input value={vendorName} disabled />
             </div>
+
+            <div>
+              <Label>Description (Goods/Service)</Label>
+              <Textarea
+                rows={3}
+                placeholder="e.g. Fish purchase / Agent commission / Loading charges..."
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                className="font-mono text-sm"
+              />
+            </div>
+
             <div>
               <Label>HSN / SAC</Label>
               <Input
@@ -105,6 +170,7 @@ export function VendorInvoiceModal({
                 placeholder="e.g. 721710"
               />
             </div>
+
             <div>
               <Label>GST Rate (%)</Label>
               <Input
@@ -142,10 +208,14 @@ export function VendorInvoiceModal({
 
         <Button
           onClick={saveInvoice}
-          disabled={saving || !invoiceNo || !hsn || !billTo}
+          disabled={saving || !invoiceNo || !hsn || !billTo || !description}
           className="w-full mt-6"
         >
-          {saving ? "Saving..." : "Save & Finalize Invoice"}
+          {saving
+            ? "Saving..."
+            : existingInvoiceNo
+            ? "Update Invoice"
+            : "Save & Finalize Invoice"}
         </Button>
       </DialogContent>
     </Dialog>

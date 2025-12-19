@@ -399,10 +399,13 @@ export default function ReceiptsPage() {
 
                             generateVendorInvoicePDF(jsPDF, {
                               ...invoice,
+                              description: invoice.description ?? "", // ✅ pass it
                               items: [
                                 {
-                                  varietyCode: invoice.source,
-                                  billNo: invoice.invoiceNo,
+                                  description:
+                                    invoice.description ?? "Goods / Service", // ✅ this will print
+                                  hsn: invoice.hsn,
+                                  uom: "NOS",
                                   totalKgs: 1,
                                   totalPrice: invoice.taxableValue,
                                 },

@@ -1,3 +1,4 @@
+// app\api\invoices\vendor\route.tsx
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -14,6 +15,7 @@ export async function POST(req: NextRequest) {
       gstPercent,
       billTo,
       shipTo,
+      description,
     } = await req.json();
 
     if (!paymentId || !invoiceNo || !hsn || !billTo || !source) {
@@ -49,6 +51,7 @@ export async function POST(req: NextRequest) {
         totalAmount,
         billTo,
         shipTo,
+        description: description || null,
         isFinalized: true,
       },
       create: {
@@ -66,6 +69,7 @@ export async function POST(req: NextRequest) {
         totalAmount,
         billTo,
         shipTo,
+        description: description || null,
         isFinalized: true,
       },
     });

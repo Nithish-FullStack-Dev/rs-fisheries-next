@@ -63,7 +63,7 @@ model FormerLoading {
 
 model FormerItem {
   id              String        @id @default(uuid())
-  formerLoadingId String 
+  formerLoadingId String
   varietyCode     String
   noTrays         Int
   trayKgs         Float
@@ -77,19 +77,19 @@ model FormerItem {
 }
 
 model AgentLoading {
-  id        String   @id @default(uuid())
-  fishCode  String
-  agentName String
-  billNo    String   @unique
-  village   String
-  date      DateTime
-  vehicleId String
-  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id])
-  totalTrays    Int   @default(0)
-  totalLooseKgs Float @default(0)
-  totalTrayKgs  Float @default(0)
-  totalKgs      Float @default(0)
-  totalPrice    Float @default(0)
+  id            String   @id @default(uuid())
+  fishCode      String
+  agentName     String
+  billNo        String   @unique
+  village       String
+  date          DateTime
+  vehicleId     String
+  vehicle       Vehicle  @relation(fields: [vehicleId], references: [id])
+  totalTrays    Int      @default(0)
+  totalLooseKgs Float    @default(0)
+  totalTrayKgs  Float    @default(0)
+  totalKgs      Float    @default(0)
+  totalPrice    Float    @default(0)
 
   accountNumber String?
   ifsc          String?
@@ -121,20 +121,20 @@ model AgentItem {
 }
 
 model ClientLoading {
-  id         String   @id @default(uuid())
-  clientName String
-  billNo     String   @unique
-  date       DateTime
-  vehicleId  String
-  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id])
-  fishCode   String
-  village    String
-  totalTrays    Int   @default(0)
-  totalLooseKgs Float @default(0)
-  totalTrayKgs  Float @default(0)
-  totalKgs      Float @default(0)
-  totalPrice    Float @default(0)
-  grandTotal    Float @default(0)
+  id            String   @id @default(uuid())
+  clientName    String
+  billNo        String   @unique
+  date          DateTime
+  vehicleId     String
+  vehicle       Vehicle  @relation(fields: [vehicleId], references: [id])
+  fishCode      String
+  village       String
+  totalTrays    Int      @default(0)
+  totalLooseKgs Float    @default(0)
+  totalTrayKgs  Float    @default(0)
+  totalKgs      Float    @default(0)
+  totalPrice    Float    @default(0)
+  grandTotal    Float    @default(0)
 
   accountNumber String?
   ifsc          String?
@@ -218,7 +218,6 @@ model ClientPayment {
   @@index([date])
 }
 
-
 enum VehicleOwnership {
   OWN
   RENT
@@ -271,29 +270,29 @@ model VehicleEntry {
 }
 
 model Vehicle {
-  id            String           @id @default(cuid())
-  vehicleNumber String           @unique
-  ownership     VehicleOwnership
+  id                String           @id @default(cuid())
+  vehicleNumber     String           @unique
+  ownership         VehicleOwnership
   manufacturer      String?
   model             String?
   yearOfManufacture Int?
   fuelType          FuelType?
-  engineNumber      String?   @unique
-  chassisNumber     String?   @unique
-  capacityInTons Float?
-  bodyType       String?
-  rcValidity      DateTime?
-  insuranceExpiry DateTime?
-  fitnessExpiry   DateTime?
-  pollutionExpiry DateTime?
-  permitExpiry    DateTime?
-  roadTaxExpiry   DateTime?
-  assignedDriverId String? @unique
-  assignedDriver   Driver? @relation(fields: [assignedDriverId], references: [id])
-  rentalAgency     String?
-  rentalRatePerDay Float?
-  isActive Boolean @default(true)
-  remarks  String?
+  engineNumber      String?          @unique
+  chassisNumber     String?          @unique
+  capacityInTons    Float?
+  bodyType          String?
+  rcValidity        DateTime?
+  insuranceExpiry   DateTime?
+  fitnessExpiry     DateTime?
+  pollutionExpiry   DateTime?
+  permitExpiry      DateTime?
+  roadTaxExpiry     DateTime?
+  assignedDriverId  String?          @unique
+  assignedDriver    Driver?          @relation(fields: [assignedDriverId], references: [id])
+  rentalAgency      String?
+  rentalRatePerDay  Float?
+  isActive          Boolean          @default(true)
+  remarks           String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -301,18 +300,23 @@ model Vehicle {
   farmerLoadings FormerLoading[]
   agentLoadings  AgentLoading[]
   clientLoadings ClientLoading[]
-  trips VehicleEntry[]
+  trips          VehicleEntry[]
 }
 
 model Driver {
-  id            String   @id @default(cuid())
+  id            String @id @default(cuid())
   name          String
-  phone         String   @unique
-  licenseNumber String   @unique
+  phone         String @unique
+  licenseNumber String @unique
   address       String
   age           Int
-  aadharNumber  String   @unique
-  createdAt     DateTime @default(now())
+  aadharNumber  String @unique
+
+  identityProofBytes Bytes?
+  identityProofType  String?
+  identityProofName  String?
+
+  createdAt DateTime @default(now())
 
   assignedVehicle Vehicle?
 }
@@ -342,7 +346,7 @@ model PackingAmount {
   temperature    Float
   totalAmount    Float
   paymentMode    PaymentMode @default(CASH)
-  reference      String? 
+  reference      String?
   createdAt      DateTime    @default(now())
   createdById    String?
   createdBy      User?       @relation(fields: [createdById], references: [id])
@@ -354,8 +358,8 @@ model PackingAmount {
 model InvoiceCounter {
   id           Int  @id @default(1)
   count        Int  @default(0)
-  packingCount Int  @default(0) 
-  packingYear  Int? 
+  packingCount Int  @default(0)
+  packingYear  Int?
   invoiceCount Int  @default(0)
 }
 
@@ -367,7 +371,7 @@ model Invoice {
   partyName     String?
   partyAddress  String?
   date          DateTime @default(now())
-  items         Json 
+  items         Json
   subtotal      Float
   taxAmount     Float
   total         Float
@@ -401,6 +405,8 @@ model VendorInvoice {
 
   billTo String
   shipTo String
+
+  description String?
 
   isFinalized Boolean  @default(false)
   createdAt   DateTime @default(now())
