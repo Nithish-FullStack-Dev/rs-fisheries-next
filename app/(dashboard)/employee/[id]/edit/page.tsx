@@ -1,6 +1,5 @@
 "use client";
 
-import * as z from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
 import { format } from "date-fns";
@@ -33,15 +32,33 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { Label } from "@/components/ui/label";
-import { joiningFormSchema, JoiningFormValues } from "@/lib/schema";
+import { editJoiningFormSchema, EditJoiningFormValues } from "@/lib/schema";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
-export default function JoiningFormPage() {
+const designationOptions = [
+  { value: "Executive", label: "Executive" },
+  { value: "SeniorExecutive", label: "Senior Executive" },
+  { value: "JuniorExecutive", label: "Junior Executive" },
+  { value: "Supervisor", label: "Supervisor" },
+  { value: "Admin", label: "Admin" },
+  { value: "Finance", label: "Finance" },
+  { value: "Clerk", label: "Clerk" },
+  { value: "Sales", label: "Sales" },
+  { value: "Partner", label: "Partner" },
+  { value: "Others", label: "Others" },
+];
+
+export default function EditEmployeePage() {
+  const queryClient = useQueryClient();
+
+  const params = useParams();
+  const id = params.id as string;
   const router = useRouter();
+
   const passportRef = useRef<HTMLInputElement>(null);
   const aadhaarRef = useRef<HTMLInputElement>(null);
   const panRef = useRef<HTMLInputElement>(null);
@@ -50,8 +67,18 @@ export default function JoiningFormPage() {
   const [aadhaarPreview, setAadhaarPreview] = useState<string | null>(null);
   const [panPreview, setPanPreview] = useState<string | null>(null);
 
-  const form = useForm<JoiningFormValues>({
-    resolver: zodResolver(joiningFormSchema),
+  const [initialPassportPreview, setInitialPassportPreview] = useState<
+    string | null
+  >(null);
+  const [initialAadhaarPreview, setInitialAadhaarPreview] = useState<
+    string | null
+  >(null);
+  const [initialPanPreview, setInitialPanPreview] = useState<string | null>(
+    null
+  );
+
+  const form = useForm<EditJoiningFormValues>({
+    resolver: zodResolver(editJoiningFormSchema),
     defaultValues: {
       doj: "",
       department: "",
@@ -70,7 +97,7 @@ export default function JoiningFormPage() {
       fullName: "",
       fatherName: "",
       dob: "",
-      gender: undefined as any,
+      gender: undefined,
 
       aadhaar: "",
       pan: "",
@@ -95,28 +122,100 @@ export default function JoiningFormPage() {
     },
   });
 
+  const { data: employee, isLoading } = useQuery({
+    queryKey: ["employee", id],
+    queryFn: async () => {
+      const { data } = await axios.get(`/api/employee/${id}`, {
+        withCredentials: true,
+      });
+      return data?.data;
+    },
+  });
+
+  useEffect(() => {
+    if (employee) {
+      form.reset({
+        doj: employee.doj ? format(new Date(employee.doj), "yyyy-MM-dd") : "",
+        department: employee.department || "",
+        designation: employee.designation || "",
+
+        basicSalary:
+          employee.basicSalary != null ? String(employee.basicSalary) : "",
+        hra: employee.hra != null ? String(employee.hra) : "",
+        conveyanceAllowance:
+          employee.conveyanceAllowance != null
+            ? String(employee.conveyanceAllowance)
+            : "",
+        specialAllowance:
+          employee.specialAllowance != null
+            ? String(employee.specialAllowance)
+            : "",
+        grossSalary:
+          employee.grossSalary != null ? String(employee.grossSalary) : "",
+        ctc: employee.ctc != null ? String(employee.ctc) : "",
+
+        workLocation: employee.workLocation || "",
+        shiftType: employee.shiftType || "",
+
+        fullName: employee.fullName || "",
+        fatherName: employee.fatherName || "",
+        dob: employee.dob ? format(new Date(employee.dob), "yyyy-MM-dd") : "",
+        gender: employee.gender || "",
+
+        aadhaar: employee.aadhaar || "",
+        pan: employee.pan || "",
+        mobile: employee.mobile || "",
+        altMobile: employee.altMobile || "",
+        email: employee.email || "",
+
+        maritalStatus: employee.maritalStatus || undefined,
+        nationality: employee.nationality || "",
+
+        currentAddress: employee.currentAddress || "",
+        permanentAddress: employee.permanentAddress || "",
+
+        bankName: employee.bankName || "",
+        branchName: employee.branchName || "",
+        accountNumber: employee.accountNumber || "",
+        ifsc: employee.ifsc || "",
+
+        passportPhoto: undefined,
+        aadhaarImage: undefined,
+        panImage: undefined,
+      });
+
+      setInitialPassportPreview(employee.photo || null);
+      setPassportPreview(employee.photo || null);
+
+      setInitialAadhaarPreview(employee.aadhaarProof || null);
+      setAadhaarPreview(employee.aadhaarProof || null);
+
+      setInitialPanPreview(employee.panProof || null);
+      setPanPreview(employee.panProof || null);
+    }
+  }, [employee, form]);
+
   useEffect(() => {
     return () => {
-      if (passportPreview) URL.revokeObjectURL(passportPreview);
-      if (aadhaarPreview) URL.revokeObjectURL(aadhaarPreview);
-      if (panPreview) URL.revokeObjectURL(panPreview);
+      if (passportPreview?.startsWith("blob:"))
+        URL.revokeObjectURL(passportPreview);
+      if (aadhaarPreview?.startsWith("blob:"))
+        URL.revokeObjectURL(aadhaarPreview);
+      if (panPreview?.startsWith("blob:")) URL.revokeObjectURL(panPreview);
     };
   }, [passportPreview, aadhaarPreview, panPreview]);
 
-  const addMutation = useMutation({
+  const updateMutation = useMutation({
     mutationFn: async (formData: FormData) => {
-      const response = await axios.post("/api/employee", formData, {
+      const response = await axios.patch(`/api/employee/${id}`, formData, {
         withCredentials: true,
       });
       return response.data;
     },
     onSuccess: (data) => {
-      toast.success(data.message || "Employee added successfully");
-      form.reset();
-      setPassportPreview(null);
-      setAadhaarPreview(null);
-      setPanPreview(null);
+      queryClient.invalidateQueries({ queryKey: ["employee", id] });
       router.push("/employee");
+      toast.success(data.message || "Employee updated successfully");
     },
     onError: (error: any) => {
       if (axios.isAxiosError(error)) {
@@ -127,7 +226,7 @@ export default function JoiningFormPage() {
     },
   });
 
-  function onSubmit(values: JoiningFormValues) {
+  function onSubmit(values: EditJoiningFormValues) {
     const formData = new FormData();
 
     formData.append("doj", new Date(values.doj).toISOString());
@@ -148,7 +247,6 @@ export default function JoiningFormPage() {
       formData.append("workLocation", values.workLocation);
     if (values.shiftType) formData.append("shiftType", values.shiftType);
 
-    /* -------------------- Personal Information -------------------- */
     formData.append("fullName", values.fullName);
     formData.append("fatherName", values.fatherName);
     formData.append("dob", new Date(values.dob).toISOString());
@@ -164,34 +262,35 @@ export default function JoiningFormPage() {
     if (values.altMobile) formData.append("altMobile", values.altMobile);
     if (values.email) formData.append("email", values.email);
 
-    /* -------------------- Address -------------------- */
     formData.append("currentAddress", values.currentAddress);
     formData.append("permanentAddress", values.permanentAddress);
 
-    /* -------------------- Bank Details -------------------- */
     formData.append("bankName", values.bankName);
     formData.append("branchName", values.branchName);
     formData.append("accountNumber", values.accountNumber);
     formData.append("ifsc", values.ifsc);
 
-    /* -------------------- Files (REQUIRED) -------------------- */
-    if (!values.passportPhoto || !values.aadhaarImage || !values.panImage) {
-      toast.error("All documents are required");
-      return;
-    }
+    // Only append new files if selected
+    if (values.passportPhoto)
+      formData.append("passportPhoto", values.passportPhoto);
+    if (values.aadhaarImage)
+      formData.append("aadhaarImage", values.aadhaarImage);
+    if (values.panImage) formData.append("panImage", values.panImage);
 
-    formData.append("passportPhoto", values.passportPhoto);
-    formData.append("aadhaarImage", values.aadhaarImage);
-    formData.append("panImage", values.panImage);
+    updateMutation.mutate(formData);
+  }
 
-    addMutation.mutate(formData);
+  if (isLoading) {
+    return (
+      <div className="py-8 px-5 text-center">Loading employee data...</div>
+    );
   }
 
   return (
     <div className="py-8">
       <div className="px-5">
         <h1 className="text-3xl font-bold text-center mb-10">
-          Employee Joining Form
+          Edit Employee Details
         </h1>
 
         <Form {...form}>
@@ -269,7 +368,7 @@ export default function JoiningFormPage() {
                             }
                             onSelect={(date) =>
                               field.onChange(
-                                date ? date.toISOString().split("T")[0] : ""
+                                date ? format(date, "yyyy-MM-dd") : ""
                               )
                             }
                             disabled={(date) =>
@@ -295,7 +394,7 @@ export default function JoiningFormPage() {
                       <FormControl>
                         <RadioGroup
                           onValueChange={field.onChange}
-                          value={field.value}
+                          value={field.value ?? ""}
                           className="flex flex-row space-x-6"
                         >
                           <div className="flex items-center space-x-2">
@@ -385,7 +484,7 @@ export default function JoiningFormPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>
-                        Email<span className="text-red-500">*</span>
+                        Email <span className="text-red-500">*</span>
                       </FormLabel>
                       <FormControl>
                         <Input type="email" {...field} />
@@ -398,40 +497,47 @@ export default function JoiningFormPage() {
                 <FormField
                   control={form.control}
                   name="maritalStatus"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Marital Status</FormLabel>
-                      <FormControl>
-                        <RadioGroup
-                          onValueChange={(value) =>
-                            field.onChange(
-                              value === "yes" ? "Married" : "Single"
-                            )
-                          }
-                          value={
-                            field.value === "Married"
-                              ? "yes"
-                              : field.value === "Single"
-                              ? "no"
-                              : undefined
-                          }
-                          className="flex flex-row space-x-6"
-                        >
-                          <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="yes" id="married" />
-                            <Label htmlFor="married">Yes (Married)</Label>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <RadioGroupItem value="no" id="single" />
-                            <Label htmlFor="single">
-                              No (Single/Unmarried)
-                            </Label>
-                          </div>
-                        </RadioGroup>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                  render={({ field }) => {
+                    const radioValue =
+                      field.value === "Married"
+                        ? "yes"
+                        : field.value === "Single"
+                        ? "no"
+                        : "";
+
+                    return (
+                      <FormItem>
+                        <FormLabel>Marital Status</FormLabel>
+                        <FormControl>
+                          <RadioGroup
+                            onValueChange={(value) =>
+                              field.onChange(
+                                value === "yes"
+                                  ? "Married"
+                                  : value === "no"
+                                  ? "Single"
+                                  : undefined
+                              )
+                            }
+                            value={radioValue}
+                            className="flex flex-row space-x-6"
+                          >
+                            <div className="flex items-center space-x-2">
+                              <RadioGroupItem value="yes" id="married" />
+                              <Label htmlFor="married">Yes (Married)</Label>
+                            </div>
+                            <div className="flex items-center space-x-2">
+                              <RadioGroupItem value="no" id="single" />
+                              <Label htmlFor="single">
+                                No (Single/Unmarried)
+                              </Label>
+                            </div>
+                          </RadioGroup>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
                 />
 
                 <FormField
@@ -526,7 +632,7 @@ export default function JoiningFormPage() {
                             }
                             onSelect={(date) =>
                               field.onChange(
-                                date ? date.toISOString().split("T")[0] : ""
+                                date ? format(date, "yyyy-MM-dd") : ""
                               )
                             }
                             disabled={(date) =>
@@ -565,38 +671,32 @@ export default function JoiningFormPage() {
                       <FormLabel>
                         Designation <span className="text-red-500">*</span>
                       </FormLabel>
+
                       <Select
-                        onValueChange={field.onChange}
+                        key={field.value || "designation"}
                         value={field.value}
+                        onValueChange={field.onChange}
                       >
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Select designation" />
                           </SelectTrigger>
                         </FormControl>
+
                         <SelectContent>
-                          <SelectItem value="Executive">Executive</SelectItem>
-                          <SelectItem value="SeniorExecutive">
-                            Senior Executive
-                          </SelectItem>
-                          <SelectItem value="JuniorExecutive">
-                            Junior Executive
-                          </SelectItem>
-                          <SelectItem value="Supervisor">Supervisor</SelectItem>
-                          <SelectItem value="Admin">Admin</SelectItem>
-                          <SelectItem value="Finance">Finance</SelectItem>
-                          <SelectItem value="Clerk">Clerk</SelectItem>
-                          <SelectItem value="Sales">Sales</SelectItem>
-                          <SelectItem value="Partner">Partner</SelectItem>
-                          <SelectItem value="Others">Others</SelectItem>
+                          {designationOptions.map((opt) => (
+                            <SelectItem key={opt.value} value={opt.value}>
+                              {opt.label}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
+
                       <FormMessage />
                     </FormItem>
                   )}
                 />
 
-                {/* Salary Information subsection - you can wrap them in a div with col-span if you want a visual separator */}
                 <div className="col-span-1 md:col-span-2 mt-6 pt-6 border-t">
                   <h3 className="text-lg font-medium mb-4">
                     Salary Information
@@ -729,7 +829,7 @@ export default function JoiningFormPage() {
             {/* Upload Documents */}
             <section className="space-y-6">
               <h2 className="text-2xl font-semibold border-b pb-2">
-                Upload Documents
+                Upload Documents (Optional - only if changing)
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
                 {/* Passport Size Photo */}
@@ -742,8 +842,9 @@ export default function JoiningFormPage() {
                     ) => {
                       const file = e.target.files?.[0];
                       if (file) {
-                        if (passportPreview)
+                        if (passportPreview?.startsWith("blob:")) {
                           URL.revokeObjectURL(passportPreview);
+                        }
                         const newPreview = URL.createObjectURL(file);
                         setPassportPreview(newPreview);
                         onChange(file);
@@ -751,25 +852,26 @@ export default function JoiningFormPage() {
                     };
 
                     const handleRemove = () => {
-                      if (passportPreview) URL.revokeObjectURL(passportPreview);
-                      setPassportPreview(null);
+                      if (passportPreview?.startsWith("blob:")) {
+                        URL.revokeObjectURL(passportPreview);
+                      }
+                      setPassportPreview(initialPassportPreview);
                       onChange(undefined);
                       if (passportRef.current) passportRef.current.value = "";
                     };
 
                     return (
                       <FormItem>
-                        <FormLabel>
-                          Passport Size Photo{" "}
-                          <span className="text-red-500">*</span>
-                        </FormLabel>
+                        <FormLabel>Passport Size Photo</FormLabel>
                         <div className="space-y-4">
                           <Button
                             type="button"
                             variant="outline"
                             onClick={() => passportRef.current?.click()}
                           >
-                            {value || passportPreview
+                            {value ||
+                            (passportPreview &&
+                              !passportPreview.startsWith("blob:"))
                               ? "Change Photo"
                               : "Upload Photo"}
                           </Button>
@@ -789,14 +891,16 @@ export default function JoiningFormPage() {
                                   className="h-48 w-40 object-cover rounded-lg border shadow"
                                 />
                               </div>
-                              <Button
-                                type="button"
-                                variant="destructive"
-                                className="w-full"
-                                onClick={handleRemove}
-                              >
-                                Remove Photo
-                              </Button>
+                              {passportPreview.startsWith("blob:") && (
+                                <Button
+                                  type="button"
+                                  variant="destructive"
+                                  className="w-full"
+                                  onClick={handleRemove}
+                                >
+                                  Remove New Photo
+                                </Button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -816,7 +920,9 @@ export default function JoiningFormPage() {
                     ) => {
                       const file = e.target.files?.[0];
                       if (file) {
-                        if (aadhaarPreview) URL.revokeObjectURL(aadhaarPreview);
+                        if (aadhaarPreview?.startsWith("blob:")) {
+                          URL.revokeObjectURL(aadhaarPreview);
+                        }
                         const newPreview = URL.createObjectURL(file);
                         setAadhaarPreview(newPreview);
                         onChange(file);
@@ -824,25 +930,26 @@ export default function JoiningFormPage() {
                     };
 
                     const handleRemove = () => {
-                      if (aadhaarPreview) URL.revokeObjectURL(aadhaarPreview);
-                      setAadhaarPreview(null);
+                      if (aadhaarPreview?.startsWith("blob:")) {
+                        URL.revokeObjectURL(aadhaarPreview);
+                      }
+                      setAadhaarPreview(initialAadhaarPreview);
                       onChange(undefined);
                       if (aadhaarRef.current) aadhaarRef.current.value = "";
                     };
 
                     return (
                       <FormItem>
-                        <FormLabel>
-                          Aadhaar Card Image{" "}
-                          <span className="text-red-500">*</span>
-                        </FormLabel>
+                        <FormLabel>Aadhaar Card Image</FormLabel>
                         <div className="space-y-4">
                           <Button
                             type="button"
                             variant="outline"
                             onClick={() => aadhaarRef.current?.click()}
                           >
-                            {value || aadhaarPreview
+                            {value ||
+                            (aadhaarPreview &&
+                              !aadhaarPreview.startsWith("blob:"))
                               ? "Change Image"
                               : "Upload Aadhaar"}
                           </Button>
@@ -862,14 +969,16 @@ export default function JoiningFormPage() {
                                   className="max-w-full max-h-96 object-contain rounded-lg border shadow"
                                 />
                               </div>
-                              <Button
-                                type="button"
-                                variant="destructive"
-                                className="w-full"
-                                onClick={handleRemove}
-                              >
-                                Remove Image
-                              </Button>
+                              {aadhaarPreview.startsWith("blob:") && (
+                                <Button
+                                  type="button"
+                                  variant="destructive"
+                                  className="w-full"
+                                  onClick={handleRemove}
+                                >
+                                  Remove New Image
+                                </Button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -889,7 +998,9 @@ export default function JoiningFormPage() {
                     ) => {
                       const file = e.target.files?.[0];
                       if (file) {
-                        if (panPreview) URL.revokeObjectURL(panPreview);
+                        if (panPreview?.startsWith("blob:")) {
+                          URL.revokeObjectURL(panPreview);
+                        }
                         const newPreview = URL.createObjectURL(file);
                         setPanPreview(newPreview);
                         onChange(file);
@@ -897,24 +1008,25 @@ export default function JoiningFormPage() {
                     };
 
                     const handleRemove = () => {
-                      if (panPreview) URL.revokeObjectURL(panPreview);
-                      setPanPreview(null);
+                      if (panPreview?.startsWith("blob:")) {
+                        URL.revokeObjectURL(panPreview);
+                      }
+                      setPanPreview(initialPanPreview);
                       onChange(undefined);
                       if (panRef.current) panRef.current.value = "";
                     };
 
                     return (
                       <FormItem>
-                        <FormLabel>
-                          PAN Card Image <span className="text-red-500">*</span>
-                        </FormLabel>
+                        <FormLabel>PAN Card Image</FormLabel>
                         <div className="space-y-4">
                           <Button
                             type="button"
                             variant="outline"
                             onClick={() => panRef.current?.click()}
                           >
-                            {value || panPreview
+                            {value ||
+                            (panPreview && !panPreview.startsWith("blob:"))
                               ? "Change Image"
                               : "Upload PAN"}
                           </Button>
@@ -934,14 +1046,16 @@ export default function JoiningFormPage() {
                                   className="max-w-full max-h-96 object-contain rounded-lg border shadow"
                                 />
                               </div>
-                              <Button
-                                type="button"
-                                variant="destructive"
-                                className="w-full"
-                                onClick={handleRemove}
-                              >
-                                Remove Image
-                              </Button>
+                              {panPreview.startsWith("blob:") && (
+                                <Button
+                                  type="button"
+                                  variant="destructive"
+                                  className="w-full"
+                                  onClick={handleRemove}
+                                >
+                                  Remove New Image
+                                </Button>
+                              )}
                             </div>
                           )}
                         </div>
@@ -1029,9 +1143,9 @@ export default function JoiningFormPage() {
               type="submit"
               size="lg"
               className="w-full"
-              disabled={addMutation.isPending}
+              disabled={updateMutation.isPending}
             >
-              Submit Joining Form
+              Save Changes
             </Button>
           </form>
         </Form>
