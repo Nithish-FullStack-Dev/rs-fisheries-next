@@ -143,7 +143,7 @@ export default function AgentLoading() {
   // ✅ 5% deduction
   const grandTotal = useMemo(() => {
     const after = totalKgs * (1 - DEDUCTION_PERCENT / 100);
-    return Number(after.toFixed(2));
+    return Math.round(after);
   }, [totalKgs]);
 
   const resetForm = () => {

@@ -1,11 +1,10 @@
-// app/api/dispatch/route.ts
+// app/api/payments/dispatch/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { DispatchChargeType, DispatchSourceType } from "@prisma/client";
 
 export const runtime = "nodejs";
 
-// Helpers
 function asString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -26,21 +25,17 @@ export async function POST(req: NextRequest) {
     const notes = asString(body.notes) || null;
     const amount = asPositiveNumber(body.amount);
 
-    // Required: sourceType
     if (
       !sourceTypeRaw ||
       !Object.values(DispatchSourceType).includes(sourceTypeRaw as any)
     ) {
       return NextResponse.json(
-        {
-          error: "sourceType is required and must be FORMER, AGENT, or CLIENT",
-        },
+        { error: "Invalid or missing sourceType" },
         { status: 400 }
       );
     }
     const sourceType = sourceTypeRaw as DispatchSourceType;
 
-    // Required: sourceRecordId
     if (!sourceRecordId) {
       return NextResponse.json(
         { error: "sourceRecordId is required" },
@@ -48,81 +43,157 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Required: valid type
     if (
       !typeRaw ||
       !Object.values(DispatchChargeType).includes(typeRaw as any)
     ) {
-      return NextResponse.json(
-        {
-          error:
-            "Invalid type. Allowed: ICE_COOLING, TRANSPORT, OTHER, PACKING",
-        },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Invalid type" }, { status: 400 });
     }
     const type = typeRaw as DispatchChargeType;
 
-    // Required: positive amount
     if (amount === null) {
       return NextResponse.json(
-        { error: "Valid positive amount is required" },
+        { error: "Valid positive amount required" },
         { status: 400 }
       );
     }
 
-    // Required: label for OTHER or PACKING
     if ((type === "OTHER" || type === "PACKING") && !label) {
       return NextResponse.json(
-        { error: "label is required when type is OTHER or PACKING" },
+        { error: "Label required for OTHER or PACKING" },
         { status: 400 }
       );
     }
 
-    // Optional but recommended: verify the parent loading exists
-    let loadingExists = false;
+    // ✅ Verify loading exists + get base price from correct table
+    let baseTotalPrice = 0;
+
+    if (sourceType === DispatchSourceType.CLIENT) {
+      const loading = await prisma.clientLoading.findUnique({
+        where: { id: sourceRecordId },
+        select: { id: true, totalPrice: true },
+      });
+      if (!loading) {
+        return NextResponse.json(
+          { error: "Loading record not found" },
+          { status: 404 }
+        );
+      }
+      baseTotalPrice = loading.totalPrice || 0;
+    }
+
     if (sourceType === DispatchSourceType.FORMER) {
-      loadingExists = !!(await prisma.formerLoading.findUnique({
+      const loading = await prisma.formerLoading.findUnique({
         where: { id: sourceRecordId },
-        select: { id: true },
-      }));
-    } else if (sourceType === DispatchSourceType.AGENT) {
-      loadingExists = !!(await prisma.agentLoading.findUnique({
-        where: { id: sourceRecordId },
-        select: { id: true },
-      }));
-    } else if (sourceType === DispatchSourceType.CLIENT) {
-      loadingExists = !!(await prisma.clientLoading.findUnique({
-        where: { id: sourceRecordId },
-        select: { id: true },
-      }));
+        select: { id: true, totalPrice: true },
+      });
+      if (!loading) {
+        return NextResponse.json(
+          { error: "Loading record not found" },
+          { status: 404 }
+        );
+      }
+      baseTotalPrice = loading.totalPrice || 0;
     }
 
-    if (!loadingExists) {
-      return NextResponse.json(
-        {
-          error: `No ${sourceType.toLowerCase()} loading found with ID: ${sourceRecordId}`,
-        },
-        { status: 404 }
-      );
+    if (sourceType === DispatchSourceType.AGENT) {
+      const loading = await prisma.agentLoading.findUnique({
+        where: { id: sourceRecordId },
+        select: { id: true, totalPrice: true },
+      });
+      if (!loading) {
+        return NextResponse.json(
+          { error: "Loading record not found" },
+          { status: 404 }
+        );
+      }
+      baseTotalPrice = loading.totalPrice || 0;
     }
 
-    // Create dispatch charge — now safe with no conflicting FKs
+    // ✅ Create DispatchCharge with correct relation FK
+    const relationData: any = {};
+    if (sourceType === DispatchSourceType.CLIENT)
+      relationData.clientLoadingId = sourceRecordId;
+    if (sourceType === DispatchSourceType.FORMER)
+      relationData.formerLoadingId = sourceRecordId;
+    if (sourceType === DispatchSourceType.AGENT)
+      relationData.agentLoadingId = sourceRecordId;
+
     const dispatchCharge = await prisma.dispatchCharge.create({
       data: {
         sourceType,
         sourceRecordId,
         type,
         label,
-        notes,
         amount,
-      },
-      include: {
-        createdBy: {
-          select: { name: true, email: true },
-        },
+        notes,
+        ...relationData,
       },
     });
+
+    // ✅ Recalculate totals from actual tables
+    const [dispatchSum, packingSum] = await Promise.all([
+      prisma.dispatchCharge.aggregate({
+        where: {
+          OR: [
+            { clientLoadingId: sourceRecordId },
+            { formerLoadingId: sourceRecordId },
+            { agentLoadingId: sourceRecordId },
+          ],
+        },
+        _sum: { amount: true },
+      }),
+      prisma.packingAmount.aggregate({
+        where: {
+          OR: [
+            { clientLoadingId: sourceRecordId },
+            { formerLoadingId: sourceRecordId },
+            { agentLoadingId: sourceRecordId },
+          ],
+        },
+        _sum: { totalAmount: true },
+      }),
+    ]);
+
+    const newDispatchTotal = dispatchSum._sum.amount || 0;
+    const newPackingTotal = packingSum._sum.totalAmount || 0;
+
+    // ✅ Correct grandTotal
+    const newGrandTotal = baseTotalPrice + newDispatchTotal + newPackingTotal;
+
+    // ✅ Update parent
+    if (sourceType === DispatchSourceType.CLIENT) {
+      await prisma.clientLoading.update({
+        where: { id: sourceRecordId },
+        data: {
+          dispatchChargesTotal: newDispatchTotal,
+          packingAmountTotal: newPackingTotal,
+          grandTotal: newGrandTotal,
+        },
+      });
+    }
+
+    if (sourceType === DispatchSourceType.FORMER) {
+      await prisma.formerLoading.update({
+        where: { id: sourceRecordId },
+        data: {
+          dispatchChargesTotal: newDispatchTotal,
+          packingAmountTotal: newPackingTotal,
+          grandTotal: newGrandTotal,
+        },
+      });
+    }
+
+    if (sourceType === DispatchSourceType.AGENT) {
+      await prisma.agentLoading.update({
+        where: { id: sourceRecordId },
+        data: {
+          dispatchChargesTotal: newDispatchTotal,
+          packingAmountTotal: newPackingTotal,
+          grandTotal: newGrandTotal,
+        },
+      });
+    }
 
     return NextResponse.json(
       { success: true, data: dispatchCharge },
@@ -131,10 +202,7 @@ export async function POST(req: NextRequest) {
   } catch (error: any) {
     console.error("DispatchCharge POST error:", error);
     return NextResponse.json(
-      {
-        error: "Failed to create dispatch charge",
-        details: error.message || "Unknown error",
-      },
+      { error: "Failed to save dispatch charge", details: error.message },
       { status: 500 }
     );
   }
@@ -146,14 +214,7 @@ export async function GET(req: NextRequest) {
     const sourceTypeRaw = searchParams.get("sourceType");
     const sourceRecordId = searchParams.get("sourceRecordId");
 
-    if (!sourceRecordId) {
-      return NextResponse.json(
-        { error: "sourceRecordId query parameter is required" },
-        { status: 400 }
-      );
-    }
-
-    let where: any = { sourceRecordId };
+    const where: any = {};
 
     if (sourceTypeRaw) {
       if (!Object.values(DispatchSourceType).includes(sourceTypeRaw as any)) {
@@ -163,6 +224,18 @@ export async function GET(req: NextRequest) {
         );
       }
       where.sourceType = sourceTypeRaw as DispatchSourceType;
+    }
+
+    if (sourceRecordId) {
+      where.sourceRecordId = sourceRecordId;
+    }
+
+    // Require at least sourceType or sourceRecordId
+    if (!sourceTypeRaw && !sourceRecordId) {
+      return NextResponse.json(
+        { error: "At least sourceType or sourceRecordId is required" },
+        { status: 400 }
+      );
     }
 
     const dispatchCharges = await prisma.dispatchCharge.findMany({

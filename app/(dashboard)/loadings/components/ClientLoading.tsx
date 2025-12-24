@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { useQuery } from "@tanstack/react-query";
+// import { useQuery } from "@tanstack/react-query";
 
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,7 @@ import {
 
 import { PlusCircle, Save, Trash2 } from "lucide-react";
 import { Field, FieldLabel } from "@/components/ui/field";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 const TRAY_KG = 35;
 const DEDUCTION_PERCENT = 5;
@@ -60,7 +61,7 @@ export default function ClientLoadingForm() {
   const [grandTotal, setGrandTotal] = useState(0);
 
   const isOtherVehicle = vehicleId === OTHER_VEHICLE_VALUE;
-
+  const queryClient = useQueryClient();
   const [items, setItems] = useState<ItemRow[]>([
     {
       id: crypto.randomUUID(),
@@ -171,7 +172,7 @@ export default function ClientLoadingForm() {
   useMemo(() => {
     const total = items.reduce((a, b) => a + (Number(b.totalKgs) || 0), 0);
     const after = total * (1 - DEDUCTION_PERCENT / 100);
-    setGrandTotal(Number(after.toFixed(2)));
+    setGrandTotal(Math.round(after));
   }, [items]);
 
   const addRow = () => {
@@ -249,6 +250,10 @@ export default function ClientLoadingForm() {
       });
 
       toast.success("Client loading saved!");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["available-varieties"] }),
+        queryClient.invalidateQueries({ queryKey: ["client-bill-no"] }),
+      ]);
       resetForm();
     } catch (err: any) {
       const msg =

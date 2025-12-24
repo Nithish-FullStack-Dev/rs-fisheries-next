@@ -126,8 +126,8 @@ export default function FormerLoading() {
 
   // ✅ Grand total after 5% deduction
   const grandTotal = useMemo(() => {
-    const afterDeduction = totalKgs * (1 - DEDUCTION_PERCENT / 100);
-    return Number(afterDeduction.toFixed(2));
+    const after = totalKgs * (1 - DEDUCTION_PERCENT / 100);
+    return Math.round(after);
   }, [totalKgs]);
 
   // ---------- RESET FORM ----------

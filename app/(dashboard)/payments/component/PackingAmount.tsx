@@ -41,31 +41,58 @@ export function PackingAmount() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
-    async function loadBills() {
-      setIsLoading(true);
-      try {
-        let data: Bill[] = [];
-        if (mode === "loading") {
-          const res = await fetch("/api/client-loading");
-          const json = await res.json();
-          data = json.data || [];
-        } else {
-          const [formerRes, agentRes] = await Promise.all([
-            fetch("/api/former-loading"),
-            fetch("/api/agent-loading"),
-          ]);
-          const f = await formerRes.json();
-          const a = await agentRes.json();
-          data = [...(f.data || []), ...(a.data || [])];
-        }
-        setBills(data);
-      } catch {
-        toast.error("Failed to load bills");
-      } finally {
-        setIsLoading(false);
+  // Separate reusable function to load and filter available bills
+  const loadBills = async () => {
+    setIsLoading(true);
+    try {
+      let allBills: Bill[] = [];
+      let usedPackingBillIds = new Set<string>();
+
+      // Fetch all possible bills based on mode
+      if (mode === "loading") {
+        const res = await fetch("/api/client-loading");
+        const json = await res.json();
+        allBills = json.data || [];
+      } else {
+        const [formerRes, agentRes] = await Promise.all([
+          fetch("/api/former-loading"),
+          fetch("/api/agent-loading"),
+        ]);
+        const f = await formerRes.json();
+        const a = await agentRes.json();
+        allBills = [...(f.data || []), ...(a.data || [])];
       }
+
+      // Fetch all existing PackingAmounts to determine used bills
+      const packingRes = await fetch("/api/payments/packing-amount");
+      if (packingRes.ok) {
+        const packingJson = await packingRes.json();
+        const packings = packingJson.data || [];
+
+        packings.forEach((p: any) => {
+          if (p.clientLoadingId) usedPackingBillIds.add(p.clientLoadingId);
+          if (p.formerLoadingId) usedPackingBillIds.add(p.formerLoadingId);
+          if (p.agentLoadingId) usedPackingBillIds.add(p.agentLoadingId);
+        });
+      }
+
+      // Filter out bills that already have a packing amount
+      const availableBills = allBills.filter(
+        (bill) => !usedPackingBillIds.has(bill.id)
+      );
+
+      setBills(availableBills);
+    } catch (err) {
+      console.error("Error loading bills:", err);
+      toast.error("Failed to load bills");
+      setBills([]);
+    } finally {
+      setIsLoading(false);
     }
+  };
+
+  // Load bills on mount and whenever mode changes
+  useEffect(() => {
     loadBills();
   }, [mode]);
 
@@ -91,15 +118,12 @@ export function PackingAmount() {
 
     setIsSaving(true);
     try {
-      // Determine sourceType based on mode
       let sourceType: "FORMER" | "AGENT" | "CLIENT" | null = null;
 
       if (selectedBillId) {
         if (mode === "loading") {
           sourceType = "CLIENT";
         } else {
-          // For unloading, we need to know if it's Former or Agent
-          // Find the selected bill to determine type
           const selectedBill = bills.find((b) => b.id === selectedBillId);
           if (selectedBill?.FarmerName) {
             sourceType = "FORMER";
@@ -114,7 +138,7 @@ export function PackingAmount() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode,
-          sourceType, // ← NOW SENT!
+          sourceType,
           sourceRecordId: selectedBillId || null,
           workers: workersNum,
           temperature: tempNum,
@@ -138,6 +162,9 @@ export function PackingAmount() {
       setSelectedBillId("");
       setPaymentMode("CASH");
       setReference("");
+
+      // Immediately refresh the bill list to remove the used one
+      await loadBills();
     } catch (err: any) {
       toast.error(err.message || "Failed to save");
     } finally {

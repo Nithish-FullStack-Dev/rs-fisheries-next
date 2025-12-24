@@ -2,26 +2,6 @@
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
-type ClientLoadingItem = {
-  varietyCode: string;
-  noTrays: number;
-  loose: number;
-};
-
-type CreateClientLoadingInput = {
-  clientName: string;
-  billNo: string;
-  date: string;
-
-  // ✅ new pattern: either connect vehicleId OR store vehicleNo
-  vehicleId?: string | null;
-  vehicleNo?: string | null;
-
-  village?: string;
-  fishCode?: string;
-  items: ClientLoadingItem[];
-};
-
 const TRAY_KG = 35;
 const DEDUCTION_PERCENT = 5;
 
@@ -68,71 +48,65 @@ async function getNetKgsByCodes(codes: string[]) {
   return netMap;
 }
 
-// POST - Create new client loading
 export async function POST(req: Request) {
   try {
-    const body: CreateClientLoadingInput = await req.json();
+    const body = await req.json();
     const { clientName, billNo, date, vehicleId, vehicleNo, village, fishCode, items } = body;
 
-    if (!clientName?.trim())
-      return NextResponse.json(
-        { success: false, message: "Client name is required" },
-        { status: 400 }
-      );
+    // ---------- VALIDATIONS ----------
+    if (!clientName?.trim()) {
+      return NextResponse.json({ success: false, message: "Client name is required" }, { status: 400 });
+    }
 
-    if (!billNo?.trim())
-      return NextResponse.json(
-        { success: false, message: "Bill number is required" },
-        { status: 400 }
-      );
+    if (!billNo?.trim()) {
+      return NextResponse.json({ success: false, message: "Bill number is required" }, { status: 400 });
+    }
 
-    // Date validation
+    if (!Array.isArray(items) || items.length === 0) {
+      return NextResponse.json({ success: false, message: "At least one item is required" }, { status: 400 });
+    }
+
     const loadingDate = date ? new Date(date) : new Date();
     if (isNaN(loadingDate.getTime())) {
-      return NextResponse.json(
-        { success: false, message: "Invalid date provided" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, message: "Invalid date provided" }, { status: 400 });
     }
 
-    const normalizedVehicleId =
-      typeof vehicleId === "string" && vehicleId.trim() ? vehicleId.trim() : null;
+    const normalizedVehicleId = typeof vehicleId === "string" && vehicleId.trim() ? vehicleId.trim() : null;
+    const normalizedVehicleNo = typeof vehicleNo === "string" && vehicleNo.trim() ? vehicleNo.trim() : null;
 
-    const normalizedVehicleNo =
-      typeof vehicleNo === "string" && vehicleNo.trim() ? vehicleNo.trim() : null;
-
-    // ✅ Vehicle required: either ID or Other number
     if (!normalizedVehicleId && !normalizedVehicleNo) {
-      return NextResponse.json(
-        { success: false, message: "Vehicle is required" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, message: "Vehicle is required" }, { status: 400 });
     }
 
-    if (!Array.isArray(items) || items.length === 0)
-      return NextResponse.json(
-        { success: false, message: "At least one item is required" },
-        { status: 400 }
-      );
+    // ---------- Compute items (weight only) ----------
+    const processedItems = items.map((item: any) => {
+      const trays = Number(item.noTrays) || 0;
+      const loose = Number(item.loose) || 0;
+      const totalKgs = trays * TRAY_KG + loose;
 
-    // Build requested kgs per variety
+      return {
+        varietyCode: item.varietyCode,
+        noTrays: trays,
+        trayKgs: trays * TRAY_KG,
+        loose,
+        totalKgs,
+        pricePerKg: 0,
+        totalPrice: 0,
+      };
+    });
+
+    // Stock check
     const reqMap: Record<string, number> = {};
-    for (const it of items) {
+    for (const it of processedItems) {
       if (!it.varietyCode) continue;
-      const trays = Number(it.noTrays) || 0;
-      const loose = Number(it.loose) || 0;
-      const kgs = trays * TRAY_KG + loose;
-      reqMap[it.varietyCode] = (reqMap[it.varietyCode] || 0) + kgs;
+      reqMap[it.varietyCode] = (reqMap[it.varietyCode] || 0) + it.totalKgs;
     }
 
     const codes = Object.keys(reqMap);
-    if (codes.length === 0)
-      return NextResponse.json(
-        { success: false, message: "Select at least one variety" },
-        { status: 400 }
-      );
+    if (codes.length === 0) {
+      return NextResponse.json({ success: false, message: "Select at least one variety" }, { status: 400 });
+    }
 
-    // Stock check
     const netMap = await getNetKgsByCodes(codes);
     for (const code of codes) {
       const available = netMap[code] || 0;
@@ -148,16 +122,16 @@ export async function POST(req: Request) {
       }
     }
 
-    // Totals
-    const totalTrays = items.reduce((s, i) => s + (Number(i.noTrays) || 0), 0);
-    const totalTrayKgs = totalTrays * TRAY_KG;
-    const totalLooseKgs = items.reduce((s, i) => s + (Number(i.loose) || 0), 0);
-    const totalKgs = totalTrayKgs + totalLooseKgs;
+    // ---------- Calculate weight totals ----------
+    const totalTrays = processedItems.reduce((sum, i) => sum + i.noTrays, 0);
+    const totalLooseKgs = processedItems.reduce((sum, i) => sum + i.loose, 0);
+    const totalTrayKgs = processedItems.reduce((sum, i) => sum + i.trayKgs, 0);
+    const totalKgs = processedItems.reduce((sum, i) => sum + i.totalKgs, 0);
 
-    // ✅ 5% deduction
+    // 5% deduction on WEIGHT only
     const grandTotal = Number((totalKgs * (1 - DEDUCTION_PERCENT / 100)).toFixed(2));
 
-    // Build create payload conditionally (very important)
+    // ---------- SAVE ----------
     const createData: any = {
       clientName: clientName.trim(),
       billNo: billNo.trim(),
@@ -168,15 +142,17 @@ export async function POST(req: Request) {
       totalTrayKgs,
       totalLooseKgs,
       totalKgs,
+
       totalPrice: 0,
-      grandTotal,
+      grandTotal: grandTotal, // Deducted kgs
+
       items: {
-        create: items.map((i) => ({
+        create: processedItems.map((i) => ({
           varietyCode: i.varietyCode,
-          noTrays: Number(i.noTrays) || 0,
-          trayKgs: (Number(i.noTrays) || 0) * TRAY_KG,
-          loose: Number(i.loose) || 0,
-          totalKgs: (Number(i.noTrays) || 0) * TRAY_KG + (Number(i.loose) || 0),
+          noTrays: i.noTrays,
+          trayKgs: i.trayKgs,
+          loose: i.loose,
+          totalKgs: i.totalKgs,
           pricePerKg: 0,
           totalPrice: 0,
         })),
@@ -188,7 +164,6 @@ export async function POST(req: Request) {
       createData.vehicleNo = null;
     } else {
       createData.vehicleNo = normalizedVehicleNo;
-      // don't set vehicle or vehicleId
     }
 
     const saved = await prisma.clientLoading.create({
@@ -202,14 +177,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, data: saved }, { status: 201 });
   } catch (e) {
     console.error("ClientLoading POST error:", e);
-    return NextResponse.json(
-      { success: false, message: "Failed to save loading" },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, message: "Failed to save loading" }, { status: 500 });
   }
 }
 
-// GET - All loadings (for list page)
 export async function GET(req: Request) {
   try {
     const loadings = await prisma.clientLoading.findMany({
@@ -242,9 +213,6 @@ export async function GET(req: Request) {
     return NextResponse.json({ success: true, data: formatted });
   } catch (error) {
     console.error("ClientLoading GET error:", error);
-    return NextResponse.json(
-      { success: false, message: "Failed to fetch data" },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, message: "Failed to fetch data" }, { status: 500 });
   }
 }
