@@ -117,7 +117,7 @@ function TabsContent({
 }
 
 export default function Payments() {
-  const [tab, setTab] = useState<TabId>("dispatch");
+  const [tab, setTab] = useState<TabId>("packing");
 
   return (
     <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 md:p-6">
@@ -134,6 +134,9 @@ export default function Payments() {
         {/* ✅ Tabs: mobile grid, desktop pill */}
         <TabsRoot value={tab} onValueChange={setTab}>
           <TabsList>
+            <TabsTrigger value="packing" activeValue={tab} onClick={setTab}>
+              Packing Amount
+            </TabsTrigger>
             <TabsTrigger value="dispatch" activeValue={tab} onClick={setTab}>
               Dispatch
             </TabsTrigger>
@@ -147,15 +150,14 @@ export default function Payments() {
             <TabsTrigger value="employee" activeValue={tab} onClick={setTab}>
               Employee Payments
             </TabsTrigger>
-
-            <TabsTrigger value="packing" activeValue={tab} onClick={setTab}>
-              Packing Amount
-            </TabsTrigger>
           </TabsList>
         </TabsRoot>
       </header>
 
       <main className="w-full">
+        <TabsContent activeValue={tab} value="packing">
+          <PackingAmount />
+        </TabsContent>
         <TabsContent activeValue={tab} value="dispatch">
           <DispatchPayment />
         </TabsContent>
@@ -169,10 +171,6 @@ export default function Payments() {
 
         <TabsContent activeValue={tab} value="employee">
           <EmployeePayments />
-        </TabsContent>
-
-        <TabsContent activeValue={tab} value="packing">
-          <PackingAmount />
         </TabsContent>
       </main>
     </div>

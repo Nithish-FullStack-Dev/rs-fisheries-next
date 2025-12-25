@@ -1,4 +1,4 @@
-// app\(dashboard)\payments\component\ClientPayments.tsx
+// app/(dashboard)/payments/component/ClientPayments.tsx
 "use client";
 
 import { useState } from "react";
@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Save, Upload } from "lucide-react";
+import { Save } from "lucide-react";
 import { toast } from "sonner";
 import { Field } from "@/components/helpers/Field";
 import {
@@ -18,13 +18,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import axios from "axios";
 
 type PaymentMode = "cash" | "ac" | "upi" | "cheque";
 
 interface ClientWithDue {
   id: string;
   clientName: string;
-  totalBilled: number; // totalPrice from ClientLoading
+  totalBilled: number; // grandTotal = full amount client owes
   totalPaid: number;
   totalDue: number;
 }
@@ -41,77 +42,64 @@ export function ClientPayments() {
 
   const [selectedClientId, setSelectedClientId] = useState("");
   const [clientName, setClientName] = useState("");
-  const [date, setDate] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [amount, setAmount] = useState<number>(0);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>("cash");
   const [reference, setReference] = useState("");
   const [image, setImage] = useState<File | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch clients + calculate correct due (using totalPrice)
   const { data: clients = [], isLoading: loadingClients } = useQuery<
     ClientWithDue[]
   >({
     queryKey: ["clients-with-due"],
     queryFn: async () => {
       const [loadRes, payRes] = await Promise.all([
-        fetch("/api/client-loading"),
-        fetch("/api/payments/client"),
+        axios.get("/api/client-loading"),
+        axios.get("/api/payments/client"),
       ]);
 
-      if (!loadRes.ok || !payRes.ok) throw new Error("Failed to load data");
-
-      const loadJson = await loadRes.json();
-      const payJson = await payRes.json();
-
-      const loadings = loadJson.data || [];
-      const payments = payJson.payments || [];
+      const loadings = loadRes.data?.data || [];
+      const payments = payRes.data?.data || [];
 
       const clientMap = new Map<string, ClientWithDue>();
 
-      // Use totalPrice (real money) from ClientLoading
+      // ✅ CORRECT: Use grandTotal = full bill amount client owes
       loadings.forEach((load: any) => {
+        const id = load.id;
         const name = load.clientName?.trim();
-        if (!name) return;
+        if (!id || !name) return;
 
-        const billed = Number(load.totalPrice || 0); // This is the correct money amount
+        const billed = Number(load.grandTotal || 0); // ← THIS IS CORRECT
 
-        if (!clientMap.has(name)) {
-          clientMap.set(name, {
-            id: load.id,
+        if (!clientMap.has(id)) {
+          clientMap.set(id, {
+            id,
             clientName: name,
-            totalBilled: 0,
+            totalBilled: billed,
             totalPaid: 0,
-            totalDue: 0,
+            totalDue: billed,
           });
+        } else {
+          // If same client has multiple loadings, add up
+          clientMap.get(id)!.totalBilled += billed;
+          clientMap.get(id)!.totalDue += billed;
         }
-        clientMap.get(name)!.totalBilled += billed;
       });
 
-      // Add up all payments
+      // Subtract payments
       payments.forEach((p: any) => {
-        const name = p.clientName?.trim();
-        if (!name) return;
+        const clientId = p.clientId;
+        if (!clientId || !clientMap.has(clientId)) return;
 
-        if (!clientMap.has(name)) {
-          clientMap.set(name, {
-            id: p.clientId || "unknown",
-            clientName: name,
-            totalBilled: 0,
-            totalPaid: 0,
-            totalDue: 0,
-          });
-        }
-        clientMap.get(name)!.totalPaid += Number(p.amount || 0);
+        const client = clientMap.get(clientId)!;
+        client.totalPaid += Number(p.amount || 0);
+        client.totalDue = Math.max(0, client.totalBilled - client.totalPaid);
       });
 
-      // Final calculation
+      // Return only clients with pending due
       return Array.from(clientMap.values())
-        .map((c) => ({
-          ...c,
-          totalDue: Math.max(0, c.totalBilled - c.totalPaid),
-        }))
-        .filter((c) => c.totalDue > 0) // Only clients with pending amount
+        .filter((c) => c.totalDue > 0)
         .sort((a, b) => a.clientName.localeCompare(b.clientName));
     },
     staleTime: 1000 * 30,
@@ -137,7 +125,6 @@ export function ClientPayments() {
       return;
     }
 
-    // Optional: Warn if paying more than due
     if (selectedClient && amount > selectedClient.totalDue) {
       if (
         !confirm(
@@ -157,7 +144,7 @@ export function ClientPayments() {
     formData.append("clientName", clientName);
     formData.append("date", date);
     formData.append("amount", amount.toString());
-    formData.append("paymentMode", paymentMode);
+    formData.append("paymentMode", paymentMode.toUpperCase());
     if (reference) formData.append("reference", reference);
     if (image) formData.append("image", image);
 
@@ -174,7 +161,6 @@ export function ClientPayments() {
 
       toast.success("Payment recorded successfully!");
 
-      // Reset form
       setSelectedClientId("");
       setClientName("");
       setDate("");
@@ -183,7 +169,6 @@ export function ClientPayments() {
       setReference("");
       setImage(null);
 
-      // Refresh due amounts
       queryClient.invalidateQueries({ queryKey: ["clients-with-due"] });
     } catch (err: any) {
       toast.error(err.message || "Failed to save");
@@ -204,7 +189,7 @@ export function ClientPayments() {
           disabled={
             isSubmitting || loadingClients || !selectedClientId || amount <= 0
           }
-          className="bg-[#139BC3] text-white hover:bg-[#1088AA] focus-visible:ring-2 focus-visible:ring-[#139BC3]/40 shadow-sm"
+          className="bg-[#139BC3] text-white hover:bg-[#1088AA]"
         >
           <Save className="w-4 h-4 mr-2" />
           {isSubmitting ? "Saving..." : "Save Payment"}
