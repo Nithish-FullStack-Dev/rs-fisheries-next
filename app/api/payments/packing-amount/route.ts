@@ -19,6 +19,11 @@ function asPositiveInt(value: unknown): number | null {
     return Number.isInteger(num) && num > 0 ? num : null;
 }
 
+interface Counter {
+    packingCount: number;
+    packingYear: number;
+}
+
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
@@ -34,7 +39,6 @@ export async function POST(req: NextRequest) {
             reference,
         } = body;
 
-        // Validate mode
         if (!mode || !["loading", "unloading"].includes(mode)) {
             return NextResponse.json(
                 { error: "Invalid or missing mode. Must be 'loading' or 'unloading'" },
@@ -53,7 +57,6 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // Validate paymentMode
         if (!Object.values(PaymentMode).includes(paymentMode)) {
             return NextResponse.json(
                 { error: "Invalid paymentMode. Allowed: CASH, AC, UPI, CHEQUE" },
@@ -69,7 +72,6 @@ export async function POST(req: NextRequest) {
             );
         }
 
-        // Validate sourceType + sourceRecordId if provided
         let validatedSourceType: DispatchSourceType | undefined = undefined;
         let validatedSourceId: string | undefined = undefined;
 
@@ -90,7 +92,6 @@ export async function POST(req: NextRequest) {
             validatedSourceType = sourceType as DispatchSourceType;
             validatedSourceId = asString(sourceRecordId);
 
-            // Verify loading exists
             let exists = false;
             if (validatedSourceType === DispatchSourceType.FORMER) {
                 exists = !!await prisma.formerLoading.findUnique({ where: { id: validatedSourceId } });
@@ -108,31 +109,33 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        // ========== BILL NUMBER GENERATION (AUDIT-SAFE, NO REUSE) ==========
         const currentYear = new Date().getFullYear() % 100;
         const shortYear = currentYear.toString().padStart(2, "0");
 
-        // Get or create counter
-        let counter = await prisma.invoiceCounter.findUnique({ where: { id: 1 } });
+        const counter = await prisma.$transaction(async (tx) => {
+            const rows = await tx.$queryRaw<Array<Counter>>`SELECT "packingCount", "packingYear" FROM "InvoiceCounter" WHERE "id" = 1 FOR UPDATE`;
 
-        if (!counter) {
-            counter = await prisma.invoiceCounter.create({
-                data: { id: 1, packingCount: 0, packingYear: currentYear },
-            });
-        }
+            if (rows.length === 0) {
+                await tx.$executeRaw`INSERT INTO "InvoiceCounter" ("id", "packingCount", "packingYear") VALUES (1, 1, ${currentYear})`;
+                return { packingCount: 1, packingYear: currentYear };
+            } else {
+                const record = rows[0];
+                let nextCount = record.packingCount + 1;
+                let newYear = record.packingYear;
 
-        // Determine next number
-        let nextCount = counter.packingCount + 1;
+                if (record.packingYear !== currentYear) {
+                    nextCount = 1;
+                    newYear = currentYear;
+                }
 
-        // Reset only if year changed
-        if (counter.packingYear !== currentYear) {
-            nextCount = 1;
-        }
+                await tx.$executeRaw`UPDATE "InvoiceCounter" SET "packingCount" = ${nextCount}, "packingYear" = ${newYear} WHERE "id" = 1`;
+                return { packingCount: nextCount, packingYear: newYear };
+            }
+        });
 
-        const seq = nextCount.toString().padStart(4, "0");
+        const seq = counter.packingCount.toString().padStart(4, "0");
         const billNo = `RS-PACKING-${shortYear}-${seq}`;
 
-        // Prepare data
         const data: any = {
             billNo,
             mode,
@@ -145,7 +148,6 @@ export async function POST(req: NextRequest) {
             reference: ref || null,
         };
 
-        // Set dedicated foreign key
         if (validatedSourceType === DispatchSourceType.FORMER) {
             data.formerLoadingId = validatedSourceId;
         } else if (validatedSourceType === DispatchSourceType.AGENT) {
@@ -154,20 +156,10 @@ export async function POST(req: NextRequest) {
             data.clientLoadingId = validatedSourceId;
         }
 
-        // Create record
         const packing = await prisma.packingAmount.create({
             data,
             include: {
                 createdBy: { select: { name: true, email: true } },
-            },
-        });
-
-        // Always increment counter (even if record is later deleted)
-        await prisma.invoiceCounter.update({
-            where: { id: 1 },
-            data: {
-                packingCount: nextCount,
-                packingYear: currentYear,
             },
         });
 
@@ -184,7 +176,6 @@ export async function POST(req: NextRequest) {
     }
 }
 
-// GET remains unchanged — it's already perfect
 export async function GET(req: NextRequest) {
     try {
         const { searchParams } = new URL(req.url);

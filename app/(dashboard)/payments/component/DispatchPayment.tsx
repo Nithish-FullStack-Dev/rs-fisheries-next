@@ -1,4 +1,4 @@
-// app\(dashboard)\payments\component\DispatchPayment.tsx
+// app/(dashboard)/payments/component/DispatchPayment.tsx
 "use client";
 
 import React, { useMemo, useState } from "react";
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { Package, Truck, Snowflake, Trash2 } from "lucide-react";
+import { Package, Truck, Snowflake, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import {
   Select,
@@ -64,7 +64,6 @@ export const DispatchPayment = () => {
       : "Agent";
   };
 
-  // ✅ Which endpoint to fetch loadings
   const loadingEndpoint =
     sourceType === "CLIENT"
       ? "/api/client-loading"
@@ -72,13 +71,6 @@ export const DispatchPayment = () => {
       ? "/api/former-loading"
       : "/api/agent-loading";
 
-  /**
-   * ✅ Loadings list:
-   * We fetch loadings + we fetch dispatch charges used IDs to hide already-dispatched loadings
-   *
-   * IMPORTANT:
-   * Your loadingEndpoint must return loadings INCLUDING "items" (for totalPrice calculation)
-   */
   const { data: loadings = [], isLoading: loadingLoadings } = useQuery({
     queryKey: ["loadings", sourceType],
     queryFn: async () => {
@@ -92,18 +84,15 @@ export const DispatchPayment = () => {
       const dispatchData = dispatchRes.data?.data || [];
       const usedIds = new Set(dispatchData.map((d: any) => d.sourceRecordId));
 
-      // Only show loadings with no dispatch charges yet (your requirement)
       return allLoadings.filter((l: any) => !usedIds.has(l.id));
     },
   });
 
-  // Selected loading object
   const selectedLoading = useMemo(
     () => loadings.find((l: any) => l.id === sourceRecordId),
     [loadings, sourceRecordId]
   );
 
-  // ✅ Fetch dispatch charges for selected loading
   const { data: dispatchCharges = [] } = useQuery({
     queryKey: ["dispatch-charges", sourceType, sourceRecordId],
     queryFn: () =>
@@ -115,7 +104,6 @@ export const DispatchPayment = () => {
     enabled: !!sourceRecordId,
   });
 
-  // ✅ Fetch packing amounts for selected loading
   const { data: packingAmounts = [] } = useQuery({
     queryKey: ["packing-amounts", sourceType, sourceRecordId],
     queryFn: () =>
@@ -127,7 +115,6 @@ export const DispatchPayment = () => {
     enabled: !!sourceRecordId,
   });
 
-  // ✅ Correct totals
   const totalDispatchCharges = useMemo(() => {
     return dispatchCharges.reduce(
       (sum: number, c: any) => sum + safeNum(c.amount),
@@ -135,19 +122,13 @@ export const DispatchPayment = () => {
     );
   }, [dispatchCharges]);
 
-  const totalPacking = useMemo(() => {
+  const totalPackingAmount = useMemo(() => {
     return packingAmounts.reduce(
       (sum: number, p: any) => sum + safeNum(p.totalAmount),
       0
     );
   }, [packingAmounts]);
 
-  /**
-   * ✅ BASE AMOUNT MUST BE totalPrice (fish value), NOT grandTotal.
-   * Because grandTotal already includes dispatch + packing.
-   *
-   * If totalPrice is 0 in your API for farmer/agent, we fallback to items-sum.
-   */
   const itemsTotalPrice = useMemo(() => {
     const items = selectedLoading?.items || [];
     return items.reduce((s: number, it: any) => s + safeNum(it.totalPrice), 0);
@@ -158,15 +139,13 @@ export const DispatchPayment = () => {
     return apiTotalPrice > 0 ? apiTotalPrice : itemsTotalPrice;
   }, [selectedLoading, itemsTotalPrice]);
 
-  // ✅ Net = fish total + dispatch + packing
-  const netAmount = baseAmount + totalDispatchCharges + totalPacking;
+  const netAmount = baseAmount + totalDispatchCharges + totalPackingAmount;
 
   const netLabel =
     sourceType === "CLIENT"
       ? "Net Receivable from Client"
       : "Net Payable to Vendor";
 
-  // ✅ Mutation: create a dispatch charge
   const mutation = useMutation({
     mutationFn: (payload: any) =>
       axios.post("/api/payments/dispatch", {
@@ -175,9 +154,17 @@ export const DispatchPayment = () => {
       }),
   });
 
-  // ✅ Save All Charges (single button)
+  const canSubmit = totalPackingAmount > 0;
+
   const handleSaveAll = async () => {
     if (!sourceRecordId) return toast.error("Select a loading");
+
+    if (!canSubmit) {
+      toast.error("Cannot save dispatch charges", {
+        description: "At least one packing amount must be recorded first.",
+      });
+      return;
+    }
 
     const charges: any[] = [];
 
@@ -208,7 +195,6 @@ export const DispatchPayment = () => {
     if (charges.length === 0) return toast.error("Enter at least one charge");
 
     try {
-      // ✅ create all charges (separate rows)
       await Promise.all(
         charges.map((c) =>
           mutation.mutateAsync({
@@ -221,7 +207,6 @@ export const DispatchPayment = () => {
 
       toast.success(`${charges.length} charge(s) added!`);
 
-      // ✅ refresh queries once
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: ["dispatch-charges", sourceType, sourceRecordId],
@@ -235,23 +220,18 @@ export const DispatchPayment = () => {
       ]);
 
       resetForm();
-      setSourceRecordId(""); // hide from list because now it has dispatch charge
+      setSourceRecordId("");
     } catch (err: any) {
       toast.error(err?.response?.data?.error || "Failed to add charge");
     }
   };
 
-  // ✅ Dropdown amount display should be totalPrice (fallback items sum)
   const displayLoadingAmount = (l: any) => {
     const apiTotalPrice = safeNum(l.totalPrice);
     if (apiTotalPrice > 0) return apiTotalPrice;
 
     const items = l.items || [];
-    const sumItems = items.reduce(
-      (s: number, it: any) => s + safeNum(it.totalPrice),
-      0
-    );
-    return sumItems;
+    return items.reduce((s: number, it: any) => s + safeNum(it.totalPrice), 0);
   };
 
   return (
@@ -356,7 +336,7 @@ export const DispatchPayment = () => {
             <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-5 text-center">
               <p className="text-sm text-indigo-700">Packing Amount</p>
               <p className="text-2xl font-bold text-indigo-600 mt-2">
-                {currency(totalPacking)}
+                {currency(totalPackingAmount)}
               </p>
             </div>
 
@@ -375,6 +355,21 @@ export const DispatchPayment = () => {
             <h3 className="text-xl font-semibold text-slate-800 mb-6">
               Add Dispatch Charges
             </h3>
+
+            {!canSubmit && (
+              <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-xl flex items-start gap-3">
+                <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5" />
+                <div>
+                  <p className="font-medium text-yellow-800">
+                    Packing amount required
+                  </p>
+                  <p className="text-sm text-yellow-700">
+                    Please record at least one packing amount before adding
+                    dispatch charges.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               {/* Ice */}
@@ -452,8 +447,12 @@ export const DispatchPayment = () => {
               <Button
                 size="lg"
                 onClick={handleSaveAll}
-                disabled={mutation.isPending}
-                className="bg-[#139BC3] hover:bg-[#1088AA] text-lg px-8"
+                disabled={mutation.isPending || !canSubmit}
+                className={`text-lg px-8 ${
+                  canSubmit
+                    ? "bg-[#139BC3] hover:bg-[#1088AA]"
+                    : "bg-gray-400 cursor-not-allowed"
+                }`}
               >
                 {mutation.isPending ? "Saving..." : "Save All Charges"}
               </Button>
