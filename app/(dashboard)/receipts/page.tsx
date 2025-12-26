@@ -20,6 +20,7 @@ import { generatePackingPDF } from "@/lib/pdf/packing";
 import { generatePayslipPDF } from "@/lib/pdf/payslip";
 import { generateClientReceiptPDF } from "@/lib/pdf/clientslip";
 import { VendorInvoiceModal } from "./components/invoice/VendorInvoiceModal";
+import { ClientInvoiceModal } from "./components/invoice/ClientInvoiceModal"; // ← Import this
 
 const formatCurrency = (amt: number) =>
   new Intl.NumberFormat("en-IN", {
@@ -39,15 +40,13 @@ function cn(...classes: Array<string | undefined | false>) {
   return classes.filter(Boolean).join(" ");
 }
 
-/** ✅ Mobile: 2x2 grid | Desktop: segmented pill */
+/** Mobile: 2x2 grid | Desktop: segmented pill */
 function TabsList({ children }: { children: React.ReactNode }) {
   return (
     <div
       role="tablist"
       className={cn(
-        // mobile grid — no overflow, no extra right space
         "w-full grid grid-cols-2 gap-2",
-        // desktop pill segmented
         "sm:w-auto sm:inline-flex sm:items-center sm:gap-1 sm:rounded-2xl sm:border sm:border-slate-200 sm:bg-gray-100 sm:p-1 sm:shadow-sm sm:backdrop-blur"
       )}
     >
@@ -70,8 +69,6 @@ function TabsTrigger({
   label: string;
 }) {
   const isActive = value === activeValue;
-
-  // ✅ shorter labels for mobile only (prevents ugly wrapping)
   const mobileLabel =
     value === "vendor"
       ? "Vendor"
@@ -88,16 +85,11 @@ function TabsTrigger({
       aria-selected={isActive}
       onClick={() => onClick(value)}
       className={cn(
-        // base
         "relative w-full rounded-xl px-3 py-2 text-sm font-semibold transition",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#139BC3]/35",
-
-        // ✅ mobile: standalone card buttons (no big grey block look)
         isActive
           ? "bg-white text-[#139BC3] shadow-sm ring-1 ring-[#139BC3]/25"
           : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50",
-
-        // ✅ desktop: segmented look
         "sm:w-auto sm:bg-transparent sm:ring-0 sm:px-4 sm:py-2",
         isActive
           ? "sm:bg-white sm:text-[#139BC3] sm:shadow-sm sm:border sm:border-slate-200"
@@ -106,13 +98,9 @@ function TabsTrigger({
     >
       <span className="flex items-center justify-center sm:justify-start gap-2">
         <Icon className="h-4 w-4 shrink-0" />
-        {/* mobile short label */}
         <span className="sm:hidden">{mobileLabel}</span>
-        {/* desktop full label */}
         <span className="hidden sm:inline">{label}</span>
       </span>
-
-      {/* underline only on desktop */}
       <span
         className={cn(
           "pointer-events-none absolute inset-x-3 -bottom-[8px] h-[2px] rounded-full transition-opacity hidden sm:block",
@@ -128,15 +116,24 @@ export default function ReceiptsPage() {
   const [receipts, setReceipts] = useState<Receipt[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [openInvoice, setOpenInvoice] = useState(false);
+  // Modal states
+  const [openVendorInvoice, setOpenVendorInvoice] = useState(false);
   const [selectedVendor, setSelectedVendor] = useState<VendorReceipt | null>(
     null
   );
 
+  const [openClientInvoice, setOpenClientInvoice] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<ClientReceipt | null>(
+    null
+  );
+
+  // Invoice existence map (for both vendor & client)
   const [invoiceMap, setInvoiceMap] = useState<Record<string, boolean>>({});
 
   const isVendorReceipt = (r: Receipt): r is VendorReceipt =>
     (r as VendorReceipt).vendorId !== undefined;
+  const isClientReceipt = (r: Receipt): r is ClientReceipt =>
+    (r as ClientReceipt).clientId !== undefined;
 
   const tabs = [
     { id: "vendor" as const, label: "Vendor Receipt", icon: User },
@@ -169,14 +166,17 @@ export default function ReceiptsPage() {
 
         setReceipts(data);
 
-        // build invoice map for vendor only
-        if (activeTab === "vendor") {
+        // Build invoice map for vendor AND client tabs
+        if (activeTab === "vendor" || activeTab === "client") {
           const map: Record<string, boolean> = {};
           await Promise.all(
             data.map(async (r: any) => {
-              const x = await fetch(
-                `/api/invoices/vendor/by-payment?paymentId=${r.id}`
-              );
+              const endpoint =
+                activeTab === "vendor"
+                  ? `/api/invoices/vendor/by-payment?paymentId=${r.id}`
+                  : `/api/invoices/client/by-payment?paymentId=${r.id}`; // Adjust if your client endpoint is different
+
+              const x = await fetch(endpoint);
               map[r.id] = x.ok;
             })
           );
@@ -213,7 +213,8 @@ export default function ReceiptsPage() {
   };
 
   const getActionLabel = (): string => {
-    if (activeTab === "vendor") return "Generate Invoice";
+    if (activeTab === "vendor" || activeTab === "client")
+      return "Generate Invoice";
     if (activeTab === "employee") return "Generate Payslip";
     return "Generate Receipt";
   };
@@ -280,7 +281,7 @@ export default function ReceiptsPage() {
           </div>
         ) : (
           <div className="space-y-5">
-            {/* ✅ MOBILE: Cards */}
+            {/* MOBILE: Cards */}
             <div className="grid grid-cols-1 gap-3 md:hidden">
               {receipts.map((r) => (
                 <div
@@ -363,19 +364,25 @@ export default function ReceiptsPage() {
 
                   {/* Actions */}
                   <div className="mt-4">
-                    {activeTab === "vendor" && isVendorReceipt(r) ? (
+                    {(activeTab === "vendor" && isVendorReceipt(r)) ||
+                    (activeTab === "client" && isClientReceipt(r)) ? (
                       <div className="grid grid-cols-2 gap-2">
                         <Button
                           variant="outline"
                           size="sm"
                           className="gap-2 border-slate-200 text-slate-700 hover:bg-slate-50"
                           onClick={() => {
-                            setSelectedVendor(r);
-                            setOpenInvoice(true);
+                            if (activeTab === "vendor") {
+                              setSelectedVendor(r as VendorReceipt);
+                              setOpenVendorInvoice(true);
+                            } else if (activeTab === "client") {
+                              setSelectedClient(r as ClientReceipt);
+                              setOpenClientInvoice(true);
+                            }
                           }}
                         >
                           <FileText className="w-4 h-4" />
-                          Edit
+                          Edit Invoice
                         </Button>
 
                         <Button
@@ -383,38 +390,51 @@ export default function ReceiptsPage() {
                           className="gap-2 bg-[#139BC3] text-white hover:bg-[#1088AA] disabled:opacity-20"
                           disabled={!invoiceMap[r.id]}
                           onClick={async () => {
-                            const res = await fetch(
-                              `/api/invoices/vendor/by-payment?paymentId=${r.id}`
-                            );
+                            const endpoint =
+                              activeTab === "vendor"
+                                ? `/api/invoices/vendor/by-payment?paymentId=${r.id}`
+                                : `/api/invoices/client/by-payment?paymentId=${r.id}`; // Adjust if needed
+
+                            const res = await fetch(endpoint);
                             if (!res.ok) {
                               toast.error("Invoice not found");
                               return;
                             }
+
                             const { invoice } = await res.json();
+
                             const { jsPDF } = await import("jspdf");
                             await import("jspdf-autotable");
-                            const { generateVendorInvoicePDF } = await import(
-                              "@/lib/pdf/vendor-invoice"
-                            );
 
-                            generateVendorInvoicePDF(jsPDF, {
-                              ...invoice,
-                              description: invoice.description ?? "", // ✅ pass it
-                              items: [
-                                {
-                                  description:
-                                    invoice.description ?? "Goods / Service", // ✅ this will print
-                                  hsn: invoice.hsn,
-                                  uom: "NOS",
-                                  totalKgs: 1,
-                                  totalPrice: invoice.taxableValue,
-                                },
-                              ],
-                            });
+                            if (activeTab === "vendor") {
+                              const { generateVendorInvoicePDF } = await import(
+                                "@/lib/pdf/vendor-invoice"
+                              );
+                              generateVendorInvoicePDF(jsPDF, {
+                                ...invoice,
+                                description: invoice.description ?? "",
+                                items: [
+                                  {
+                                    description:
+                                      invoice.description ?? "Goods / Service",
+                                    hsn: invoice.hsn,
+                                    uom: "NOS",
+                                    totalKgs: 1,
+                                    totalPrice: invoice.taxableValue,
+                                  },
+                                ],
+                              });
+                            } else if (activeTab === "client") {
+                              // Add your client invoice PDF generation here
+                              // Example: generateClientInvoicePDF(jsPDF, invoice);
+                              toast.info(
+                                "Client invoice PDF generation coming soon"
+                              );
+                            }
                           }}
                         >
                           <FileText className="w-4 h-4" />
-                          Generate
+                          Generate Invoice
                         </Button>
                       </div>
                     ) : (
@@ -433,7 +453,7 @@ export default function ReceiptsPage() {
               ))}
             </div>
 
-            {/* ✅ DESKTOP: Table */}
+            {/* DESKTOP: Table */}
             <div className="hidden md:block overflow-x-auto">
               <div className="min-w-[900px] rounded-2xl border border-slate-200 bg-white">
                 <table className="w-full text-sm">
@@ -532,15 +552,21 @@ export default function ReceiptsPage() {
                         </td>
 
                         <td className="py-4 px-4">
-                          {activeTab === "vendor" && isVendorReceipt(r) ? (
+                          {(activeTab === "vendor" && isVendorReceipt(r)) ||
+                          (activeTab === "client" && isClientReceipt(r)) ? (
                             <div className="flex justify-end gap-2">
                               <Button
                                 variant="outline"
                                 size="sm"
                                 className="gap-2 border-slate-200 text-slate-700 hover:bg-slate-50"
                                 onClick={() => {
-                                  setSelectedVendor(r);
-                                  setOpenInvoice(true);
+                                  if (activeTab === "vendor") {
+                                    setSelectedVendor(r as VendorReceipt);
+                                    setOpenVendorInvoice(true);
+                                  } else if (activeTab === "client") {
+                                    setSelectedClient(r as ClientReceipt);
+                                    setOpenClientInvoice(true);
+                                  }
                                 }}
                               >
                                 <FileText className="w-4 h-4" />
@@ -552,10 +578,12 @@ export default function ReceiptsPage() {
                                 className="gap-2 bg-[#139BC3] text-white hover:bg-[#1088AA] disabled:opacity-20"
                                 disabled={!invoiceMap[r.id]}
                                 onClick={async () => {
-                                  const res = await fetch(
-                                    `/api/invoices/vendor/by-payment?paymentId=${r.id}`
-                                  );
+                                  const endpoint =
+                                    activeTab === "vendor"
+                                      ? `/api/invoices/vendor/by-payment?paymentId=${r.id}`
+                                      : `/api/invoices/client/by-payment?paymentId=${r.id}`;
 
+                                  const res = await fetch(endpoint);
                                   if (!res.ok) {
                                     toast.error("Invoice not found");
                                     return;
@@ -565,20 +593,31 @@ export default function ReceiptsPage() {
 
                                   const { jsPDF } = await import("jspdf");
                                   await import("jspdf-autotable");
-                                  const { generateVendorInvoicePDF } =
-                                    await import("@/lib/pdf/vendor-invoice");
 
-                                  generateVendorInvoicePDF(jsPDF, {
-                                    ...invoice,
-                                    items: [
-                                      {
-                                        varietyCode: invoice.source,
-                                        billNo: invoice.invoiceNo,
-                                        totalKgs: 1,
-                                        totalPrice: invoice.taxableValue,
-                                      },
-                                    ],
-                                  });
+                                  if (activeTab === "vendor") {
+                                    const { generateVendorInvoicePDF } =
+                                      await import("@/lib/pdf/vendor-invoice");
+                                    generateVendorInvoicePDF(jsPDF, {
+                                      ...invoice,
+                                      description: invoice.description ?? "",
+                                      items: [
+                                        {
+                                          description:
+                                            invoice.description ??
+                                            "Goods / Service",
+                                          hsn: invoice.hsn,
+                                          uom: "NOS",
+                                          totalKgs: 1,
+                                          totalPrice: invoice.taxableValue,
+                                        },
+                                      ],
+                                    });
+                                  } else if (activeTab === "client") {
+                                    // Add client invoice PDF generation logic here
+                                    toast.info(
+                                      "Client invoice PDF generation coming soon"
+                                    );
+                                  }
                                 }}
                               >
                                 <FileText className="w-4 h-4" />
@@ -621,20 +660,38 @@ export default function ReceiptsPage() {
         )}
       </CardCustom>
 
-      {/* Vendor invoice modal */}
-      {openInvoice && selectedVendor && (
+      {/* Vendor Invoice Modal */}
+      {openVendorInvoice && selectedVendor && (
         <VendorInvoiceModal
-          open={openInvoice}
+          open={openVendorInvoice}
           vendorId={selectedVendor.vendorId}
           vendorName={selectedVendor.vendorName}
           source={selectedVendor.source as "farmer" | "agent"}
           paymentId={selectedVendor.id}
-          onClose={() => setOpenInvoice(false)}
+          onClose={() => setOpenVendorInvoice(false)}
           onSaved={() => {
-            setOpenInvoice(false);
+            setOpenVendorInvoice(false);
             setInvoiceMap((prev) => ({
               ...prev,
               [selectedVendor.id]: true,
+            }));
+          }}
+        />
+      )}
+
+      {/* Client Invoice Modal */}
+      {openClientInvoice && selectedClient && (
+        <ClientInvoiceModal
+          open={openClientInvoice}
+          clientId={selectedClient.clientId}
+          clientName={selectedClient.clientName}
+          paymentId={selectedClient.id}
+          onClose={() => setOpenClientInvoice(false)}
+          onSaved={() => {
+            setOpenClientInvoice(false);
+            setInvoiceMap((prev) => ({
+              ...prev,
+              [selectedClient.id]: true,
             }));
           }}
         />

@@ -346,6 +346,7 @@ model EmployeePayment {
   id           String      @id @default(uuid())
   employeeId   String
   employeeName String
+  salaryMonth  String
   date         DateTime
   amount       Float
   paymentMode  PaymentMode
@@ -354,8 +355,10 @@ model EmployeePayment {
 
   employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
+  @@unique([employeeId, salaryMonth])
   @@index([employeeId])
   @@index([date])
+  @@index([salaryMonth])
 }
 
 model PackingAmount {
@@ -422,26 +425,37 @@ model Invoice {
 }
 
 model VendorInvoice {
-  id             String   @id @default(uuid())
-  paymentId      String   @unique
+  id             String  @id @default(uuid())
+  paymentId      String  @unique
   vendorId       String
   vendorName     String
   source         String
-  sourceRecordId String?
-  invoiceNo      String   @unique
-  invoiceDate    DateTime
-  hsn            String
-  gstPercent     Float
-  taxableValue   Float
-  gstAmount      Float
-  totalAmount    Float
-  billTo         String
-  shipTo         String
-  description    String?
-  isFinalized    Boolean  @default(false)
-  createdAt      DateTime @default(now())
+  sourceRecordId String? // loading ID
+
+  invoiceNo   String   @unique
+  invoiceDate DateTime
+
+  hsn        String
+  gstPercent Float
+
+  taxableValue Float
+  gstAmount    Float
+  totalAmount  Float
+
+  description   String?
+  vendorAddress String? // ← NEW FIELD
+
+  // Remove or make optional these if you no longer store them
+  // billTo String?
+  // shipTo String?
+
+  isFinalized Boolean  @default(false)
+  createdAt   DateTime @default(now())
 
   payment VendorPayment @relation(fields: [paymentId], references: [id])
+
+  @@index([vendorId])
+  @@index([source])
 }
 
 enum DispatchSourceType {

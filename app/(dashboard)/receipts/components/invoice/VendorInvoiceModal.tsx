@@ -35,44 +35,34 @@ export function VendorInvoiceModal({
   onSaved,
 }: Props) {
   const [invoiceNo, setInvoiceNo] = useState("");
-  const [hsn, setHsn] = useState("");
-  const [gstPercent, setGstPercent] = useState(18);
-  const [billTo, setBillTo] = useState("");
-  const [shipTo, setShipTo] = useState("");
   const [description, setDescription] = useState("");
+  const [vendorAddress, setVendorAddress] = useState("");
   const [saving, setSaving] = useState(false);
 
   const [existingInvoiceNo, setExistingInvoiceNo] = useState<string | null>(
     null
-  ); // ✅ tells us if invoice already exists
+  );
 
   useEffect(() => {
     if (!open) return;
 
-    // ✅ reset "existing" marker each open
     setExistingInvoiceNo(null);
 
     (async () => {
       try {
-        // 1) check if invoice already exists for this paymentId
+        // Load existing invoice if exists
         const res = await axios.get(
           `/api/invoices/vendor/by-payment?paymentId=${paymentId}`
         );
-
         const inv = res.data.invoice;
 
-        // ✅ load existing invoice values
         setInvoiceNo(inv.invoiceNo);
         setExistingInvoiceNo(inv.invoiceNo);
-
-        setHsn(inv.hsn ?? "");
-        setGstPercent(Number(inv.gstPercent ?? 0));
-        setBillTo(inv.billTo ?? "");
-        setShipTo(inv.shipTo ?? "");
         setDescription(inv.description ?? "");
+        setVendorAddress(inv.vendorAddress ?? "");
       } catch (err: any) {
-        // 2) if not found, show next preview invoice number
         if (err?.response?.status === 404) {
+          // New invoice - fetch next number
           try {
             const next = await axios.get("/api/invoices/next-number");
             setInvoiceNo(next.data.invoiceNumber);
@@ -80,12 +70,9 @@ export function VendorInvoiceModal({
             setInvoiceNo("");
           }
 
-          // clear fields for new invoice
-          setHsn("");
-          setGstPercent(18);
-          setBillTo("");
-          setShipTo("");
+          // Reset fields
           setDescription("");
+          setVendorAddress("");
         } else {
           console.error(err);
           setInvoiceNo("");
@@ -95,12 +82,16 @@ export function VendorInvoiceModal({
   }, [open, paymentId]);
 
   const saveInvoice = async () => {
+    if (!description.trim()) {
+      alert("Please enter a description");
+      return;
+    }
+
     try {
       setSaving(true);
 
       let finalInvoiceNo = invoiceNo;
 
-      // ✅ ONLY reserve a new number if invoice DOES NOT exist yet
       if (!existingInvoiceNo) {
         const reserve = await axios.post("/api/invoices/next-number");
         finalInvoiceNo = reserve.data.invoiceNumber;
@@ -111,16 +102,16 @@ export function VendorInvoiceModal({
         vendorId,
         vendorName,
         source,
-        invoiceNo: finalInvoiceNo, // ✅ same invoice no if editing
-        hsn,
-        gstPercent,
-        billTo,
-        shipTo,
+        invoiceNo: finalInvoiceNo,
+        hsn: "0303", // Fixed for fish
+        gstPercent: 0, // 0% GST
         description,
+        vendorAddress: vendorAddress.trim() || null,
+        // No other optional fields sent
       });
 
       setInvoiceNo(finalInvoiceNo);
-      setExistingInvoiceNo(finalInvoiceNo); // ✅ mark as existing after save
+      setExistingInvoiceNo(finalInvoiceNo);
 
       onSaved();
       onClose();
@@ -134,89 +125,63 @@ export function VendorInvoiceModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl">
+      <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>Vendor GST Invoice Details</DialogTitle>
         </DialogHeader>
 
-        <div className="grid grid-cols-2 gap-6">
-          <div className="space-y-4">
+        <div className="space-y-6">
+          {/* Invoice No + Vendor Name */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Label>Invoice No</Label>
-              <Input value={invoiceNo} disabled />
+              <Input value={invoiceNo} disabled className="bg-slate-50" />
             </div>
-
             <div>
               <Label>Vendor Name</Label>
-              <Input value={vendorName} disabled />
-            </div>
-
-            <div>
-              <Label>Description (Goods/Service)</Label>
-              <Textarea
-                rows={3}
-                placeholder="e.g. Fish purchase / Agent commission / Loading charges..."
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="font-mono text-sm"
-              />
-            </div>
-
-            <div>
-              <Label>HSN / SAC</Label>
-              <Input
-                value={hsn}
-                onChange={(e) => setHsn(e.target.value)}
-                placeholder="e.g. 721710"
-              />
-            </div>
-
-            <div>
-              <Label>GST Rate (%)</Label>
-              <Input
-                type="number"
-                value={gstPercent}
-                onChange={(e) => setGstPercent(Number(e.target.value))}
-              />
+              <Input value={vendorName} disabled className="bg-slate-50" />
             </div>
           </div>
 
-          <div className="space-y-4">
-            <div>
-              <Label>Bill To (Buyer)</Label>
-              <Textarea
-                rows={6}
-                placeholder="Company Name&#10;Address Line 1&#10;Address Line 2&#10;City, State - PIN&#10;GSTIN: XXAAAAA0000X0XX&#10;State: State Name, Code: XX"
-                value={billTo}
-                onChange={(e) => setBillTo(e.target.value)}
-                className="font-mono text-sm"
-              />
-            </div>
+          {/* Description */}
+          <div>
+            <Label>Description (Goods / Service)</Label>
+            <Textarea
+              rows={4}
+              placeholder="e.g. Purchase of fresh fish / Loading charges / Agent commission"
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              className="resize-none"
+            />
+          </div>
 
-            <div>
-              <Label>Consignee (Ship To)</Label>
-              <Textarea
-                rows={6}
-                placeholder="Same as Bill To or different shipping address"
-                value={shipTo}
-                onChange={(e) => setShipTo(e.target.value)}
-                className="font-mono text-sm"
-              />
-            </div>
+          {/* Vendor Address */}
+          <div>
+            <Label>Vendor Address</Label>
+            <Textarea
+              rows={5}
+              placeholder="Full address: Village, Taluk, District, State - PIN Code"
+              value={vendorAddress}
+              onChange={(e) => setVendorAddress(e.target.value)}
+              className="resize-none"
+            />
           </div>
         </div>
 
-        <Button
-          onClick={saveInvoice}
-          disabled={saving || !invoiceNo || !hsn || !billTo || !description}
-          className="w-full mt-6"
-        >
-          {saving
-            ? "Saving..."
-            : existingInvoiceNo
-            ? "Update Invoice"
-            : "Save & Finalize Invoice"}
-        </Button>
+        <div className="mt-8">
+          <Button
+            onClick={saveInvoice}
+            disabled={saving || !invoiceNo || !description.trim()}
+            className="w-full"
+            size="lg"
+          >
+            {saving
+              ? "Saving..."
+              : existingInvoiceNo
+              ? "Update Invoice"
+              : "Save & Finalize Invoice"}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );
