@@ -3,7 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
 import { format } from "date-fns";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, Loader2 } from "lucide-react";
 
 import {
   Form,
@@ -280,9 +280,11 @@ export default function EditEmployeePage() {
     updateMutation.mutate(formData);
   }
 
-  if (isLoading) {
+  if (isLoading || !employee) {
     return (
-      <div className="py-8 px-5 text-center">Loading employee data...</div>
+      <div className=" flex justify-center items-center py-8 px-5 text-center">
+        <Loader2 className="animate-spin" /> Loading employee data...
+      </div>
     );
   }
 

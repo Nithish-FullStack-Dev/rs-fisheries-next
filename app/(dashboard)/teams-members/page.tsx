@@ -84,6 +84,9 @@ export default function UserPage() {
       queryClient.invalidateQueries({ queryKey: ["team-members"] });
       setOpenDeleteDialog(false);
     },
+    onError(error) {
+      console.error("Error deleting user:", error);
+    },
   });
 
   const handleCreate = (data: UserFormValues) => createMutation.mutate(data);

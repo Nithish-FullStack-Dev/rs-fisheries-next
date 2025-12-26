@@ -1,6 +1,6 @@
 "use client";
 
-import { useForm } from "react-hook-form";
+import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   Dialog,
@@ -19,7 +19,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { UserFormValues, UserValidationSchema, User } from "@/utils/user-types";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { Employee, useEmployee } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -38,16 +39,23 @@ export default function UserDialog({
   defaultValues,
   isLoading,
 }: Props) {
-  const { register, handleSubmit, setValue, reset, watch } =
+  const { register, handleSubmit, setValue, reset, watch, control } =
     useForm<UserFormValues>({
       resolver: zodResolver(UserValidationSchema),
       defaultValues: {
         email: "",
         name: "",
-        role: "readOnly",
+        role: "admin",
         password: "",
       },
     });
+
+  const {
+    data: res,
+    isLoading: isEmployeeLoading,
+    isError: isEmployeeError,
+    error: employeeError,
+  } = useEmployee();
 
   useEffect(() => {
     if (!open) return;
@@ -63,7 +71,7 @@ export default function UserDialog({
       reset({
         email: "",
         name: "",
-        role: "readOnly",
+        role: "admin",
         password: "",
       });
     }
@@ -90,7 +98,7 @@ export default function UserDialog({
         <form
           onSubmit={handleSubmit((data) => {
             // ✅ If edit mode and password is empty, remove it so API won't update it
-            const payload = { ...data };
+            const payload: UserFormValues = { ...data };
             if (
               mode === "edit" &&
               (!payload.password || payload.password.trim() === "")
@@ -101,12 +109,46 @@ export default function UserDialog({
           })}
           className="p-6 space-y-5"
         >
+          {/* ✅ Email field */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">Email</label>
-            <Input
-              {...register("email")}
-              placeholder="user@example.com"
-              className="h-11 border-slate-200 bg-white shadow-sm focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
+            <label className="text-sm font-medium text-slate-700">
+              Employee
+            </label>
+            <Controller
+              name="email"
+              control={control}
+              render={({ field }) => (
+                <Select
+                  disabled={isEmployeeLoading || isEmployeeError}
+                  value={field.value}
+                  onValueChange={(email) => {
+                    const emp = res?.data.find((e) => e.email === email);
+                    if (!emp) return;
+
+                    field.onChange(email);
+
+                    // derived fields
+                    setValue("name", emp.fullName || "", {
+                      shouldValidate: true,
+                    });
+                    setValue("role", mapDesignationToRole(emp.designation), {
+                      shouldValidate: true,
+                    });
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select employee" />
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    {res?.data.map((emp) => (
+                      <SelectItem key={emp.id} value={emp.email}>
+                        {emp.email} {emp.fullName && `- ${emp.fullName}`}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             />
           </div>
 
@@ -134,35 +176,17 @@ export default function UserDialog({
             </p>
           </div>
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">Name</label>
-            <Input
-              {...register("name")}
-              placeholder="John Doe"
-              className="h-11 border-slate-200 bg-white shadow-sm focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
-            />
-          </div>
+          <Input
+            {...register("name")}
+            readOnly
+            className="bg-slate-100 cursor-not-allowed"
+          />
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">Role</label>
-            <Select
-              value={watch("role")}
-              onValueChange={(value) => setValue("role", value as any)}
-            >
-              <SelectTrigger className="h-11 border-slate-200 bg-white shadow-sm focus:ring-2 focus:ring-[#139BC3]/30">
-                <SelectValue placeholder="Select role" />
-              </SelectTrigger>
-
-              <SelectContent className="border-slate-200">
-                <SelectItem value="admin">Admin</SelectItem>
-                <SelectItem value="finance">Finance</SelectItem>
-                <SelectItem value="clerk">Clerk</SelectItem>
-                <SelectItem value="documentation">Documentation</SelectItem>
-                <SelectItem value="sales">Sales</SelectItem>
-                <SelectItem value="readOnly">Read Only</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          <Input
+            {...register("role")}
+            readOnly
+            className="bg-slate-100 cursor-not-allowed"
+          />
 
           {/* Footer */}
           <DialogFooter className="pt-2 flex flex-col-reverse sm:flex-row sm:justify-end gap-2">
@@ -177,7 +201,7 @@ export default function UserDialog({
 
             <Button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || isEmployeeLoading || isEmployeeError}
               className="bg-[#139BC3] text-white hover:bg-[#1088AA] focus-visible:ring-2 focus-visible:ring-[#139BC3]/40 shadow-sm"
             >
               {isLoading
@@ -193,4 +217,17 @@ export default function UserDialog({
       </DialogContent>
     </Dialog>
   );
+}
+
+function mapDesignationToRole(designation?: string): UserFormValues["role"] {
+  const map: Record<string, UserFormValues["role"]> = {
+    Admin: "admin",
+    Finance: "finance",
+    Clerk: "clerk",
+    Sales: "sales",
+    Supervisor: "supervisor",
+    Executive: "executive",
+  };
+
+  return map[designation ?? ""] ?? "others";
 }
