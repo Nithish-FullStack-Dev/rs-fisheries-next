@@ -15,6 +15,11 @@ function asPositiveNumber(value: unknown): number | null {
   return Number.isFinite(num) && num > 0 ? num : null;
 }
 
+function asPositiveInt(value: unknown): number | null {
+  const num = typeof value === "number" ? value : Number(value);
+  return Number.isInteger(num) && num > 0 ? num : null;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
@@ -27,7 +32,6 @@ export async function POST(req: NextRequest) {
     const amountRaw = body.amount;
     const paymentModeRaw = normalizeString(body.paymentMode);
 
-    // Required validations
     if (!source || !["farmer", "agent"].includes(source)) {
       return NextResponse.json(
         { error: "source is required and must be 'farmer' or 'agent'" },
@@ -55,7 +59,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Resolve loading ID
     let resolvedId: string | null = sourceRecordId;
 
     if (!resolvedId && billNo) {
@@ -84,33 +87,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Generate keys
     const vendorId = `${source}:${resolvedId}`;
     const vendorName = vendorNameRaw ?? "Unknown Vendor";
     const vendorKey = `${source}:${vendorName}`;
 
-    // Optional fields
     const referenceNo = normalizeString(body.referenceNo);
     const paymentRef = normalizeString(body.paymentRef);
     const accountNumber = normalizeString(body.accountNumber);
     const ifsc = normalizeString(body.ifsc)?.toUpperCase() ?? null;
     const bankName = normalizeString(body.bankName);
     const bankAddress = normalizeString(body.bankAddress);
-    const paymentdetails = normalizeString(body.paymentdetails); // ← Now defined
+    const paymentdetails = normalizeString(body.paymentdetails);
 
+    // Handle installment logic — only validate if isInstallment is true
     const isInstallment = Boolean(body.isInstallment);
     let installments: number | null = null;
     let installmentNumber: number | null = null;
 
     if (isInstallment) {
-      installments =
-        typeof body.installments === "number" && body.installments > 0
-          ? body.installments
-          : null;
-      installmentNumber =
-        typeof body.installmentNumber === "number" && body.installmentNumber > 0
-          ? body.installmentNumber
-          : null;
+      installments = asPositiveInt(body.installments);
+      installmentNumber = asPositiveInt(body.installmentNumber);
 
       if (!installments || !installmentNumber) {
         return NextResponse.json(
