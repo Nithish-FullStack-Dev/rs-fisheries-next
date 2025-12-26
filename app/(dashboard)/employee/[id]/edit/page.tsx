@@ -280,7 +280,7 @@ export default function EditEmployeePage() {
     updateMutation.mutate(formData);
   }
 
-  if (isLoading || !employee) {
+  if (isLoading) {
     return (
       <div className=" flex justify-center items-center py-8 px-5 text-center">
         <Loader2 className="animate-spin" /> Loading employee data...
@@ -365,6 +365,8 @@ export default function EditEmployeePage() {
                         <PopoverContent className="w-auto p-0" align="start">
                           <Calendar
                             mode="single"
+                            captionLayout="dropdown"
+                            toYear={new Date().getFullYear()}
                             selected={
                               field.value ? new Date(field.value) : undefined
                             }
@@ -629,6 +631,7 @@ export default function EditEmployeePage() {
                         <PopoverContent className="w-auto p-0" align="start">
                           <Calendar
                             mode="single"
+                            captionLayout="dropdown"
                             selected={
                               field.value ? new Date(field.value) : undefined
                             }

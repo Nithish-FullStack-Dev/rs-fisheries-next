@@ -25,5 +25,6 @@ export const useEmployee = () => {
       const res = await axios.get("/api/employee");
       return res.data;
     },
+    refetchOnMount: "always",
   });
 };
