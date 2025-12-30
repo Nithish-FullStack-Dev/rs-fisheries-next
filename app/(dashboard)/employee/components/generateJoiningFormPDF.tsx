@@ -95,7 +95,14 @@ export const generateJoiningFormPDF = () => {
     // Logo
     try {
       // IMPORTANT: this must exist in your project public folder or served path
-      doc.addImage("/favicon.jpg", "JPEG", logoX, logoY, logoSize, logoSize);
+      doc.addImage(
+        "/assets/favicon.jpg",
+        "JPEG",
+        logoX,
+        logoY,
+        logoSize,
+        logoSize
+      );
     } catch {
       // fallback logo box
       doc.setDrawColor(ACCENT.r, ACCENT.g, ACCENT.b);
