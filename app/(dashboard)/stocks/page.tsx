@@ -1,8 +1,8 @@
-// app/(dashboard)/stocks/page.tsx
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
+
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import {
@@ -12,541 +12,844 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
+import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+
 import {
   Fish,
   Warehouse,
-  Truck,
-  ArrowDownRight,
   ArrowUpRight,
+  ArrowDownRight,
+  Calendar as CalendarIcon,
 } from "lucide-react";
+
 import AddFishButton from "../dashboard/components/AddFishButton";
 
+import type { DateRange } from "react-day-picker";
+import {
+  format,
+  addDays,
+  startOfDay,
+  startOfWeek,
+  startOfMonth,
+} from "date-fns";
+
 /* ---------------- Types ---------------- */
-type FishVariety = { id?: string; code: string; name?: string };
-type ItemBase = {
-  id: string;
-  varietyCode: string;
-  totalKgs: number;
-  totalPrice: number;
-};
-type FormerLoading = {
-  id: string;
-  items: ItemBase[];
-  FarmerName?: string | null;
-  date?: string;
-  village?: string;
-};
-type AgentLoading = {
-  id: string;
-  items: ItemBase[];
-  agentName?: string;
-  date?: string;
-  village?: string;
-};
-type ClientLoading = {
-  id: string;
-  items: ItemBase[];
-  clientName?: string;
-  date?: string;
-  village?: string;
+type FishVariety = { code: string; name?: string };
+type ItemBase = { varietyCode: string; totalKgs: number };
+type Loading = { items: ItemBase[]; date?: string };
+
+type AvailableVariety = {
+  code: string;
+  name?: string;
+  netKgs: number;
+  netTrays: number;
 };
 
 type StockRow = {
   code: string;
   name?: string;
+
   farmerKgs: number;
   agentKgs: number;
   incomingKgs: number;
-  clientOutgoingKgs: number;
-  netKgs: number;
-  farmerValue: number;
-  agentValue: number;
-  incomingValue: number;
-  clientOutgoingValue: number;
-  netValue: number;
+
+  outgoingKgs: number;
+
+  farmerTrays: number;
+  farmerLoose: number;
+
+  agentTrays: number;
+  agentLoose: number;
+
+  incomingTrays: number;
+  incomingLoose: number;
+
+  outgoingTrays: number;
+  outgoingLoose: number;
 };
 
-/* ------------- API helpers ------------- */
-const fetchFishVarieties = async (): Promise<FishVariety[]> => {
-  const res = await axios.get("/api/fish-varieties");
-  return (res.data?.data ?? res.data ?? []) as FishVariety[];
+/* ---------------- Helpers ---------------- */
+const THEME = "#139BC3";
+const TRAY_SIZE = 20; // main table tray split
+const STOCK_TRAY_KGS = 35; // availability loose calc
+
+const cls = (...x: Array<string | false | null | undefined>) =>
+  x.filter(Boolean).join(" ");
+
+const splitTrayLoose = (kgs: number) => {
+  const safe = Number.isFinite(kgs) ? Math.max(0, kgs) : 0;
+  const trays = Math.floor(safe / TRAY_SIZE);
+  const loose = +(safe - trays * TRAY_SIZE).toFixed(2);
+  return { trays, loose };
 };
 
-const fetchFormerLoadings = async (): Promise<FormerLoading[]> => {
-  const res = await axios.get("/api/former-loading");
-  return (res.data?.data ?? res.data ?? []) as FormerLoading[];
+const parseDateSafe = (value?: string) => {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
 };
 
-const fetchAgentLoadings = async (): Promise<AgentLoading[]> => {
-  const res = await axios.get("/api/agent-loading");
-  return (res.data?.data ?? res.data ?? []) as AgentLoading[];
+const inRange = (d: Date | null, from: Date, toExclusive: Date) => {
+  if (!d) return false;
+  return d >= from && d < toExclusive;
 };
 
-const fetchClientLoadings = async (): Promise<ClientLoading[]> => {
-  const res = await axios.get("/api/client-loading");
-  return (res.data?.data ?? res.data ?? []) as ClientLoading[];
-};
+function rangeToBounds(r: DateRange) {
+  const from = r.from ? startOfDay(r.from) : startOfDay(new Date());
+  const to = r.to ? startOfDay(addDays(r.to, 1)) : startOfDay(addDays(from, 1));
+  return { from, to };
+}
 
-const fmt = (v: number) =>
-  v.toLocaleString("en-IN", {
-    maximumFractionDigits: 2,
-    minimumFractionDigits: 2,
+function formatRange(r: DateRange) {
+  if (!r.from) return "Pick a date";
+  const a = format(r.from, "MMM dd, yyyy");
+  const b = r.to ? format(r.to, "MMM dd, yyyy") : a;
+  return `${a} → ${b}`;
+}
+
+function StatPair({
+  value,
+  tone = "neutral",
+}: {
+  value: { trays: number; loose: number };
+  tone?: "neutral" | "incoming" | "outgoing";
+}) {
+  const toneCls =
+    tone === "incoming"
+      ? "text-green-700"
+      : tone === "outgoing"
+      ? "text-red-600"
+      : "text-gray-900";
+
+  return (
+    <span className={cls("font-semibold tabular-nums", toneCls)}>
+      {value.trays} <span className="text-gray-300">|</span> {value.loose}
+    </span>
+  );
+}
+
+function Pill({
+  active,
+  children,
+  onClick,
+}: {
+  active?: boolean;
+  children: React.ReactNode;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cls(
+        "px-3 py-1.5 rounded-full text-sm font-medium border transition",
+        "focus:outline-none focus:ring-2 focus:ring-offset-2",
+        active
+          ? "text-white border-transparent"
+          : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+      )}
+      style={
+        active
+          ? {
+              backgroundColor: THEME,
+              boxShadow: "0 6px 16px rgba(19,155,195,.18)",
+            }
+          : { borderColor: "rgba(17,24,39,.12)" }
+      }
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ---------------- Date Range Picker (shadcn) ---------------- */
+function GlobalDateRangePicker({
+  value,
+  onChange,
+}: {
+  value: DateRange;
+  onChange: (r: DateRange) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<DateRange>(value);
+
+  useEffect(() => setDraft(value), [value]);
+
+  const apply = () => {
+    if (draft.from && !draft.to) onChange({ from: draft.from, to: draft.from });
+    else onChange(draft);
+    setOpen(false);
+  };
+
+  const presets = [
+    {
+      label: "Today",
+      get: () => {
+        const t = new Date();
+        return { from: t, to: t };
+      },
+    },
+    {
+      label: "Yesterday",
+      get: () => {
+        const y = addDays(new Date(), -1);
+        return { from: y, to: y };
+      },
+    },
+    {
+      label: "Last 7 days",
+      get: () => {
+        const to = new Date();
+        const from = addDays(to, -6);
+        return { from, to };
+      },
+    },
+    {
+      label: "Last 30 days",
+      get: () => {
+        const to = new Date();
+        const from = addDays(to, -29);
+        return { from, to };
+      },
+    },
+    {
+      label: "This week",
+      get: () => {
+        const to = new Date();
+        const from = startOfWeek(to, { weekStartsOn: 1 });
+        return { from, to };
+      },
+    },
+    {
+      label: "This month",
+      get: () => {
+        const to = new Date();
+        const from = startOfMonth(to);
+        return { from, to };
+      },
+    },
+  ];
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          className="w-full md:w-[320px] justify-start rounded-xl border-slate-200 bg-white"
+        >
+          <CalendarIcon className="mr-2 h-4 w-4 text-slate-600" />
+          <span className="text-sm text-slate-900">{formatRange(value)}</span>
+        </Button>
+      </PopoverTrigger>
+
+      <PopoverContent className="w-[760px] p-0" align="start">
+        <div className="grid grid-cols-[220px_1fr]">
+          {/* Left presets */}
+          <div className="border-r border-slate-200 p-3">
+            <div className="text-xs font-semibold text-slate-500 px-2 py-2">
+              Quick ranges
+            </div>
+
+            <div className="space-y-1">
+              {presets.map((p) => (
+                <button
+                  key={p.label}
+                  onClick={() => setDraft(p.get())}
+                  className="w-full text-left px-3 py-2 rounded-lg text-sm text-slate-700 hover:bg-slate-100"
+                  type="button"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="mt-4 flex items-center justify-end gap-2 px-2">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setDraft(value);
+                  setOpen(false);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={apply}
+                style={{ backgroundColor: THEME, color: "white" }}
+              >
+                Apply
+              </Button>
+            </div>
+          </div>
+
+          {/* Right calendar */}
+          <div className="p-3">
+            <Calendar
+              mode="range"
+              numberOfMonths={2}
+              selected={draft}
+              onSelect={(r) =>
+                setDraft(r || { from: undefined, to: undefined })
+              }
+              initialFocus
+            />
+
+            <div className="mt-2 text-xs text-slate-500 px-2">
+              Selected:{" "}
+              <span className="text-slate-900">{formatRange(draft)}</span>
+            </div>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/* ---------------- Page ---------------- */
+export default function StocksPage() {
+  const [varieties, setVarieties] = useState<FishVariety[]>([]);
+  const [former, setFormer] = useState<Loading[]>([]);
+  const [agent, setAgent] = useState<Loading[]>([]);
+  const [client, setClient] = useState<Loading[]>([]);
+  const [availableVarieties, setAvailableVarieties] = useState<
+    AvailableVariety[]
+  >([]);
+
+  const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<"stockDesc" | "code">("stockDesc");
+  const [selectedVariety, setSelectedVariety] = useState<string>("ALL");
+
+  // ✅ GLOBAL DATE RANGE FILTER (applies to incoming + outgoing)
+  const [globalRange, setGlobalRange] = useState<DateRange>(() => {
+    const today = new Date();
+    return { from: today, to: today };
   });
 
-/* ------------- Component ------------- */
-export default function StocksPage() {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const [varieties, setVarieties] = useState<FishVariety[]>([]);
-  const [formerLoadings, setFormerLoadings] = useState<FormerLoading[]>([]);
-  const [agentLoadings, setAgentLoadings] = useState<AgentLoading[]>([]);
-  const [clientLoadings, setClientLoadings] = useState<ClientLoading[]>([]);
-
-  const [activeVariety, setActiveVariety] = useState<string | "all">("all");
-  const [search, setSearch] = useState("");
-  const [sortBy, setSortBy] = useState<"code" | "stockDesc">("stockDesc");
-
+  // main data load
   useEffect(() => {
-    let mounted = true;
-    setLoading(true);
-    setError(null);
-
     Promise.all([
-      fetchFishVarieties(),
-      fetchFormerLoadings(),
-      fetchAgentLoadings(),
-      fetchClientLoadings(),
-    ])
-      .then(([vars, f, a, c]) => {
-        if (!mounted) return;
-        setVarieties(vars);
-        setFormerLoadings(f);
-        setAgentLoadings(a);
-        setClientLoadings(c);
-      })
-      .catch((err) => {
-        console.error("Failed to load stock data:", err);
-        if (!mounted) return;
-        setError("Failed to load stock data");
-      })
-      .finally(() => {
-        if (!mounted) return;
-        setLoading(false);
-      });
+      axios.get("/api/fish-varieties"),
+      axios.get("/api/former-loading"),
+      axios.get("/api/agent-loading"),
+      axios.get("/api/client-loading"),
+    ]).then(([v, f, a, c]) => {
+      setVarieties(v.data.data || []);
+      setFormer(f.data.data || []);
+      setAgent(a.data.data || []);
+      setClient(c.data.data || []);
+    });
+  }, []);
 
+  // availability polling (no reload)
+  useEffect(() => {
+    let alive = true;
+
+    const fetchAvailable = async () => {
+      try {
+        const res = await axios.get("/api/stocks/available-varieties");
+        const rows: AvailableVariety[] = res.data?.data || [];
+        if (alive) setAvailableVarieties(rows);
+      } catch {
+        // ignore
+      }
+    };
+
+    fetchAvailable();
+    const id = setInterval(fetchAvailable, 5000);
     return () => {
-      mounted = false;
+      alive = false;
+      clearInterval(id);
     };
   }, []);
 
-  const stockRows = useMemo(() => {
+  const stockRows = useMemo<StockRow[]>(() => {
     const map = new Map<string, StockRow>();
+    const { from: rangeFrom, to: rangeTo } = rangeToBounds(globalRange);
 
-    const ensure = (code: string): StockRow => {
+    const ensure = (code: string) => {
       if (!map.has(code)) {
         const v = varieties.find((x) => x.code === code);
         map.set(code, {
           code,
           name: v?.name,
+
           farmerKgs: 0,
           agentKgs: 0,
           incomingKgs: 0,
-          clientOutgoingKgs: 0,
-          netKgs: 0,
-          farmerValue: 0,
-          agentValue: 0,
-          incomingValue: 0,
-          clientOutgoingValue: 0,
-          netValue: 0,
+
+          outgoingKgs: 0,
+
+          farmerTrays: 0,
+          farmerLoose: 0,
+
+          agentTrays: 0,
+          agentLoose: 0,
+
+          incomingTrays: 0,
+          incomingLoose: 0,
+
+          outgoingTrays: 0,
+          outgoingLoose: 0,
         });
       }
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       return map.get(code)!;
     };
 
-    // accumulate farmer incoming
-    formerLoadings.forEach((load) =>
-      load.items.forEach((it) => {
-        const row = ensure(it.varietyCode);
-        row.farmerKgs += Number(it.totalKgs || 0);
-        row.farmerValue += Number(it.totalPrice || 0);
-      })
-    );
+    // ✅ incoming (former) filtered by globalRange
+    former.forEach((l) => {
+      const d = parseDateSafe(l.date);
+      const ok = d ? inRange(d, rangeFrom, rangeTo) : true;
+      if (!ok) return;
 
-    // accumulate agent incoming
-    agentLoadings.forEach((load) =>
-      load.items.forEach((it) => {
-        const row = ensure(it.varietyCode);
-        row.agentKgs += Number(it.totalKgs || 0);
-        row.agentValue += Number(it.totalPrice || 0);
-      })
-    );
+      l.items.forEach((i) => (ensure(i.varietyCode).farmerKgs += i.totalKgs));
+    });
 
-    // accumulate client outgoing
-    clientLoadings.forEach((load) =>
-      load.items.forEach((it) => {
-        const row = ensure(it.varietyCode);
-        row.clientOutgoingKgs += Number(it.totalKgs || 0);
-        row.clientOutgoingValue += Number(it.totalPrice || 0);
-      })
-    );
+    // ✅ incoming (agent) filtered by globalRange
+    agent.forEach((l) => {
+      const d = parseDateSafe(l.date);
+      const ok = d ? inRange(d, rangeFrom, rangeTo) : true;
+      if (!ok) return;
 
-    // finalize totals & net (incoming - outgoing)
-    Array.from(map.values()).forEach((r) => {
+      l.items.forEach((i) => (ensure(i.varietyCode).agentKgs += i.totalKgs));
+    });
+
+    // ✅ outgoing (client) filtered by globalRange
+    client.forEach((l) => {
+      const d = parseDateSafe(l.date);
+      const ok = d ? inRange(d, rangeFrom, rangeTo) : true;
+      if (!ok) return;
+
+      l.items.forEach((i) => (ensure(i.varietyCode).outgoingKgs += i.totalKgs));
+    });
+
+    // finalize computed fields
+    map.forEach((r) => {
       r.incomingKgs = r.farmerKgs + r.agentKgs;
-      r.incomingValue = r.farmerValue + r.agentValue;
-      r.netKgs = r.incomingKgs - r.clientOutgoingKgs;
-      r.netValue = r.incomingValue - r.clientOutgoingValue;
+
+      const farmer = splitTrayLoose(r.farmerKgs);
+      const agentS = splitTrayLoose(r.agentKgs);
+      const incoming = splitTrayLoose(r.incomingKgs);
+      const outgoing = splitTrayLoose(r.outgoingKgs);
+
+      r.farmerTrays = farmer.trays;
+      r.farmerLoose = farmer.loose;
+
+      r.agentTrays = agentS.trays;
+      r.agentLoose = agentS.loose;
+
+      r.incomingTrays = incoming.trays;
+      r.incomingLoose = incoming.loose;
+
+      r.outgoingTrays = outgoing.trays;
+      r.outgoingLoose = outgoing.loose;
     });
 
     let rows = Array.from(map.values());
 
-    if (activeVariety !== "all")
-      rows = rows.filter((r) => r.code === activeVariety);
+    if (selectedVariety !== "ALL")
+      rows = rows.filter((r) => r.code === selectedVariety);
+
     if (search.trim()) {
-      const t = search.trim().toLowerCase();
+      const q = search.toLowerCase();
       rows = rows.filter(
         (r) =>
-          r.code.toLowerCase().includes(t) ||
-          (r.name ?? "").toLowerCase().includes(t)
+          r.code.toLowerCase().includes(q) || r.name?.toLowerCase().includes(q)
       );
     }
-    if (sortBy === "stockDesc") rows.sort((a, b) => b.netKgs - a.netKgs);
+
+    if (sortBy === "stockDesc")
+      rows.sort((a, b) => b.incomingKgs - a.incomingKgs);
     else rows.sort((a, b) => a.code.localeCompare(b.code));
 
     return rows;
   }, [
+    former,
+    agent,
+    client,
     varieties,
-    formerLoadings,
-    agentLoadings,
-    clientLoadings,
-    activeVariety,
     search,
     sortBy,
+    selectedVariety,
+    globalRange,
   ]);
 
   const totals = useMemo(() => {
-    return stockRows.reduce(
+    const incoming = stockRows.reduce(
       (acc, r) => {
-        acc.incomingKgs += r.incomingKgs;
-        acc.clientOutgoingKgs += r.clientOutgoingKgs;
-        acc.netKgs += r.netKgs;
-        acc.incomingValue += r.incomingValue;
-        acc.clientOutgoingValue += r.clientOutgoingValue;
-        acc.netValue += r.netValue;
+        acc.trays += r.incomingTrays;
+        acc.loose += r.incomingLoose;
         return acc;
       },
-      {
-        incomingKgs: 0,
-        clientOutgoingKgs: 0,
-        netKgs: 0,
-        incomingValue: 0,
-        clientOutgoingValue: 0,
-        netValue: 0,
-      }
+      { trays: 0, loose: 0 }
     );
+
+    const outgoing = stockRows.reduce(
+      (acc, r) => {
+        acc.trays += r.outgoingTrays;
+        acc.loose += r.outgoingLoose;
+        return acc;
+      },
+      { trays: 0, loose: 0 }
+    );
+
+    return { incoming, outgoing };
   }, [stockRows]);
 
-  const handleVarietyClick = useCallback(
-    (code: string | "all") => setActiveVariety(code),
-    []
-  );
+  const availabilityPreview = useMemo(() => {
+    const rows = [...availableVarieties].sort((a, b) => b.netKgs - a.netKgs);
+    const top = rows.slice(0, 9);
+    const remaining = Math.max(0, rows.length - top.length);
+    return { top, remaining };
+  }, [availableVarieties]);
 
   return (
     <div className="bg-gray-50 min-h-screen">
-      <div className="mx-auto max-w-7xl p-3 sm:p-4 md:p-6 space-y-4 sm:space-y-6">
+      <div className="max-w-7xl mx-auto p-4 space-y-6">
         {/* Header */}
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
-              Stocks
-            </h1>
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div
+              className="h-10 w-10 rounded-xl flex items-center justify-center"
+              style={{ backgroundColor: "rgba(19,155,195,.12)" }}
+            >
+              <Warehouse style={{ color: THEME }} />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Stocks</h1>
+              <p className="text-sm text-gray-500">
+                Trays <span className="text-gray-300">|</span> Loose
+              </p>
+            </div>
           </div>
 
-          {/* ✅ responsive controls */}
-          <div className="w-full md:w-auto flex flex-col sm:flex-row gap-3">
+          <div className="flex flex-col md:flex-row gap-3 md:items-center">
+            {/* ✅ GLOBAL DATE FILTER */}
+            <GlobalDateRangePicker
+              value={globalRange}
+              onChange={setGlobalRange}
+            />
+
             <Input
               placeholder="Search code or name..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full sm:w-[320px] md:w-64 border-gray-300 focus:border-indigo-500"
+              className="w-full md:w-72"
             />
 
             <Select value={sortBy} onValueChange={(v: any) => setSortBy(v)}>
-              <SelectTrigger className="w-full sm:w-56 md:w-48 border-gray-300">
+              <SelectTrigger className="w-full md:w-48">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="stockDesc">Highest net stock</SelectItem>
+                <SelectItem value="stockDesc">Highest stock</SelectItem>
                 <SelectItem value="code">Code A–Z</SelectItem>
               </SelectContent>
             </Select>
+
+            <AddFishButton />
           </div>
-
-          <AddFishButton />
         </div>
 
-        {/* Summary Cards */}
-        {/* ✅ 2 columns on mobile, 3/4 on larger */}
-        <div className="grid grid-cols-2 gap-3 sm:gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          <Card className="p-3 sm:p-5 rounded-2xl shadow-sm border border-gray-200 bg-white flex items-center gap-3 sm:gap-4">
-            <div className="rounded-2xl bg-blue-100 p-3 sm:p-4 shrink-0">
-              <Fish className="w-6 h-6 sm:w-8 sm:h-8 text-blue-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs sm:text-sm text-gray-600 truncate">
-                Varieties
-              </p>
-              <p className="text-lg sm:text-2xl font-bold text-gray-900">
-                {varieties.length}
-              </p>
-            </div>
-          </Card>
-
-          <Card className="p-3 sm:p-5 rounded-2xl shadow-sm border border-gray-200 bg-white flex items-center gap-3 sm:gap-4">
-            <div className="rounded-2xl bg-green-100 p-3 sm:p-4 shrink-0">
-              <ArrowUpRight className="w-6 h-6 sm:w-8 sm:h-8 text-green-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs sm:text-sm text-gray-600 truncate">
-                Available Stock (Kgs)
-              </p>
-              <p className="text-lg sm:text-2xl font-bold text-green-700">
-                {fmt(totals.netKgs)}
-              </p>
-            </div>
-          </Card>
-
-          <Card className="p-3 sm:p-5 rounded-2xl shadow-sm border border-gray-200 bg-white flex items-center gap-3 sm:gap-4">
-            <div className="rounded-2xl bg-red-100 p-3 sm:p-4 shrink-0">
-              <ArrowDownRight className="w-6 h-6 sm:w-8 sm:h-8 text-red-600" />
-            </div>
-            <div className="min-w-0">
-              <p className="text-xs sm:text-sm text-gray-600 truncate">
-                Client Outgoing (Kgs)
-              </p>
-              <p className="text-lg sm:text-2xl font-bold text-red-700">
-                {fmt(totals.clientOutgoingKgs)}
-              </p>
-            </div>
-          </Card>
-        </div>
-
-        {/* Variety Pills */}
-        <Card className="p-3 sm:p-4 rounded-2xl shadow-sm border border-gray-200 bg-white">
-          {/* ✅ horizontal scroll on mobile */}
-          <div className="-mx-1 px-1 flex gap-2 sm:gap-3 overflow-x-auto whitespace-nowrap no-scrollbar">
-            <button
-              onClick={() => handleVarietyClick("all")}
-              className={`shrink-0 px-4 sm:px-5 py-2 rounded-full text-sm font-semibold transition-all ${
-                activeVariety === "all"
-                  ? "bg-gray-900 text-white shadow-md"
-                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-              }`}
+        {/* Variety pills */}
+        <Card className="p-4">
+          <div className="flex flex-wrap gap-2">
+            <Pill
+              active={selectedVariety === "ALL"}
+              onClick={() => setSelectedVariety("ALL")}
             >
               All
-            </button>
+            </Pill>
 
-            {varieties.map((v) => {
-              const colorMap: Record<
-                string,
-                { bg: string; activeBg: string; text: string }
-              > = {
-                LR: {
-                  bg: "bg-amber-100",
-                  activeBg: "bg-amber-600",
-                  text: "text-amber-800",
-                },
-                TN: {
-                  bg: "bg-purple-100",
-                  activeBg: "bg-purple-600",
-                  text: "text-purple-800",
-                },
-                SF: {
-                  bg: "bg-teal-100",
-                  activeBg: "bg-teal-600",
-                  text: "text-teal-800",
-                },
-                CT: {
-                  bg: "bg-indigo-100",
-                  activeBg: "bg-indigo-600",
-                  text: "text-indigo-800",
-                },
-              };
-
-              const colors = colorMap[v.code] || {
-                bg: "bg-gray-100",
-                activeBg: "bg-gray-600",
-                text: "text-gray-800",
-              };
-
-              return (
-                <button
+            {varieties
+              .slice()
+              .sort((a, b) => a.code.localeCompare(b.code))
+              .map((v) => (
+                <Pill
                   key={v.code}
-                  onClick={() => handleVarietyClick(v.code)}
-                  className={`shrink-0 px-4 sm:px-5 py-2 rounded-full text-sm font-semibold transition-all ${
-                    activeVariety === v.code
-                      ? `${colors.activeBg} text-white shadow-md`
-                      : `${colors.bg} ${colors.text} hover:opacity-80`
-                  }`}
+                  active={selectedVariety === v.code}
+                  onClick={() => setSelectedVariety(v.code)}
                 >
                   {v.code}
-                </button>
-              );
-            })}
+                </Pill>
+              ))}
           </div>
         </Card>
 
-        {/* Loading / Error / Empty */}
-        {loading ? (
-          <Card className="rounded-2xl shadow-sm border border-gray-200 bg-white">
-            <div className="py-16 text-center text-gray-500">
-              Loading stocks...
-            </div>
-          </Card>
-        ) : error ? (
-          <Card className="rounded-2xl shadow-sm border border-gray-200 bg-white">
-            <div className="py-16 text-center text-red-600">{error}</div>
-          </Card>
-        ) : stockRows.length === 0 ? (
-          <Card className="rounded-2xl shadow-sm border border-gray-200 bg-white">
-            <div className="py-16 text-center text-gray-500">
-              No stock data available.
-            </div>
-          </Card>
-        ) : (
-          <>
-            {/* ✅ Mobile view: cards */}
-            <div className="grid grid-cols-1 gap-3 md:hidden">
-              {stockRows.map((r) => (
-                <Card
-                  key={r.code}
-                  className="rounded-2xl border border-gray-200 bg-white shadow-sm p-4"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center shrink-0">
-                      <Fish className="w-5 h-5 text-gray-600" />
-                    </div>
-                    <div className="min-w-0">
-                      <div className="font-bold text-gray-900">{r.code}</div>
-                      {r.name && (
-                        <div className="text-xs text-gray-600 truncate">
-                          {r.name}
-                        </div>
-                      )}
-                    </div>
-                  </div>
+        {/* Summary Cards */}
+        <div className="space-y-5">
+          {/* Availability stock */}
+          <Card className="p-6">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold" style={{ color: THEME }}>
+                  Availability stock
+                </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  Top availability by incoming (Farmer + Agent)
+                </p>
+              </div>
 
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                    <div className="rounded-xl bg-gray-50 border border-gray-200 p-3">
-                      <div className="text-xs text-gray-600">Farmer</div>
-                      <div className="font-semibold text-gray-900">
-                        {fmt(r.farmerKgs)}
-                      </div>
-                    </div>
-                    <div className="rounded-xl bg-gray-50 border border-gray-200 p-3">
-                      <div className="text-xs text-gray-600">Agent</div>
-                      <div className="font-semibold text-gray-900">
-                        {fmt(r.agentKgs)}
-                      </div>
-                    </div>
-                    <div className="rounded-xl bg-green-50 border border-green-200 p-3">
-                      <div className="text-xs text-gray-600">Incoming</div>
-                      <div className="font-semibold text-green-700">
-                        {fmt(r.incomingKgs)}
-                      </div>
-                    </div>
-                    <div className="rounded-xl bg-red-50 border border-red-200 p-3">
-                      <div className="text-xs text-gray-600">Client Out</div>
-                      <div className="font-semibold text-red-600">
-                        {fmt(r.clientOutgoingKgs)}
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              ))}
+              <div
+                className="h-10 w-10 rounded-xl flex items-center justify-center"
+                style={{ backgroundColor: "rgba(19,155,195,.10)" }}
+              >
+                <Warehouse style={{ color: THEME }} />
+              </div>
             </div>
 
-            {/* ✅ Desktop/tablet view: table */}
-            <Card className="hidden md:block rounded-2xl shadow-lg border border-gray-200 overflow-hidden bg-white">
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="bg-blue-200 text-black uppercase tracking-wider">
-                    <tr>
-                      <th className="px-6 py-4 text-left font-medium">
-                        Variety
-                      </th>
-                      <th className="px-6 py-4 text-right font-medium">
-                        Farmer Kgs
-                      </th>
-                      <th className="px-6 py-4 text-right font-medium">
-                        Agent Kgs
-                      </th>
-                      <th className="px-6 py-4 text-right font-medium">
-                        Incoming Kgs
-                      </th>
-                      <th className="px-6 py-4 text-right font-medium">
-                        Client Outgoing Kgs
-                      </th>
-                    </tr>
-                  </thead>
+            <div className="mt-6">
+              <div className="grid grid-cols-[1fr_auto] items-center gap-6 text-xs text-gray-500 px-3">
+                <span>Variety</span>
+                <span className="text-right tabular-nums">Trays | Loose</span>
+              </div>
 
-                  <tbody className="divide-y divide-gray-200">
-                    {stockRows.map((r) => {
-                      const rowColorMap: Record<string, string> = {
-                        LR: "hover:bg-amber-50",
-                        TN: "hover:bg-purple-50",
-                        SF: "hover:bg-teal-50",
-                        CT: "hover:bg-indigo-50",
-                      };
-
-                      const hoverClass =
-                        rowColorMap[r.code] || "hover:bg-gray-50";
+              <div
+                className="mt-3 rounded-2xl border bg-white"
+                style={{ borderColor: "rgba(17,24,39,.08)" }}
+              >
+                <div className="p-3 md:p-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-10 gap-y-2">
+                    {availabilityPreview.top.map((r) => {
+                      const looseKgs = +Math.max(
+                        0,
+                        r.netKgs - r.netTrays * STOCK_TRAY_KGS
+                      ).toFixed(2);
 
                       return (
-                        <tr
+                        <div
                           key={r.code}
-                          className={`transition-colors ${hoverClass}`}
+                          className="grid grid-cols-[auto_1fr_auto] items-center gap-3 py-2"
                         >
-                          <td className="px-6 py-5">
-                            <div className="flex items-center gap-3">
-                              <div className="w-10 h-10 rounded-full bg-gray-200 flex items-center justify-center">
-                                <Fish className="w-5 h-5 text-gray-600" />
-                              </div>
-                              <div>
-                                <div className="font-bold text-gray-900 text-base">
-                                  {r.code}
-                                </div>
-                                {r.name && (
-                                  <div className="text-sm text-gray-600">
-                                    {r.name}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-5 text-right text-gray-700">
-                            {fmt(r.farmerKgs)}
-                          </td>
-                          <td className="px-6 py-5 text-right text-gray-700">
-                            {fmt(r.agentKgs)}
-                          </td>
-                          <td className="px-6 py-5 text-right font-semibold text-green-700">
-                            {fmt(r.incomingKgs)}
-                          </td>
-                          <td className="px-6 py-5 text-right font-semibold text-red-600">
-                            {fmt(r.clientOutgoingKgs)}
-                          </td>
-                        </tr>
+                          <span className="text-sm font-semibold text-gray-900">
+                            {r.code}
+                          </span>
+
+                          <span className="h-px w-full bg-gray-100" />
+
+                          <span className="text-sm font-semibold text-gray-900 tabular-nums text-right">
+                            {r.netTrays}{" "}
+                            <span className="text-gray-300">|</span> {looseKgs}
+                          </span>
+                        </div>
                       );
                     })}
-                  </tbody>
-                </table>
+                  </div>
+                </div>
+              </div>
+
+              {availabilityPreview.remaining > 0 && (
+                <p className="mt-3 text-xs text-gray-500">
+                  +{availabilityPreview.remaining} more
+                </p>
+              )}
+            </div>
+          </Card>
+
+          {/* Top row */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <Card className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">Varieties</p>
+                  <p className="text-3xl font-bold text-gray-900">
+                    {varieties.length}
+                  </p>
+                </div>
+                <Fish style={{ color: THEME }} />
               </div>
             </Card>
-          </>
-        )}
+
+            <Card className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">Incoming</p>
+                  <p className="text-3xl font-bold text-green-700 mt-1 tabular-nums">
+                    {totals.incoming.trays}{" "}
+                    <span className="text-gray-300">|</span>{" "}
+                    {+totals.incoming.loose.toFixed(2)}
+                  </p>
+                </div>
+                <ArrowUpRight className="text-green-600" />
+              </div>
+              <p className="mt-2 text-xs text-gray-500">
+                Filtered by selected range
+              </p>
+            </Card>
+
+            <Card className="p-5">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-gray-500">Outgoing</p>
+                  <p className="text-3xl font-bold text-red-600 mt-1 tabular-nums">
+                    {totals.outgoing.trays}{" "}
+                    <span className="text-gray-300">|</span>{" "}
+                    {+totals.outgoing.loose.toFixed(2)}
+                  </p>
+                </div>
+                <ArrowDownRight className="text-red-600" />
+              </div>
+              <p className="mt-2 text-xs text-gray-500">
+                Filtered by selected range
+              </p>
+            </Card>
+          </div>
+        </div>
+
+        {/* Table (desktop) */}
+        <Card className="overflow-hidden hidden md:block">
+          <table className="w-full text-sm">
+            <thead style={{ backgroundColor: "rgba(19,155,195,.12)" }}>
+              <tr>
+                <th className="p-4 text-left">
+                  <span className="font-semibold" style={{ color: THEME }}>
+                    Variety
+                  </span>
+                  <span className="block text-xs text-gray-500 font-normal mt-0.5">
+                    Code / Name
+                  </span>
+                </th>
+                <th className="p-4 text-right">
+                  <span className="font-semibold text-gray-800">Farmer</span>
+                  <span className="block text-xs text-gray-500 font-normal mt-0.5">
+                    Trays | Loose
+                  </span>
+                </th>
+                <th className="p-4 text-right">
+                  <span className="font-semibold text-gray-800">Agent</span>
+                  <span className="block text-xs text-gray-500 font-normal mt-0.5">
+                    Trays | Loose
+                  </span>
+                </th>
+                <th className="p-4 text-right">
+                  <span className="font-semibold text-gray-800">Incoming</span>
+                  <span className="block text-xs text-gray-500 font-normal mt-0.5">
+                    Trays | Loose
+                  </span>
+                </th>
+                <th className="p-4 text-right">
+                  <span className="font-semibold text-gray-800">Outgoing</span>
+                  <span className="block text-xs text-gray-500 font-normal mt-0.5">
+                    Trays | Loose
+                  </span>
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {stockRows.map((r) => (
+                <tr key={r.code} className="border-t">
+                  <td className="p-4">
+                    <p className="font-semibold text-gray-900">{r.code}</p>
+                    {r.name ? (
+                      <p className="text-xs text-gray-500">{r.name}</p>
+                    ) : null}
+                  </td>
+
+                  <td className="p-4 text-right">
+                    <StatPair
+                      value={{ trays: r.farmerTrays, loose: r.farmerLoose }}
+                    />
+                  </td>
+                  <td className="p-4 text-right">
+                    <StatPair
+                      value={{ trays: r.agentTrays, loose: r.agentLoose }}
+                    />
+                  </td>
+                  <td className="p-4 text-right">
+                    <StatPair
+                      tone="incoming"
+                      value={{ trays: r.incomingTrays, loose: r.incomingLoose }}
+                    />
+                  </td>
+                  <td className="p-4 text-right">
+                    <StatPair
+                      tone="outgoing"
+                      value={{ trays: r.outgoingTrays, loose: r.outgoingLoose }}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+
+        {/* Mobile cards */}
+        <div className="md:hidden space-y-3">
+          {stockRows.map((r) => (
+            <Card key={r.code} className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-base font-semibold text-gray-900">
+                    {r.code}
+                  </p>
+                  {r.name ? (
+                    <p className="text-xs text-gray-500 mt-0.5">{r.name}</p>
+                  ) : null}
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-gray-500">Incoming</p>
+                  <StatPair
+                    tone="incoming"
+                    value={{ trays: r.incomingTrays, loose: r.incomingLoose }}
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <div
+                  className="rounded-xl border p-3"
+                  style={{ borderColor: "rgba(17,24,39,.08)" }}
+                >
+                  <p className="text-xs text-gray-500">Farmer</p>
+                  <StatPair
+                    value={{ trays: r.farmerTrays, loose: r.farmerLoose }}
+                  />
+                </div>
+
+                <div
+                  className="rounded-xl border p-3"
+                  style={{ borderColor: "rgba(17,24,39,.08)" }}
+                >
+                  <p className="text-xs text-gray-500">Agent</p>
+                  <StatPair
+                    value={{ trays: r.agentTrays, loose: r.agentLoose }}
+                  />
+                </div>
+
+                <div
+                  className="rounded-xl border p-3"
+                  style={{ borderColor: "rgba(17,24,39,.08)" }}
+                >
+                  <p className="text-xs text-gray-500">Outgoing</p>
+                  <StatPair
+                    tone="outgoing"
+                    value={{ trays: r.outgoingTrays, loose: r.outgoingLoose }}
+                  />
+                </div>
+
+                <div
+                  className="rounded-xl p-3 border"
+                  style={{
+                    borderColor: "rgba(19,155,195,.25)",
+                    backgroundColor: "rgba(19,155,195,.06)",
+                  }}
+                >
+                  <p className="text-xs text-gray-500">Code</p>
+                  <p className="font-semibold" style={{ color: THEME }}>
+                    {r.code}
+                  </p>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
       </div>
     </div>
   );

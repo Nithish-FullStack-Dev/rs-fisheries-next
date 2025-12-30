@@ -605,7 +605,7 @@ export default function VendorBillsPage() {
                     <tr>
                       <th className="p-4">Bill No / Name</th>
                       <th className="p-4">Variety</th>
-                      <th className="p-4 text-right">Trays</th>{" "}
+                      <th className="p-4 text-right">Trays</th>
                       {/* ← Kept exactly as you wanted */}
                       <th className="p-4 text-right">Price/Kg</th>
                       <th className="p-4 text-right">Total Price</th>

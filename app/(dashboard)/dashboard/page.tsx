@@ -1,32 +1,57 @@
 // app/(dashboard)/dashboard/page.tsx
 import { cookies } from "next/headers";
 import { verifyToken } from "@/lib/jwt";
-import AddFishButton from "./components/AddFishButton";
-// import DashboardClient from "./components/DashboardClient";
 import { getDashboardMetrics } from "@/lib/dashboard";
 import DashboardClient from "./components/DashboardClient";
+import { startOfDay, endOfDay, subDays } from "date-fns";
 
-export default async function Dashboard() {
+type SP = { from?: string; to?: string };
+
+function parseDateSafe(v?: string) {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export default async function Dashboard({
+  searchParams,
+}: {
+  // Next 15/16 can give Promise OR object depending on build/runtime
+  searchParams?: SP | Promise<SP>;
+}) {
   const cookieStore = await cookies();
   const token = cookieStore.get("session")?.value;
 
-  let user: any = null;
   if (token) {
     try {
-      user = verifyToken(token);
+      verifyToken(token);
     } catch {
       console.log("Invalid token");
     }
   }
 
-  // optional: block if not logged in
-  // if (!user) redirect("/login");
-  const data = await getDashboardMetrics();
+  const sp = await Promise.resolve(searchParams || {});
+  const fromQ = parseDateSafe(sp.from);
+  const toQ = parseDateSafe(sp.to);
+
+  // ✅ default = last 7 days
+  const defaultFrom = startOfDay(subDays(new Date(), 6));
+  const defaultTo = endOfDay(new Date());
+
+  const range = {
+    from: fromQ ? startOfDay(fromQ) : defaultFrom,
+    to: toQ ? endOfDay(toQ) : defaultTo,
+  };
+
+  const data = await getDashboardMetrics(range);
 
   return (
-    <div className="p-6 space-y-6">
-      {/* <AddFishButton /> */}
-      <DashboardClient data={data} />
+    <div className="p-6 space-y-6 bg-gray-50 min-h-screen">
+      <DashboardClient
+        data={data}
+        initialFrom={range.from.toISOString()}
+        initialTo={range.to.toISOString()}
+      />
     </div>
   );
 }

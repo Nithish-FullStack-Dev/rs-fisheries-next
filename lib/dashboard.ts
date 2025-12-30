@@ -21,146 +21,151 @@ function addDays(d: Date, n: number) {
     return x;
 }
 function diffDays(a: Date, b: Date) {
-    // a - b in whole days
     const ms = startOfDay(a).getTime() - startOfDay(b).getTime();
-    return Math.floor(ms / (1000 * 60 * 60 * 24));
+    return Math.floor(ms / 86400000);
 }
 function dayLabel(d: Date) {
-    return d.toLocaleDateString("en-US", { weekday: "short" }); // Mon, Tue...
+    return d.toLocaleDateString("en-US", { weekday: "short" });
 }
 
 export type DashboardMetrics = {
     today: {
-        sales: number; // ₹
-        purchase: number; // ₹
-        pendingShipments: number; // count (proxy with todays client loadings)
-        outstanding: number; // ₹ (overall receivable)
+        sales: number;
+        purchase: number;
+        pendingShipments: number;
+        outstanding: number;
     };
-    weekly: DayPoint[]; // last 7 days
-    movement: DayPoint[]; // same as weekly (keep separate if you want different logic)
-    topVarieties: VarietyPoint[]; // last 7 days
-    outstandingAgeing: AgeingPoint[]; // buckets
-    fishVarieties: { code: string; name: string }[];
+    weekly: DayPoint[];
+    movement: DayPoint[];
+    topVarieties: VarietyPoint[];
+    outstandingAgeing: AgeingPoint[];
+    fishVarieties: Array<{ code: string; name: string }>;
 };
 
-export async function getDashboardMetrics(): Promise<DashboardMetrics> {
+export async function getDashboardMetrics(range?: {
+    from: Date;
+    to: Date;
+}): Promise<DashboardMetrics> {
+    // ✅ default last 7 days
     const now = new Date();
-    const todayStart = startOfDay(now);
-    const todayEnd = endOfDay(now);
+    const from = range?.from ? startOfDay(range.from) : startOfDay(addDays(now, -6));
+    const to = range?.to ? endOfDay(range.to) : endOfDay(now);
 
-    // ====== TODAY (Sales & Purchase) ======
-    // Sales = sum(ClientLoading.grandTotal) today
-    const todaySalesAgg = await prisma.clientLoading.aggregate({
-        where: { date: { gte: todayStart, lte: todayEnd } },
-        _sum: { grandTotal: true },
-        _count: { _all: true },
-    });
-
-    // Purchase = sum(FormerLoading.grandTotal + AgentLoading.grandTotal) today
-    const [todayFormerAgg, todayAgentAgg] = await Promise.all([
+    // ====== SALES & PURCHASE (FILTERED RANGE) ======
+    const [salesAgg, formerAgg, agentAgg] = await Promise.all([
+        prisma.clientLoading.aggregate({
+            where: { date: { gte: from, lte: to } },
+            _sum: { grandTotal: true },
+            _count: { _all: true },
+        }),
         prisma.formerLoading.aggregate({
-            where: { date: { gte: todayStart, lte: todayEnd } },
+            where: { date: { gte: from, lte: to } },
             _sum: { grandTotal: true },
         }),
         prisma.agentLoading.aggregate({
-            where: { date: { gte: todayStart, lte: todayEnd } },
+            where: { date: { gte: from, lte: to } },
             _sum: { grandTotal: true },
         }),
     ]);
 
-    // Pending Shipments (you don't have "status" yet)
-    // Using today's ClientLoading count as a practical proxy.
-    const pendingShipments = todaySalesAgg._count._all ?? 0;
+    const salesInRange = salesAgg._sum.grandTotal ?? 0;
+    const purchaseInRange = (formerAgg._sum.grandTotal ?? 0) + (agentAgg._sum.grandTotal ?? 0);
+    const pendingShipments = salesAgg._count._all ?? 0;
 
-    // ====== OUTSTANDING (overall receivables) ======
-    // Outstanding = total Sales (all time) - total ClientPayment (all time)
-    const [allSalesAgg, allPaymentsAgg] = await Promise.all([
-        prisma.clientLoading.aggregate({
-            _sum: { grandTotal: true },
-        }),
+    // ====== OUTSTANDING (FILTERED RANGE) ======
+    // Range outstanding = sales in range - payments in range
+    const [paymentsAgg] = await Promise.all([
         prisma.clientPayment.aggregate({
+            where: { date: { gte: from, lte: to } },
             _sum: { amount: true },
         }),
     ]);
+    const paidInRange = paymentsAgg._sum.amount ?? 0;
+    const outstandingInRange = Math.max(0, salesInRange - paidInRange);
 
-    const totalSalesAll = allSalesAgg._sum.grandTotal ?? 0;
-    const totalPaidAll = allPaymentsAgg._sum.amount ?? 0;
-    const outstanding = Math.max(0, totalSalesAll - totalPaidAll);
+    // ====== SERIES (DAILY POINTS within selected range) ======
+    const daysCount = Math.max(1, diffDays(to, from) + 1);
 
-    // ====== WEEKLY (last 7 days) ======
-    const rangeStart = startOfDay(addDays(now, -6)); // include today = 7 points
-    const rangeEnd = todayEnd;
+    // protect UI if user selects too huge range
+    const maxPoints = 60;
+    const pointsCount = Math.min(daysCount, maxPoints);
 
-    const [weeklySales, weeklyFormer, weeklyAgent] = await Promise.all([
+    // build points from the END backwards
+    const seriesStart = startOfDay(addDays(to, -(pointsCount - 1)));
+
+    const [salesRows, formerRows, agentRows] = await Promise.all([
         prisma.clientLoading.findMany({
-            where: { date: { gte: rangeStart, lte: rangeEnd } },
+            where: { date: { gte: seriesStart, lte: to } },
             select: { date: true, grandTotal: true },
         }),
         prisma.formerLoading.findMany({
-            where: { date: { gte: rangeStart, lte: rangeEnd } },
+            where: { date: { gte: seriesStart, lte: to } },
             select: { date: true, grandTotal: true },
         }),
         prisma.agentLoading.findMany({
-            where: { date: { gte: rangeStart, lte: rangeEnd } },
+            where: { date: { gte: seriesStart, lte: to } },
             select: { date: true, grandTotal: true },
         }),
     ]);
 
-    const points: DayPoint[] = [];
-    for (let i = 0; i < 7; i++) {
-        const d = startOfDay(addDays(rangeStart, i));
+    const weekly: DayPoint[] = [];
+    for (let i = 0; i < pointsCount; i++) {
+        const d = startOfDay(addDays(seriesStart, i));
         const dEnd = endOfDay(d);
 
-        const sales = weeklySales
+        const sales = salesRows
             .filter((x) => x.date >= d && x.date <= dEnd)
             .reduce((s, x) => s + (x.grandTotal ?? 0), 0);
 
-        const purchaseFormer = weeklyFormer
+        const purchaseFormer = formerRows
             .filter((x) => x.date >= d && x.date <= dEnd)
             .reduce((s, x) => s + (x.grandTotal ?? 0), 0);
 
-        const purchaseAgent = weeklyAgent
+        const purchaseAgent = agentRows
             .filter((x) => x.date >= d && x.date <= dEnd)
             .reduce((s, x) => s + (x.grandTotal ?? 0), 0);
 
-        points.push({
+        weekly.push({
             label: dayLabel(d),
             sales,
             purchase: purchaseFormer + purchaseAgent,
         });
     }
 
-    // ====== TOP VARIETIES BY QTY (last 7 days) ======
-    // ClientItem.totalKgs grouped by varietyCode, only items whose parent ClientLoading.date in range
+    // ====== TOP VARIETIES BY QTY (FILTERED RANGE) ======
     const items = await prisma.clientItem.findMany({
         where: {
-            loading: { date: { gte: rangeStart, lte: rangeEnd } },
+            loading: { date: { gte: from, lte: to } },
         },
         select: { varietyCode: true, totalKgs: true },
     });
 
     const varietyMap = new Map<string, number>();
     for (const it of items) {
-        varietyMap.set(it.varietyCode, (varietyMap.get(it.varietyCode) ?? 0) + (it.totalKgs ?? 0));
+        const code = String(it.varietyCode || "").trim();
+        if (!code) continue;
+        varietyMap.set(code, (varietyMap.get(code) ?? 0) + (it.totalKgs ?? 0));
     }
 
     const topVarieties: VarietyPoint[] = Array.from(varietyMap.entries())
-        .map(([code, kgs]) => ({ code, kgs }))
+        .map(([code, kgs]) => ({ code, kgs: Math.round(kgs * 10) / 10 }))
         .sort((a, b) => b.kgs - a.kgs)
         .slice(0, 6);
 
-    // ====== OUTSTANDING AGEING ======
-    // Remaining per ClientLoading = grandTotal - sum(payments where clientId = loading.id)
-    const loadingsAll = await prisma.clientLoading.findMany({
+    // ====== OUTSTANDING AGEING (FILTERED RANGE LOADINGS) ======
+    // Remaining per loading = grandTotal - payments where clientId=loading.id (payments also filtered to range)
+    const loadings = await prisma.clientLoading.findMany({
+        where: { date: { gte: from, lte: to } },
         select: { id: true, date: true, grandTotal: true },
     });
 
-    const paymentsAll = await prisma.clientPayment.findMany({
+    const payments = await prisma.clientPayment.findMany({
+        where: { date: { gte: from, lte: to } },
         select: { clientId: true, amount: true },
     });
 
     const paidByClientId = new Map<string, number>();
-    for (const p of paymentsAll) {
+    for (const p of payments) {
         if (!p.clientId) continue;
         paidByClientId.set(p.clientId, (paidByClientId.get(p.clientId) ?? 0) + (p.amount ?? 0));
     }
@@ -172,7 +177,7 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
         "> 30 days": 0,
     };
 
-    for (const l of loadingsAll) {
+    for (const l of loadings) {
         const paid = paidByClientId.get(l.id) ?? 0;
         const remaining = Math.max(0, (l.grandTotal ?? 0) - paid);
         if (remaining <= 0) continue;
@@ -184,12 +189,11 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
         else buckets["> 30 days"] += remaining;
     }
 
-    const outstandingAgeing: AgeingPoint[] = Object.entries(buckets).map(([bucket, amount]) => ({
-        bucket,
-        amount,
-    }));
+    const outstandingAgeing: AgeingPoint[] = Object.entries(buckets).map(
+        ([bucket, amount]) => ({ bucket, amount })
+    );
 
-    // ====== FISH VARIETIES (chips list) ======
+    // ====== FISH VARIETIES ======
     const fishVarieties = await prisma.fishVariety.findMany({
         select: { code: true, name: true },
         orderBy: { code: "asc" },
@@ -197,13 +201,13 @@ export async function getDashboardMetrics(): Promise<DashboardMetrics> {
 
     return {
         today: {
-            sales: todaySalesAgg._sum.grandTotal ?? 0,
-            purchase: (todayFormerAgg._sum.grandTotal ?? 0) + (todayAgentAgg._sum.grandTotal ?? 0),
+            sales: salesInRange,
+            purchase: purchaseInRange,
             pendingShipments,
-            outstanding,
+            outstanding: outstandingInRange,
         },
-        weekly: points,
-        movement: points,
+        weekly,
+        movement: weekly,
         topVarieties,
         outstandingAgeing,
         fishVarieties,

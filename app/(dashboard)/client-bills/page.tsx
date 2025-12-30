@@ -509,7 +509,7 @@ export default function ClientBillsPage() {
                     <tr>
                       <th className="p-4">Bill No / Client</th>
                       <th className="p-4">Variety</th>
-                      <th className="p-4 text-right">Trays</th>{" "}
+                      <th className="p-4 text-right">Trays</th>
                       {/* ← Header unchanged */}
                       <th className="p-4 text-right">Price/Kg</th>
                       <th className="p-4 text-right">Total Price</th>
