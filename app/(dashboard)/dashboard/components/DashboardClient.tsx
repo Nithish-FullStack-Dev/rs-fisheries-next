@@ -467,7 +467,7 @@ export default function DashboardClient({
             sub="Total purchase value (selected range)"
           />
           <KpiCard
-            title="Pending Shipments"
+            title="Shipments"
             value={`${data.today.pendingShipments}`}
             tone="brand"
             icon={<Truck style={{ color: THEME }} className="w-6 h-6" />}

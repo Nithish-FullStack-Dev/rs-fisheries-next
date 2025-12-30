@@ -24,7 +24,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <link rel="icon" href="/favicon.jpg" />
+      <link rel="icon" href="/assets/favicon.png" />
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased overflow-hidden h-screen`}
       >
