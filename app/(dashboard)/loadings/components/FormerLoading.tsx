@@ -18,6 +18,7 @@ import {
 
 import { Save, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { set } from "zod";
 
 const TRAY_WEIGHT = 35;
 
@@ -48,7 +49,7 @@ export default function FormerLoading() {
   const [date, setDate] = useState(todayYMD());
   const [vehicleId, setVehicleId] = useState("");
   const [otherVehicleNo, setOtherVehicleNo] = useState("");
-
+  const [loading, setLoading] = useState(false);
   // ✅ local set to hide vehicles without page reload
   const [usedVehicleIds, setUsedVehicleIds] = useState<Set<string>>(
     () => new Set()
@@ -126,9 +127,7 @@ export default function FormerLoading() {
 
   const isOtherVehicle = vehicleId === "__OTHER__";
 
-  // ✅ Filter vehicles so selected vehicles won't appear again immediately
   const availableVehicles = useMemo(() => {
-    // Keep currently selected vehicle visible (so UI doesn't break)
     return (vehicles ?? []).filter((v: any) => {
       if (!v?.id) return false;
       if (v.id === vehicleId) return true;
@@ -231,6 +230,7 @@ export default function FormerLoading() {
 
   const handleSave = async () => {
     if (!validateForm()) return;
+    setLoading(true);
 
     const activeRows = items.filter(
       (i) => safeNum(i.noTrays) > 0 || safeNum(i.loose) > 0
@@ -272,9 +272,12 @@ export default function FormerLoading() {
       resetForm();
       queryClient.invalidateQueries({ queryKey: ["next-bill-no"] });
       // optional: keep this if your backend changes vehicle assignment
-      // queryClient.invalidateQueries({ queryKey: ["assigned-vehicles"] });
+      queryClient.invalidateQueries({ queryKey: ["assigned-vehicles"] });
+      setLoading(false);
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Failed to save");
+    } finally {
+      setLoading(false);
     }
   };
   // allow letters + space + dot + apostrophe + hyphen
@@ -310,6 +313,7 @@ export default function FormerLoading() {
         <Button
           onClick={handleSave}
           className="w-full sm:w-auto rounded-xl px-5 bg-[#139BC3] text-white hover:bg-[#1088AA]"
+          disabled={loading}
         >
           <Save className="h-4 w-4 mr-2" />
           Save

@@ -81,7 +81,9 @@ export default function ClientLoadingForm() {
   const [billNo, setBillNo] = useState("");
   const [clientName, setClientName] = useState("");
   const [grandTotal, setGrandTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
 
+  // ✅ hide used vehicles without reload
   const isOtherVehicle = vehicleId === OTHER_VEHICLE_VALUE;
 
   // ✅ Hide used vehicles immediately (no reload)
@@ -340,6 +342,7 @@ export default function ClientLoadingForm() {
 
   const handleSave = async () => {
     if (!validateForm()) return;
+    setLoading(true);
 
     const firstCode = items.find((r) => r.varietyCode)?.varietyCode;
     if (!firstCode) return toast.error("Select at least one variety");
@@ -369,6 +372,9 @@ export default function ClientLoadingForm() {
 
       toast.success("Client loading saved!");
 
+      // optional: keep this if your backend changes vehicle assignment
+      queryClient.invalidateQueries({ queryKey: ["assigned-vehicles"] });
+
       // ✅ hide vehicle instantly without reload
       if (!isOtherVehicle && vehicleId) {
         setUsedVehicleIds((prev) => {
@@ -388,6 +394,8 @@ export default function ClientLoadingForm() {
       const msg =
         err?.response?.data?.message || "Failed to save Client loading";
       toast.error(msg);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -407,6 +415,7 @@ export default function ClientLoadingForm() {
         <Button
           onClick={handleSave}
           className="w-full sm:w-auto rounded-xl px-5 bg-[#139BC3] text-white hover:bg-[#1088AA] shadow-[0_12px_24px_-14px_rgba(19,155,195,0.7)]"
+          disabled={loading}
         >
           <Save className="h-4 w-4 mr-2" />
           Save

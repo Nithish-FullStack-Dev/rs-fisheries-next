@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/select";
 import { PlusCircle, Save, Trash2 } from "lucide-react";
 import { Field, FieldLabel } from "@/components/ui/field";
+import { fi } from "date-fns/locale";
 
 const TRAY_WEIGHT = 35;
 const DEDUCTION_PERCENT = 5;
@@ -69,6 +70,7 @@ export default function AgentLoading() {
   const [date, setDate] = useState(todayYMD());
   const [vehicleId, setVehicleId] = useState("");
   const [otherVehicleNo, setOtherVehicleNo] = useState("");
+  const [loading, setLoading] = useState(false);
 
   const isOtherVehicle = vehicleId === "__OTHER__";
 
@@ -283,6 +285,7 @@ export default function AgentLoading() {
 
   const handleSave = async () => {
     if (!validateForm()) return;
+    setLoading(true);
 
     const activeRows = items.filter(
       (r) => safeNum(r.noTrays) > 0 || safeNum(r.loose) > 0
@@ -325,6 +328,8 @@ export default function AgentLoading() {
 
       toast.success("Agent loading saved!");
 
+      queryClient.invalidateQueries({ queryKey: ["assigned-vehicles"] });
+
       // ✅ hide vehicle instantly without refresh
       if (!isOtherVehicle && vehicleId) {
         setUsedVehicleIds((prev) => {
@@ -339,6 +344,8 @@ export default function AgentLoading() {
       toast.error(
         err?.response?.data?.message || "Failed to save agent loading"
       );
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -358,6 +365,7 @@ export default function AgentLoading() {
         <Button
           onClick={handleSave}
           className="w-full sm:w-auto rounded-xl px-5 bg-[#139BC3] text-white hover:bg-[#1088AA] shadow-[0_12px_24px_-14px_rgba(19,155,195,0.7)]"
+          disabled={loading}
         >
           <Save className="h-4 w-4 mr-2" />
           Save
