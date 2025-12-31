@@ -13,7 +13,7 @@ const EMAIL_REGEX = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i;
 /**
  * FILE VALIDATION HELPERS
  */
-const IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png"];
+const IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "image/webp", "application/pdf"];
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 
 export const joiningFormSchema = z
@@ -121,7 +121,7 @@ export const joiningFormSchema = z
     passportPhoto: z
       .instanceof(File, { message: "Passport photo is required" })
       .refine((file) => IMAGE_TYPES.includes(file.type), {
-        message: "Passport photo must be JPG/JPEG/PNG",
+        message: "Passport photo must be JPG/JPEG/PNG/PDF/WEBP",
       })
       .refine((file) => file.size <= MAX_FILE_SIZE, {
         message: "Passport photo must be under 5MB",
@@ -130,7 +130,7 @@ export const joiningFormSchema = z
     aadhaarImage: z
       .instanceof(File, { message: "Aadhaar image is required" })
       .refine((file) => IMAGE_TYPES.includes(file.type), {
-        message: "Aadhaar image must be JPG/JPEG/PNG",
+        message: "Aadhaar image must be JPG/JPEG/PNG/PDF/WEBP",
       })
       .refine((file) => file.size <= MAX_FILE_SIZE, {
         message: "Aadhaar image must be under 5MB",
@@ -139,7 +139,7 @@ export const joiningFormSchema = z
     panImage: z
       .instanceof(File, { message: "PAN image is required" })
       .refine((file) => IMAGE_TYPES.includes(file.type), {
-        message: "PAN image must be JPG/JPEG/PNG",
+        message: "PAN image must be JPG/JPEG/PNG/PDF/WEBP",
       })
       .refine((file) => file.size <= MAX_FILE_SIZE, {
         message: "PAN image must be under 5MB",
@@ -159,7 +159,7 @@ const optionalImageField = z
   .instanceof(File)
   .optional()
   .refine((file) => file === undefined || IMAGE_TYPES.includes(file.type), {
-    message: "Image must be JPG/JPEG/PNG",
+    message: "Image must be JPG/JPEG/PNG/PDF/WEBP",
   })
   .refine((file) => file === undefined || file.size <= MAX_FILE_SIZE, {
     message: "Image must be under 5MB",

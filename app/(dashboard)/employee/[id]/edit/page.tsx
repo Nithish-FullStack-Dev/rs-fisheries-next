@@ -841,7 +841,7 @@ export default function EditEmployeePage() {
                 <Controller
                   name="passportPhoto"
                   control={form.control}
-                  render={({ field: { onChange, value } }) => {
+                  render={({ field: { onChange, value }, fieldState }) => {
                     const handleUpload = (
                       e: React.ChangeEvent<HTMLInputElement>
                     ) => {
@@ -882,7 +882,7 @@ export default function EditEmployeePage() {
                           </Button>
                           <input
                             type="file"
-                            accept="image/jpeg,image/jpg,image/png"
+                            accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf"
                             hidden
                             ref={passportRef}
                             onChange={handleUpload}
@@ -909,7 +909,11 @@ export default function EditEmployeePage() {
                             </div>
                           )}
                         </div>
-                        <FormMessage />
+                        {fieldState.error && (
+                          <p className="text-sm text-red-600 mt-2">
+                            {fieldState.error.message}
+                          </p>
+                        )}
                       </FormItem>
                     );
                   }}
@@ -919,7 +923,7 @@ export default function EditEmployeePage() {
                 <Controller
                   name="aadhaarImage"
                   control={form.control}
-                  render={({ field: { onChange, value } }) => {
+                  render={({ field: { onChange, value }, fieldState }) => {
                     const handleUpload = (
                       e: React.ChangeEvent<HTMLInputElement>
                     ) => {
@@ -960,7 +964,7 @@ export default function EditEmployeePage() {
                           </Button>
                           <input
                             type="file"
-                            accept="image/jpeg,image/jpg,image/png"
+                            accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf"
                             hidden
                             ref={aadhaarRef}
                             onChange={handleUpload}
@@ -987,7 +991,11 @@ export default function EditEmployeePage() {
                             </div>
                           )}
                         </div>
-                        <FormMessage />
+                        {fieldState.error && (
+                          <p className="text-sm text-red-600 mt-2">
+                            {fieldState.error.message}
+                          </p>
+                        )}
                       </FormItem>
                     );
                   }}
@@ -997,7 +1005,7 @@ export default function EditEmployeePage() {
                 <Controller
                   name="panImage"
                   control={form.control}
-                  render={({ field: { onChange, value } }) => {
+                  render={({ field: { onChange, value }, fieldState }) => {
                     const handleUpload = (
                       e: React.ChangeEvent<HTMLInputElement>
                     ) => {
@@ -1037,7 +1045,7 @@ export default function EditEmployeePage() {
                           </Button>
                           <input
                             type="file"
-                            accept="image/jpeg,image/jpg,image/png"
+                            accept="image/jpeg,image/jpg,image/png,image/webp,application/pdf"
                             hidden
                             ref={panRef}
                             onChange={handleUpload}
@@ -1064,7 +1072,11 @@ export default function EditEmployeePage() {
                             </div>
                           )}
                         </div>
-                        <FormMessage />
+                        {fieldState.error && (
+                          <p className="text-sm text-red-600 mt-2">
+                            {fieldState.error.message}
+                          </p>
+                        )}
                       </FormItem>
                     );
                   }}

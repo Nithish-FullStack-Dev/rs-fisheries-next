@@ -43,6 +43,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { ApiResponse, Employee } from "@/lib/types";
+import { DocumentViewerDialog } from "@/components/helpers/DocumentViewerDialog";
 
 interface Payment {
   id: string;
@@ -192,10 +193,10 @@ const EmployeeDetailPage = () => {
           <div className="lg:col-span-4 space-y-6">
             <Card className="overflow-hidden border-none shadow-md">
               <div
-                className="h-32"
+                className="h-28 w-full"
                 style={{
-                  backgroundImage: `url('/favicon.jpg')`,
-                  backgroundSize: "cover",
+                  backgroundImage: `url('/assets/favicon.jpg')`,
+                  backgroundSize: "contain",
                   backgroundPosition: "center",
                   backgroundRepeat: "no-repeat",
                 }}
@@ -638,28 +639,59 @@ const DocumentPreview = ({
   type,
 }: {
   title: string;
-  src: string;
+  src?: string | null;
   type: string;
-}) => (
-  <div className="group relative rounded-xl border bg-card text-card-foreground shadow-sm hover:shadow-md transition-all cursor-pointer overflow-hidden">
-    <div className="aspect-video w-full bg-slate-100 relative overflow-hidden">
-      <img
-        src={src}
-        alt={title}
-        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-      />
-      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-        <Button variant="secondary" size="sm" className="h-8">
-          View
-        </Button>
+}) => {
+  const [open, setOpen] = useState(false);
+
+  if (!src) {
+    return (
+      <div className="rounded-xl border bg-slate-50 p-6 text-center text-sm text-muted-foreground">
+        No document uploaded
       </div>
-    </div>
-    <div className="p-4">
-      <h3 className="font-semibold text-sm">{title}</h3>
-      <p className="text-xs text-muted-foreground mt-1">{type}</p>
-    </div>
-  </div>
-);
+    );
+  }
+
+  const isPdf = src.toLowerCase().endsWith(".pdf");
+
+  return (
+    <>
+      <div className="group relative rounded-xl border bg-card shadow-sm hover:shadow-md transition-all overflow-hidden">
+        <div className="aspect-video w-full bg-slate-100 relative">
+          {isPdf ? (
+            <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+              PDF Document
+            </div>
+          ) : (
+            <img
+              src={src}
+              alt={title}
+              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+            />
+          )}
+
+          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+            <Button variant="secondary" size="sm" onClick={() => setOpen(true)}>
+              View
+            </Button>
+          </div>
+        </div>
+
+        <div className="p-4">
+          <h3 className="font-semibold text-sm">{title}</h3>
+          <p className="text-xs text-muted-foreground mt-1">{type}</p>
+        </div>
+      </div>
+
+      <DocumentViewerDialog
+        open={open}
+        onOpenChange={setOpen}
+        title={title}
+        src={src}
+      />
+    </>
+  );
+};
 
 const CopyButton = ({ text }: { text: string }) => {
   const [copied, setCopied] = useState(false);
