@@ -36,12 +36,23 @@ interface ItemRow {
   loose: number;
 }
 
+const safeNum = (v: unknown) => {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return n;
+};
+
 export default function FormerLoading() {
   const [FarmerName, setFarmerName] = useState("");
   const [village, setVillage] = useState("");
   const [date, setDate] = useState(todayYMD());
   const [vehicleId, setVehicleId] = useState("");
   const [otherVehicleNo, setOtherVehicleNo] = useState("");
+
+  // ✅ local set to hide vehicles without page reload
+  const [usedVehicleIds, setUsedVehicleIds] = useState<Set<string>>(
+    () => new Set()
+  );
 
   const queryClient = useQueryClient();
 
@@ -65,7 +76,7 @@ export default function FormerLoading() {
     queryKey: ["assigned-vehicles"],
     queryFn: async () => {
       const res = await axios.get("/api/vehicles/assign-driver");
-      return res.data.data;
+      return res.data.data ?? [];
     },
   });
 
@@ -77,37 +88,13 @@ export default function FormerLoading() {
     queryKey: ["varieties"],
     queryFn: async () => {
       const res = await axios.get("/api/fish-varieties");
-      return res.data.data;
+      return res.data.data ?? [];
     },
   });
 
-  const addRow = () => {
-    setItems((prev) => [
-      ...prev,
-      { id: crypto.randomUUID(), varietyCode: "", noTrays: 0, loose: 0 },
-    ]);
-  };
-
-  const removeRow = (id: string) => {
-    if (items.length === 1) return;
-    setItems(items.filter((r) => r.id !== id));
-  };
-
-  const updateRow = (id: string, field: keyof ItemRow, value: any) => {
-    setItems((prev) =>
-      prev.map((r) =>
-        r.id === id
-          ? {
-              ...r,
-              [field]: field === "varietyCode" ? value : Math.max(0, value),
-            }
-          : r
-      )
-    );
-  };
-
+  // ---- helpers ----
   const calculateRowTotal = (item: ItemRow) => {
-    return item.noTrays * TRAY_WEIGHT + item.loose;
+    return safeNum(item.noTrays) * TRAY_WEIGHT + safeNum(item.loose);
   };
 
   const totalKgs = useMemo(
@@ -139,51 +126,174 @@ export default function FormerLoading() {
 
   const isOtherVehicle = vehicleId === "__OTHER__";
 
-  const handleSave = async () => {
+  // ✅ Filter vehicles so selected vehicles won't appear again immediately
+  const availableVehicles = useMemo(() => {
+    // Keep currently selected vehicle visible (so UI doesn't break)
+    return (vehicles ?? []).filter((v: any) => {
+      if (!v?.id) return false;
+      if (v.id === vehicleId) return true;
+      return !usedVehicleIds.has(v.id);
+    });
+  }, [vehicles, usedVehicleIds, vehicleId]);
+
+  // ---- items CRUD ----
+  const addRow = () => {
+    setItems((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), varietyCode: "", noTrays: 0, loose: 0 },
+    ]);
+  };
+
+  const removeRow = (id: string) => {
+    setItems((prev) =>
+      prev.length === 1 ? prev : prev.filter((r) => r.id !== id)
+    );
+  };
+
+  const updateRow = (id: string, field: keyof ItemRow, value: any) => {
+    setItems((prev) =>
+      prev.map((r) => {
+        if (r.id !== id) return r;
+
+        if (field === "varietyCode") {
+          return { ...r, varietyCode: String(value ?? "") };
+        }
+
+        const n = safeNum(value);
+        // ✅ no negative numbers
+        return { ...r, [field]: Math.max(0, n) } as ItemRow;
+      })
+    );
+  };
+
+  // ---- VALIDATION ----
+  const validateForm = () => {
     if (isLoadingBillNo || isErrorBillNo || !billNoData?.billNo) {
-      return toast.error("Bill number not available");
+      toast.error("Bill number not available");
+      return false;
     }
 
-    if (!FarmerName.trim()) return toast.error("Enter Farmer Name");
-    if (!date) return toast.error("Select Date");
-    if (!vehicleId) return toast.error("Select Vehicle");
-    if (isOtherVehicle && !otherVehicleNo.trim())
-      return toast.error("Enter Vehicle Number");
+    if (!FarmerName.trim()) {
+      toast.error("Enter Farmer Name");
+      return false;
+    }
 
-    const validRows = items.filter((i) => i.noTrays > 0 || i.loose > 0);
-    if (validRows.length === 0) return toast.error("Enter at least one item");
-    if (!validRows[0].varietyCode)
-      return toast.error("Select variety for first item");
+    if (!date) {
+      toast.error("Select Date");
+      return false;
+    }
 
-    const fishCodeValue = validRows[0].varietyCode.toUpperCase();
+    if (!vehicleId) {
+      toast.error("Select Vehicle");
+      return false;
+    }
+
+    if (isOtherVehicle && !otherVehicleNo.trim()) {
+      toast.error("Enter Vehicle Number");
+      return false;
+    }
+
+    // rows with any qty entered
+    const activeRows = items.filter(
+      (i) => safeNum(i.noTrays) > 0 || safeNum(i.loose) > 0
+    );
+
+    if (activeRows.length === 0) {
+      toast.error("Enter at least one item");
+      return false;
+    }
+
+    // validate each active row
+    for (let idx = 0; idx < activeRows.length; idx++) {
+      const row = activeRows[idx];
+
+      if (!row.varietyCode?.trim()) {
+        toast.error(`Select variety for row #${idx + 1}`);
+        return false;
+      }
+
+      const trays = safeNum(row.noTrays);
+      const loose = safeNum(row.loose);
+
+      if (trays < 0 || loose < 0) {
+        toast.error(`Negative values are not allowed (row #${idx + 1})`);
+        return false;
+      }
+
+      if (!Number.isFinite(trays) || !Number.isFinite(loose)) {
+        toast.error(`Invalid number in row #${idx + 1}`);
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const handleSave = async () => {
+    if (!validateForm()) return;
+
+    const activeRows = items.filter(
+      (i) => safeNum(i.noTrays) > 0 || safeNum(i.loose) > 0
+    );
+
+    const fishCodeValue = activeRows[0].varietyCode.toUpperCase();
 
     try {
       await axios.post("/api/former-loading", {
         billNo: billNoData.billNo,
         fishCode: fishCodeValue,
-        FarmerName,
-        village,
+        FarmerName: FarmerName.trim(),
+        village: village.trim(),
         date,
         vehicleId: isOtherVehicle ? null : vehicleId,
         vehicleNo: isOtherVehicle ? otherVehicleNo.trim() : null,
-        items: items.map((i) => ({
+        items: activeRows.map((i) => ({
           varietyCode: i.varietyCode,
-          noTrays: i.noTrays,
-          trayKgs: i.noTrays * TRAY_WEIGHT,
-          loose: i.loose,
-          totalKgs: i.noTrays * TRAY_WEIGHT + i.loose,
-          pricePerKg: 0, // will be set later in vendor bills
+          noTrays: safeNum(i.noTrays),
+          trayKgs: safeNum(i.noTrays) * TRAY_WEIGHT,
+          loose: safeNum(i.loose),
+          totalKgs: safeNum(i.noTrays) * TRAY_WEIGHT + safeNum(i.loose),
+          pricePerKg: 0,
           totalPrice: 0,
         })),
       });
 
       toast.success("Former loading saved successfully!");
+
+      // ✅ mark vehicle used immediately (no refresh)
+      if (!isOtherVehicle && vehicleId) {
+        setUsedVehicleIds((prev) => {
+          const next = new Set(prev);
+          next.add(vehicleId);
+          return next;
+        });
+      }
+
       resetForm();
       queryClient.invalidateQueries({ queryKey: ["next-bill-no"] });
-    } catch (err) {
-      toast.error("Failed to save");
+      // optional: keep this if your backend changes vehicle assignment
+      // queryClient.invalidateQueries({ queryKey: ["assigned-vehicles"] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to save");
     }
   };
+  // allow letters + space + dot + apostrophe + hyphen
+  const NAME_REGEX = /^[A-Za-z][A-Za-z .'-]*$/;
+
+  // allow letters + space only (you can add dot/hyphen if needed)
+  const VILLAGE_REGEX = /^[A-Za-z][A-Za-z ]*$/;
+
+  const cleanName = (value: string) =>
+    value
+      .replace(/[^A-Za-z .'-]/g, "")
+      .replace(/\s{2,}/g, " ")
+      .trimStart();
+
+  const cleanVillage = (value: string) =>
+    value
+      .replace(/[^A-Za-z ]/g, "")
+      .replace(/\s{2,}/g, " ")
+      .trimStart();
 
   return (
     <Card className="p-4 sm:p-6 rounded-2xl space-y-6 border border-[#139BC3]/15 bg-white shadow-[0_18px_45px_-30px_rgba(19,155,195,0.35)]">
@@ -217,26 +327,38 @@ export default function FormerLoading() {
           />
         </Field>
         <Field>
-          <FieldLabel>Farmer Name</FieldLabel>
+          <FieldLabel>Farmer Name *</FieldLabel>
           <Input
+            type="text"
             value={FarmerName}
-            onChange={(e) => setFarmerName(e.target.value)}
+            onChange={(e) => setFarmerName(cleanName(e.target.value))}
+            placeholder="Enter farmer name"
+            inputMode="text"
           />
         </Field>
+
         <Field>
           <FieldLabel>Village</FieldLabel>
-          <Input value={village} onChange={(e) => setVillage(e.target.value)} />
+          <Input
+            type="text"
+            value={village}
+            onChange={(e) => setVillage(cleanVillage(e.target.value))}
+            placeholder="Enter village"
+            inputMode="text"
+          />
         </Field>
+
         <Field>
-          <FieldLabel>Date</FieldLabel>
+          <FieldLabel>Date *</FieldLabel>
           <Input
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
           />
         </Field>
+
         <Field className="sm:col-span-2 md:col-span-1">
-          <FieldLabel>Select Vehicle</FieldLabel>
+          <FieldLabel>Select Vehicle *</FieldLabel>
           <Select
             value={vehicleId}
             onValueChange={(v) => {
@@ -247,8 +369,9 @@ export default function FormerLoading() {
             <SelectTrigger>
               <SelectValue placeholder="Select Vehicle" />
             </SelectTrigger>
+
             <SelectContent>
-              {vehicles.map((v: any) => (
+              {availableVehicles.map((v: any) => (
                 <SelectItem key={v.id} value={v.id}>
                   {v.vehicleNumber} – {v.assignedDriver?.name || "No Driver"}
                 </SelectItem>
@@ -257,19 +380,20 @@ export default function FormerLoading() {
             </SelectContent>
           </Select>
         </Field>
+
         {isOtherVehicle && (
           <Field>
-            <FieldLabel>Other Vehicle Number</FieldLabel>
+            <FieldLabel>Other Vehicle Number *</FieldLabel>
             <Input
               value={otherVehicleNo}
-              onChange={(e) => setOtherVehicleNo(e.target.value)}
+              onChange={(e) => setOtherVehicleNo(e.target.value.toUpperCase())}
               placeholder="Enter vehicle number"
             />
           </Field>
         )}
       </div>
 
-      {/* Items Table - Mobile & Desktop */}
+      {/* Items - Mobile Cards */}
       <div className="grid grid-cols-1 gap-3 md:hidden">
         {items.map((item, i) => (
           <div
@@ -287,10 +411,11 @@ export default function FormerLoading() {
                 <Trash2 className="h-4 w-4 text-red-500" />
               </Button>
             </div>
+
             <div className="space-y-3">
               <div>
                 <label className="text-xs font-semibold text-slate-500">
-                  Variety
+                  Variety *
                 </label>
                 <Select
                   value={item.varietyCode}
@@ -307,10 +432,12 @@ export default function FormerLoading() {
                     ))}
                   </SelectContent>
                 </Select>
+
                 <div className="mt-1 text-sm text-slate-700">
                   {getVarietyName(item.varietyCode)}
                 </div>
               </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-slate-500">
@@ -318,27 +445,31 @@ export default function FormerLoading() {
                   </label>
                   <Input
                     type="number"
+                    inputMode="numeric"
+                    min={0}
                     value={item.noTrays}
                     onChange={(e) =>
-                      updateRow(item.id, "noTrays", Number(e.target.value))
+                      updateRow(item.id, "noTrays", e.target.value)
                     }
-                    min={0}
                   />
                 </div>
+
                 <div>
                   <label className="text-xs font-semibold text-slate-500">
                     Loose
                   </label>
                   <Input
                     type="number"
+                    inputMode="decimal"
+                    min={0}
                     value={item.loose}
                     onChange={(e) =>
-                      updateRow(item.id, "loose", Number(e.target.value))
+                      updateRow(item.id, "loose", e.target.value)
                     }
-                    min={0}
                   />
                 </div>
               </div>
+
               <div className="bg-slate-50 border rounded-xl p-3 flex justify-between">
                 <span className="text-sm">Total Kgs</span>
                 <span className="font-bold">
@@ -350,12 +481,13 @@ export default function FormerLoading() {
         ))}
       </div>
 
+      {/* Items - Desktop Table */}
       <div className="hidden md:block overflow-x-auto rounded-2xl border">
         <table className="w-full min-w-[900px]">
           <thead className="bg-[#139BC3]/10">
             <tr>
               <th className="px-4 py-3 text-left">S.No</th>
-              <th className="px-4 py-3 text-left">Variety</th>
+              <th className="px-4 py-3 text-left">Variety *</th>
               <th className="px-4 py-3 text-left">Name</th>
               <th className="px-4 py-3 text-left">Trays</th>
               <th className="px-4 py-3 text-left">Loose</th>
@@ -363,10 +495,12 @@ export default function FormerLoading() {
               <th className="px-4 py-3 text-left">Action</th>
             </tr>
           </thead>
+
           <tbody>
             {items.map((item, i) => (
               <tr key={item.id} className="hover:bg-[#139BC3]/5">
                 <td className="px-4 py-3">{i + 1}</td>
+
                 <td className="px-4 py-3">
                   <Select
                     value={item.varietyCode}
@@ -384,32 +518,41 @@ export default function FormerLoading() {
                     </SelectContent>
                   </Select>
                 </td>
+
                 <td className="px-4 py-3">
                   {getVarietyName(item.varietyCode)}
                 </td>
+
                 <td className="px-4 py-3">
                   <Input
                     type="number"
+                    inputMode="numeric"
+                    min={0}
                     value={item.noTrays}
                     onChange={(e) =>
-                      updateRow(item.id, "noTrays", Number(e.target.value))
+                      updateRow(item.id, "noTrays", e.target.value)
                     }
                     className="w-24"
                   />
                 </td>
+
                 <td className="px-4 py-3">
                   <Input
                     type="number"
+                    inputMode="decimal"
+                    min={0}
                     value={item.loose}
                     onChange={(e) =>
-                      updateRow(item.id, "loose", Number(e.target.value))
+                      updateRow(item.id, "loose", e.target.value)
                     }
                     className="w-24"
                   />
                 </td>
+
                 <td className="px-4 py-3 font-semibold">
                   {calculateRowTotal(item).toFixed(2)}
                 </td>
+
                 <td className="px-4 py-3">
                   <Button
                     size="icon"
@@ -432,6 +575,7 @@ export default function FormerLoading() {
           <Plus className="h-4 w-4 mr-2" />
           Add Row
         </Button>
+
         <div className="text-right">
           <p className="text-sm text-slate-500">Total Weight</p>
           <p className="text-2xl font-bold">

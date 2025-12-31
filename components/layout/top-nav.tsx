@@ -153,7 +153,7 @@ export function TopNav() {
                   {user?.employee.fullName || "User"}
                 </span>
                 <span className="text-xs text-slate-500 truncate">
-                  {user?.employee.email || "user@example.com"}
+                  {user?.email || "user@example.com"}
                 </span>
               </div>
             </DropdownMenuLabel>

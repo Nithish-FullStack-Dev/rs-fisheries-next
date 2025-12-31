@@ -19,8 +19,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { UserFormValues, UserValidationSchema } from "@/utils/user-types";
-import { useEffect, useState } from "react";
+import { User, UserFormValues, UserValidationSchema } from "@/utils/user-types";
+import { useEffect, useMemo, useState } from "react";
 import { Employee, useEmployeeDropDown } from "@/lib/types";
 
 interface Props {
@@ -30,6 +30,9 @@ interface Props {
   mode: "add" | "edit";
   defaultValues?: { employeeId: string; email: string } | null;
   isLoading: boolean;
+
+  // ✅ NEW: existing users list
+  users: User[];
 }
 
 export default function UserDialog({
@@ -39,8 +42,9 @@ export default function UserDialog({
   mode,
   defaultValues,
   isLoading,
+  users,
 }: Props) {
-  const { handleSubmit, reset, control, watch } = useForm<UserFormValues>({
+  const { handleSubmit, reset, control, register } = useForm<UserFormValues>({
     resolver: zodResolver(UserValidationSchema),
     defaultValues: {
       employeeId: "",
@@ -48,7 +52,6 @@ export default function UserDialog({
       password: "",
     },
   });
-  const passwordValue = watch("password");
 
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(
     null
@@ -59,6 +62,21 @@ export default function UserDialog({
     isLoading: isEmployeeLoading,
     isError: isEmployeeError,
   } = useEmployeeDropDown();
+
+  // ✅ Build a set of employeeIds that already have users
+  const assignedEmployeeIds = useMemo(() => {
+    return new Set(users?.map((u) => u.employeeId).filter(Boolean));
+  }, [users]);
+
+  // ✅ Dropdown list: remove employees that already have users (only in add mode)
+  const employeeOptions = useMemo(() => {
+    const list = res?.data ?? [];
+
+    if (mode === "edit") return list;
+
+    // add mode -> show only not assigned
+    return list.filter((emp) => !assignedEmployeeIds.has(emp.id));
+  }, [res?.data, mode, assignedEmployeeIds]);
 
   useEffect(() => {
     if (!open || !res?.data) return;
@@ -72,7 +90,7 @@ export default function UserDialog({
         password: "",
       });
 
-      if (emp) setSelectedEmployee(emp);
+      setSelectedEmployee(emp ?? null);
     } else {
       reset({
         employeeId: "",
@@ -85,11 +103,7 @@ export default function UserDialog({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent
-        className="sm:max-w-[560px] rounded-2xl p-0"
-        aria-describedby={undefined}
-      >
-        {/* Header */}
+      <DialogContent className="sm:max-w-[560px] rounded-2xl p-0">
         <div className="p-6 border-b">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">
@@ -100,7 +114,7 @@ export default function UserDialog({
 
         <form
           onSubmit={handleSubmit((data) => {
-            const payload = { ...data };
+            const payload: any = { ...data };
 
             if (
               mode === "edit" &&
@@ -116,6 +130,7 @@ export default function UserDialog({
           {/* Employee */}
           <div className="space-y-2">
             <Label>Employee</Label>
+
             <Controller
               name="employeeId"
               control={control}
@@ -127,9 +142,8 @@ export default function UserDialog({
                     }
                     value={field.value}
                     onValueChange={(id) => {
-                      const emp = res?.data.find((e) => e.id === id);
+                      const emp = (res?.data ?? []).find((e) => e.id === id);
                       if (!emp) return;
-
                       field.onChange(id);
                       setSelectedEmployee(emp);
                     }}
@@ -147,21 +161,22 @@ export default function UserDialog({
                     </SelectTrigger>
 
                     <SelectContent>
-                      {res?.data && res.data.length > 0 ? (
-                        res.data.map((emp) => (
+                      {employeeOptions.length > 0 ? (
+                        employeeOptions.map((emp) => (
                           <SelectItem key={emp.id} value={emp.id}>
                             {emp.fullName} ({emp.designation})
                           </SelectItem>
                         ))
                       ) : (
                         <SelectItem value="no-data" disabled>
-                          No employees available
+                          {mode === "add"
+                            ? "All employees already have users"
+                            : "No employees available"}
                         </SelectItem>
                       )}
                     </SelectContent>
                   </Select>
 
-                  {/* ✅ ERROR MESSAGE */}
                   {fieldState.error && (
                     <p className="text-sm text-red-600">
                       {fieldState.error.message}
@@ -176,12 +191,11 @@ export default function UserDialog({
             <Label>Email</Label>
             <Input
               type="email"
-              {...control.register("email")}
+              {...register("email")}
               placeholder="Enter Email"
             />
           </div>
 
-          {/* Password */}
           <div className="space-y-2">
             <Label>
               {mode === "add" ? "Password" : "New Password (optional)"}
@@ -193,15 +207,14 @@ export default function UserDialog({
                   ? "Enter password"
                   : "Leave blank to keep existing password"
               }
-              {...control.register("password")}
+              {...register("password")}
             />
           </div>
-          {/* Footer */}
+
           <DialogFooter className="pt-2">
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-
             <Button type="submit" disabled={isLoading}>
               {mode === "add" ? "Create User" : "Update User"}
             </Button>

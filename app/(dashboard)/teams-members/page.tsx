@@ -334,6 +334,7 @@ export default function UserPage() {
         isLoading={
           mode === "add" ? createMutation.isPending : updateMutation.isPending
         }
+        users={users} // ✅ PASS USERS
         defaultValues={
           mode === "edit" && selectedUser
             ? { employeeId: selectedUser.employeeId, email: selectedUser.email }
