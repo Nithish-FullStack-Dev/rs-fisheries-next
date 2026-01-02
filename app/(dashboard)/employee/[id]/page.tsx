@@ -44,6 +44,15 @@ import {
 } from "@/components/ui/pagination";
 import { ApiResponse, Employee } from "@/lib/types";
 import { DocumentViewerDialog } from "@/components/helpers/DocumentViewerDialog";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface Payment {
   id: string;
@@ -60,9 +69,12 @@ interface PaymentResponse {
   payments: Payment[];
 }
 
+type TabKey = "overview" | "financial" | "payslips" | "documents";
+
 const EmployeeDetailPage = () => {
   const { id } = useParams();
   const router = useRouter();
+  const [tabs, setTabs] = useState<TabKey>("overview");
 
   // Pagination state (client-side)
   const [currentPage, setCurrentPage] = useState(1);
@@ -164,6 +176,10 @@ const EmployeeDetailPage = () => {
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   );
+
+  const handleTabChange = (value: string) => {
+    setTabs(value as TabKey);
+  };
 
   return (
     <div className="p-6 md:p-8">
@@ -281,8 +297,47 @@ const EmployeeDetailPage = () => {
           </div>
 
           <div className="lg:col-span-8">
-            <Tabs defaultValue="overview" className="w-full">
-              <TabsList className="grid w-full grid-cols-4 mb-4 h-12">
+            <Tabs
+              value={tabs}
+              onValueChange={handleTabChange}
+              className="w-full"
+            >
+              {/* Mobile: Select */}
+              <div className="block sm:hidden mb-4">
+                <Select value={tabs} onValueChange={handleTabChange}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select section" />
+                  </SelectTrigger>
+
+                  <SelectContent>
+                    <SelectItem value="overview">
+                      <div className="flex items-center gap-2">
+                        <User className="h-4 w-4" /> Overview
+                      </div>
+                    </SelectItem>
+
+                    <SelectItem value="financial">
+                      <div className="flex items-center gap-2">
+                        <Wallet className="h-4 w-4" /> Financials
+                      </div>
+                    </SelectItem>
+
+                    <SelectItem value="payslips">
+                      <div className="flex items-center gap-2">
+                        <Receipt className="h-4 w-4" /> Pay Slips
+                      </div>
+                    </SelectItem>
+
+                    <SelectItem value="documents">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4" /> Documents
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <TabsList className="hidden sm:grid w-full grid-cols-4 mb-4 h-12">
                 <TabsTrigger value="overview" className="gap-2">
                   <User className="h-4 w-4" /> Overview
                 </TabsTrigger>
@@ -456,11 +511,17 @@ const EmployeeDetailPage = () => {
                       </div>
                     ) : (
                       <>
-                        <div className="divide-y">
+                        <div className="divide-y ">
                           {paginatedPayments.map((payment) => (
                             <div
                               key={payment.id}
-                              className="flex items-center justify-between px-6 py-5 hover:bg-muted/50 transition-colors"
+                              className="
+        flex flex-col gap-4
+        px-4 py-4
+        sm:flex-row sm:items-center sm:justify-between
+        sm:px-6 sm:py-5
+        hover:bg-muted/50 transition-colors
+      "
                             >
                               <div className="flex items-center gap-4">
                                 <div className="bg-blue-100 p-3 rounded-full text-blue-600">
