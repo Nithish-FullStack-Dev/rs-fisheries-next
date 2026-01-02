@@ -65,6 +65,8 @@ export function ActiveTripsTable() {
       const res = await axios.get("/api/vehicles");
       return res.data.data as ActiveTrip[];
     },
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 
   const vehicles = data ?? [];
