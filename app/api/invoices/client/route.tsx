@@ -5,10 +5,8 @@ import { prisma } from "@/lib/prisma";
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-
     const { paymentId, clientId, clientName, invoiceNo, billTo } = body;
 
-    // Removed shipTo from required fields
     if (!paymentId || !invoiceNo || !clientId || !clientName || !billTo) {
       return NextResponse.json(
         { message: "Missing required fields" },
@@ -18,7 +16,18 @@ export async function POST(req: NextRequest) {
 
     const payment = await prisma.clientPayment.findUnique({
       where: { id: paymentId },
-      select: { amount: true, date: true },
+      select: {
+        amount: true,
+        date: true,
+        paymentMode: true,
+        referenceNo: true,
+        paymentRef: true,
+        paymentdetails: true,
+        accountNumber: true,
+        ifsc: true,
+        bankName: true,
+        bankAddress: true,
+      },
     });
 
     if (!payment) {
@@ -41,7 +50,6 @@ export async function POST(req: NextRequest) {
         clientName,
         invoiceNo,
         billTo,
-        // shipTo removed from update
         hsn,
         gstPercent,
         taxableValue,
@@ -56,7 +64,6 @@ export async function POST(req: NextRequest) {
         invoiceNo,
         invoiceDate: payment.date || new Date(),
         billTo,
-        // shipTo removed from create
         hsn,
         gstPercent,
         taxableValue,
@@ -66,7 +73,21 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ success: true, invoice });
+    // ✅ return invoice + payment so your frontend can generate PDF properly
+    return NextResponse.json({
+      success: true,
+      invoice,
+      payment: {
+        paymentMode: payment.paymentMode,
+        referenceNo: payment.referenceNo,
+        paymentRef: payment.paymentRef,
+        paymentdetails: payment.paymentdetails,
+        accountNumber: payment.accountNumber,
+        ifsc: payment.ifsc,
+        bankName: payment.bankName,
+        bankAddress: payment.bankAddress,
+      },
+    });
   } catch (err: any) {
     console.error("Client Invoice Save Error:", err);
     return NextResponse.json(
@@ -78,7 +99,6 @@ export async function POST(req: NextRequest) {
 
 export async function GET(req: NextRequest) {
   const paymentId = req.nextUrl.searchParams.get("paymentId");
-
   if (!paymentId) {
     return NextResponse.json({ message: "Missing paymentId" }, { status: 400 });
   }
@@ -91,5 +111,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ message: "Invoice not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ invoice });
+  const payment = await prisma.clientPayment.findUnique({
+    where: { id: paymentId },
+    select: {
+      paymentMode: true,
+      referenceNo: true,
+      paymentRef: true,
+      paymentdetails: true,
+      accountNumber: true,
+      ifsc: true,
+      bankName: true,
+      bankAddress: true,
+    },
+  });
+
+  return NextResponse.json({ invoice, payment });
 }

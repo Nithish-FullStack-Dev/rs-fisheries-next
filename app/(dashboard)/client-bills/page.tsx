@@ -16,6 +16,7 @@ import {
 import { Edit, Check, X, Trash2, Download } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
+import LoadingDeleteDialog from "@/components/helpers/LoadingDeleteDialog";
 
 interface ClientItem {
   id: string;
@@ -82,6 +83,11 @@ export default function ClientBillsPage() {
 
   const [newCount, setNewCount] = useState(0);
 
+  // Delete item dialog (same as vendor-bills)
+  const [deleteItemOpen, setDeleteItemOpen] = useState(false);
+  const [deleteItemTarget, setDeleteItemTarget] = useState<UIItem | null>(null);
+  const [deletingItem, setDeletingItem] = useState(false);
+
   // Pagination
   const PAGE_SIZE = 15;
   const [page, setPage] = useState(1);
@@ -104,6 +110,7 @@ export default function ClientBillsPage() {
     };
   }, [refreshRecords]);
 
+  // New badge
   useEffect(() => {
     if (typeof window === "undefined") return;
     const key = "clientBillsLastSeen";
@@ -178,7 +185,16 @@ export default function ClientBillsPage() {
     setPage(1);
   }, [searchTerm, sortOrder, fromDate, toDate]);
 
-  const totalPages = Math.ceil(items.length / PAGE_SIZE);
+  // Safe total pages
+  const totalPages = useMemo(() => {
+    if (items.length === 0) return 1;
+    return Math.max(1, Math.ceil(items.length / PAGE_SIZE));
+  }, [items.length]);
+
+  // Clamp page
+  useEffect(() => {
+    if (page > totalPages) setPage(totalPages);
+  }, [page, totalPages]);
 
   const paginatedItems = useMemo(() => {
     const start = (page - 1) * PAGE_SIZE;
@@ -205,12 +221,13 @@ export default function ClientBillsPage() {
       setEditing((prev) => {
         const current = prev[id] || {};
         const num = value === "" ? undefined : Number(value);
+
         const item = items.find((i) => i.id === id);
         if (!item) return prev;
 
         const updates: Partial<ClientItem> = { ...current, pricePerKg: num };
 
-        if (num !== undefined) {
+        if (num !== undefined && Number.isFinite(num)) {
           const netKgs = Number(item.netKgsForThisItem || 0);
           updates.totalPrice = Number((netKgs * num).toFixed(2));
         } else {
@@ -235,6 +252,8 @@ export default function ClientBillsPage() {
 
     try {
       await patchItemPrice(item.id, payload);
+
+      // Update totals for the bill
       await axios.post("/api/client-bills/update-total", {
         loadingId: item.loadingId,
       });
@@ -242,9 +261,9 @@ export default function ClientBillsPage() {
       await refreshRecords();
       toast.success("Price updated!");
       cancelEdit(item.id);
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      toast.error("Save failed");
+      toast.error(e?.response?.data?.message || "Save failed");
     } finally {
       setSavingIds((prev) => {
         const c = { ...prev };
@@ -254,17 +273,48 @@ export default function ClientBillsPage() {
     }
   };
 
-  // const deleteItem = async (id: string) => {
-  //   if (!confirm("Delete this item?")) return;
-  //   try {
-  //     await axios.delete(`/api/client-bills/item/${id}`);
-  //     await refreshRecords();
-  //     toast.success("Deleted");
-  //   } catch (e) {
-  //     console.error(e);
-  //     toast.error("Delete failed");
-  //   }
-  // };
+  // ✅ ITEM DELETE (not bill delete)
+  const openDeleteItemDialog = (row: UIItem) => {
+    setDeleteItemTarget(row);
+    setDeleteItemOpen(true);
+  };
+
+  const closeDeleteItemDialog = () => {
+    if (deletingItem) return;
+    setDeleteItemOpen(false);
+    setDeleteItemTarget(null);
+  };
+
+  const confirmDeleteItem = async () => {
+    if (deletingItem) return; // prevent double calls
+    if (!deleteItemTarget?.id) return;
+
+    try {
+      setDeletingItem(true);
+
+      const res = await axios.delete(
+        `/api/client-bills/item/${deleteItemTarget.id}`
+      );
+
+      // refresh list
+      await refreshRecords();
+
+      if (res.data?.deletedBill) {
+        toast.success("Item deleted ✅ Bill also removed (last item)");
+      } else {
+        toast.success("Item deleted");
+      }
+
+      closeDeleteItemDialog();
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e?.response?.data?.message || "Delete failed");
+    } finally {
+      setDeletingItem(false);
+    }
+  };
+
+  // Optional: full bill delete (kept, but NOT used on row trash)
   const deleteBill = async (loadingId?: string) => {
     if (!loadingId) return toast.error("Loading ID missing");
     if (!confirm("Delete this bill and all items?")) return;
@@ -303,7 +353,6 @@ export default function ClientBillsPage() {
     );
   };
 
-  // Reusable Trays/Loose display component
   const TraysDisplay = ({ item }: { item: UIItem }) => {
     const trays = item.noTrays ?? 0;
     const looseKgs = Number(item.loose ?? 0);
@@ -374,7 +423,7 @@ export default function ClientBillsPage() {
 
                 <Select
                   value={sortOrder}
-                  onValueChange={(v: any) => setSortOrder(v)}
+                  onValueChange={(v: "newest" | "oldest") => setSortOrder(v)}
                 >
                   <SelectTrigger className="w-full sm:w-52">
                     <SelectValue />
@@ -468,11 +517,13 @@ export default function ClientBillsPage() {
                             >
                               <Edit className="w-4 h-4" />
                             </Button>
+
+                            {/* ✅ Delete ITEM (not bill) */}
                             <Button
                               size="sm"
                               variant="ghost"
                               className="text-red-600 hover:bg-red-50"
-                              onClick={() => deleteBill(it.loadingId)}
+                              onClick={() => openDeleteItemDialog(it)}
                             >
                               <Trash2 className="w-4 h-4" />
                             </Button>
@@ -517,9 +568,18 @@ export default function ClientBillsPage() {
                                   Math.max(0, Number(e.target.value)).toString()
                                 )
                               }
+                              onKeyDown={(e) => {
+                                if (
+                                  e.key === "-" ||
+                                  e.key === "e" ||
+                                  e.key === "E"
+                                )
+                                  e.preventDefault();
+                              }}
                               className="mt-2 w-full text-right"
                               type="number"
                               step="0.01"
+                              min={0}
                             />
                           ) : (
                             <div className="font-semibold text-gray-900">
@@ -544,6 +604,15 @@ export default function ClientBillsPage() {
                             </div>
                           )}
                         </div>
+
+                        {/* Optional: full bill delete button (separate) */}
+                        {/* <Button
+                          variant="outline"
+                          className="col-span-2 text-red-600 border-red-200 hover:bg-red-50"
+                          onClick={() => deleteBill(it.loadingId)}
+                        >
+                          Delete Full Bill
+                        </Button> */}
                       </div>
                     </Card>
                   );
@@ -600,9 +669,18 @@ export default function ClientBillsPage() {
                                     ).toString()
                                   )
                                 }
+                                onKeyDown={(e) => {
+                                  if (
+                                    e.key === "-" ||
+                                    e.key === "e" ||
+                                    e.key === "E"
+                                  )
+                                    e.preventDefault();
+                                }}
                                 className="w-28 text-right"
                                 type="number"
                                 step="0.01"
+                                min={0}
                               />
                             ) : (
                               <span className="font-medium">
@@ -633,14 +711,26 @@ export default function ClientBillsPage() {
                                 >
                                   <Edit className="w-4 h-4" />
                                 </Button>
+
+                                {/* ✅ Delete ITEM (not bill) */}
                                 <Button
                                   size="sm"
                                   variant="ghost"
                                   className="text-red-600 hover:bg-red-50"
-                                  onClick={() => deleteBill(it.loadingId)}
+                                  onClick={() => openDeleteItemDialog(it)}
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </Button>
+
+                                {/* Optional: full bill delete (separate control) */}
+                                {/* <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="text-red-700 hover:bg-red-50"
+                                  onClick={() => deleteBill(it.loadingId)}
+                                >
+                                  Delete Bill
+                                </Button> */}
                               </div>
                             ) : (
                               <div className="flex justify-center gap-2">
@@ -673,7 +763,7 @@ export default function ClientBillsPage() {
                 </table>
               </div>
 
-              {/* Pagination (mobile + desktop) */}
+              {/* Pagination */}
               {items.length > 0 && totalPages >= 1 && (
                 <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
                   <div className="text-sm text-gray-500">
@@ -735,6 +825,19 @@ export default function ClientBillsPage() {
           )}
         </Card>
       </div>
+
+      {/* ✅ Delete Item Dialog (now wired correctly) */}
+      <LoadingDeleteDialog
+        open={deleteItemOpen}
+        onClose={closeDeleteItemDialog}
+        onConfirm={confirmDeleteItem}
+        loading={deletingItem}
+        title="Delete Item"
+        description={`Delete this item from bill ${
+          deleteItemTarget?.billNo ? `(${deleteItemTarget.billNo})` : ""
+        }? If this is the last item, the bill will be deleted automatically.`}
+        confirmText="Delete Item"
+      />
     </div>
   );
 }

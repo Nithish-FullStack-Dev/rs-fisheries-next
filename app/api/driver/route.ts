@@ -166,14 +166,18 @@ export const GET = apiHandler(async (req: Request) => {
   }
 
   if (assigned === "ASSIGNED") {
-    where.assignedVehicleId = { not: null };
+    where.assignedVehicle = {
+      isNot: null,
+    };
   }
 
   if (assigned === "AVAILABLE") {
-    where.assignedVehicleId = null;
+    where.assignedVehicle = {
+      is: null,
+    };
   }
 
-  const orderBy: Prisma.VehicleOrderByWithRelationInput =
+  const orderBy: Prisma.DriverOrderByWithRelationInput =
     sortBy === "OLDEST" ? { createdAt: "asc" } : { createdAt: "desc" };
 
   const [drivers, total] = await Promise.all([
@@ -266,7 +270,7 @@ export const PATCH = apiHandler(async (req: Request) => {
     if (removeAadharProof) {
       if (aadharProofUrl) {
         const oldPath = path.join(process.cwd(), "public", aadharProofUrl);
-        await fs.unlink(oldPath).catch(() => {});
+        await fs.unlink(oldPath).catch(() => { });
       }
       aadharProofUrl = null;
     } else if (aadharProof && aadharProof.size > 0) {
@@ -284,7 +288,7 @@ export const PATCH = apiHandler(async (req: Request) => {
 
       if (aadharProofUrl) {
         const oldPath = path.join(process.cwd(), "public", aadharProofUrl);
-        await fs.unlink(oldPath).catch(() => {});
+        await fs.unlink(oldPath).catch(() => { });
       }
 
       const bytes = Buffer.from(await aadharProof.arrayBuffer());
@@ -303,7 +307,7 @@ export const PATCH = apiHandler(async (req: Request) => {
     if (removeLicenseProof) {
       if (licenseProofUrl) {
         const oldPath = path.join(process.cwd(), "public", licenseProofUrl);
-        await fs.unlink(oldPath).catch(() => {});
+        await fs.unlink(oldPath).catch(() => { });
       }
       licenseProofUrl = null;
     } else if (licenseProof && licenseProof.size > 0) {
@@ -321,7 +325,7 @@ export const PATCH = apiHandler(async (req: Request) => {
 
       if (licenseProofUrl) {
         const oldPath = path.join(process.cwd(), "public", licenseProofUrl);
-        await fs.unlink(oldPath).catch(() => {});
+        await fs.unlink(oldPath).catch(() => { });
       }
 
       const bytes = Buffer.from(await licenseProof.arrayBuffer());
@@ -372,12 +376,12 @@ export const DELETE = apiHandler(async (req: Request) => {
 
   if (driver.aadharProof) {
     const filePath = path.join(process.cwd(), "public", driver.aadharProof);
-    await fs.unlink(filePath).catch(() => {});
+    await fs.unlink(filePath).catch(() => { });
   }
 
   if (driver.licenseProof) {
     const filePath = path.join(process.cwd(), "public", driver.licenseProof);
-    await fs.unlink(filePath).catch(() => {});
+    await fs.unlink(filePath).catch(() => { });
   }
 
   await prisma.driver.delete({ where: { id } });

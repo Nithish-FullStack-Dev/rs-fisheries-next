@@ -136,7 +136,15 @@ export function DriverTable({ onRequestEdit }: DriverTableProps = {}) {
     { accessorKey: "licenseNumber", header: "License No" },
     { accessorKey: "aadharNumber", header: "Aadhar No" },
     { accessorKey: "age", header: "Age" },
-    { accessorKey: "address", header: "Address" },
+    {
+      accessorKey: "address",
+      header: "Address",
+      cell: ({ row }) => (
+        <div className="max-w-[240px] truncate" title={row.original.address}>
+          {row.original.address}
+        </div>
+      ),
+    },
     {
       accessorKey: "assignedVehicle",
       header: "Assigned Vehicle",

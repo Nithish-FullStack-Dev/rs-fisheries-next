@@ -12,23 +12,28 @@ export interface ClientInvoiceData {
   billTo?: string;
   shipTo?: string;
 
+  /** This will be shown in table under "Description" */
   description?: string;
+
   hsn: string;
 
+  /** For client invoice you are forcing GST to 0 in rendering */
   gstPercent: number;
   taxableValue: number;
   gstAmount: number;
   totalAmount: number;
 
+  // Payment details (show inside left empty box under Tax Summary)
+  paymentMode?: string;
   referenceNo?: string;
+  paymentRef?: string;
+  paymentdetails?: string;
+
   placeOfSupply?: string;
   contactNo?: string;
   state?: string;
   gstin?: string;
 
-  paymentMode?: string;
-
-  // Optional IRN (not used in design to match vendor)
   irn?: string;
   ackNo?: string;
   ackDate?: string;
@@ -104,17 +109,37 @@ function amountToWords(num: number): string {
     "Eighteen",
     "Nineteen",
   ];
-  const b = ["", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety"];
+  const b = [
+    "",
+    "",
+    "Twenty",
+    "Thirty",
+    "Forty",
+    "Fifty",
+    "Sixty",
+    "Seventy",
+    "Eighty",
+    "Ninety",
+  ];
 
   if (!num || num === 0) return "INR Zero Only";
 
   const inWords = (n: number): string => {
     if (n < 20) return a[n];
     if (n < 100) return (b[Math.floor(n / 10)] + " " + a[n % 10]).trim();
-    if (n < 1000) return (a[Math.floor(n / 100)] + " Hundred " + inWords(n % 100)).trim();
-    if (n < 100000) return (inWords(Math.floor(n / 1000)) + " Thousand " + inWords(n % 1000)).trim();
-    if (n < 10000000) return (inWords(Math.floor(n / 100000)) + " Lakh " + inWords(n % 100000)).trim();
-    return (inWords(Math.floor(n / 10000000)) + " Crore " + inWords(n % 10000000)).trim();
+    if (n < 1000)
+      return (a[Math.floor(n / 100)] + " Hundred " + inWords(n % 100)).trim();
+    if (n < 100000)
+      return (
+        inWords(Math.floor(n / 1000)) + " Thousand " + inWords(n % 1000)
+      ).trim();
+    if (n < 10000000)
+      return (
+        inWords(Math.floor(n / 100000)) + " Lakh " + inWords(n % 100000)
+      ).trim();
+    return (
+      inWords(Math.floor(n / 10000000)) + " Crore " + inWords(n % 10000000)
+    ).trim();
   };
 
   return `INR ${inWords(Math.floor(num))} Only`;
@@ -125,7 +150,14 @@ function setBlack(doc: Doc) {
   doc.setTextColor(0);
 }
 
-function rect(doc: Doc, x: number, y: number, w: number, h: number, lw = 0.35) {
+function rect(
+  doc: Doc,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  lw = 0.35
+) {
   setBlack(doc);
   doc.setLineWidth(lw);
   doc.rect(x, y, w, h);
@@ -168,7 +200,14 @@ function textBox(
   });
 }
 
-function oneLineClamp(doc: Doc, text: string, x: number, y: number, maxW: number, fontSize = 7.2) {
+function oneLineClamp(
+  doc: Doc,
+  text: string,
+  x: number,
+  y: number,
+  maxW: number,
+  fontSize = 7.2
+) {
   doc.setFont("Helvetica", "normal");
   doc.setFontSize(fontSize);
 
@@ -196,39 +235,56 @@ function oneLineClamp(doc: Doc, text: string, x: number, y: number, maxW: number
 function detectImageFormat(dataUrl: string): "PNG" | "JPEG" | null {
   if (!dataUrl.startsWith("data:image/")) return null;
   if (dataUrl.startsWith("data:image/png")) return "PNG";
-  if (dataUrl.startsWith("data:image/jpeg") || dataUrl.startsWith("data:image/jpg")) return "JPEG";
+  if (
+    dataUrl.startsWith("data:image/jpeg") ||
+    dataUrl.startsWith("data:image/jpg")
+  )
+    return "JPEG";
   return null;
 }
 
-function detectImageFormatFromContent(dataUrl: string): "PNG" | "JPEG" | null {
+/** TS-safe: works in browser and node (no atob dependency) */
+function detectImageFormatFromContent(
+  dataUrl: string
+): "PNG" | "JPEG" | null {
   if (!dataUrl.startsWith("data:image/")) return null;
-  const parts = dataUrl.split(',');
+
+  const parts = dataUrl.split(",");
   if (parts.length < 2) return null;
   const base64 = parts[1];
 
-  // Decode first few bytes
-  let bin = '';
+  let bytes: Uint8Array;
+
   try {
-    bin = atob(base64.slice(0, 32));
+    if (typeof window === "undefined") {
+      const buf = Buffer.from(base64, "base64");
+      bytes = new Uint8Array(buf.slice(0, 16));
+    } else {
+      const bin = window.atob(base64.slice(0, 64));
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      bytes = arr;
+    }
   } catch {
     return null;
   }
 
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) {
-    bytes[i] = bin.charCodeAt(i);
-  }
-
   // PNG signature
   if (
-    bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47 &&
-    bytes[4] === 0x0D && bytes[5] === 0x0A && bytes[6] === 0x1A && bytes[7] === 0x0A
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47 &&
+    bytes[4] === 0x0d &&
+    bytes[5] === 0x0a &&
+    bytes[6] === 0x1a &&
+    bytes[7] === 0x0a
   ) {
     return "PNG";
   }
 
   // JPEG signature
-  if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) {
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
     return "JPEG";
   }
 
@@ -254,28 +310,37 @@ async function addImageSafe(
   let width = logoWidth;
   let height = logoHeight;
 
-  if (width === undefined || height === undefined || width <= 0 || height <= 0) {
-    // Load image to get dimensions
-    const imgProps = await new Promise<{ width: number, height: number }>((resolve, reject) => {
-      const img = new Image();
-      img.onload = () => resolve({ width: img.width, height: img.height });
-      img.onerror = reject;
-      img.src = dataUrl;
-    });
-    width = imgProps.width;
-    height = imgProps.height;
+  if (
+    (width === undefined || height === undefined || width <= 0 || height <= 0) &&
+    typeof Image !== "undefined"
+  ) {
+    const imgProps = await new Promise<{ width: number; height: number }>(
+      (resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve({ width: img.width, height: img.height });
+        img.onerror = reject;
+        img.src = dataUrl;
+      }
+    ).catch(() => null);
+
+    if (imgProps) {
+      width = imgProps.width;
+      height = imgProps.height;
+    }
   }
 
-  // Calculate fitting size preserving aspect ratio
+  if (!width || !height) {
+    width = maxW;
+    height = maxH;
+  }
+
   let targetW = maxW;
   let targetH = maxH;
+
   if (width > 0 && height > 0) {
     const ratio = width / height;
-    if (targetW / targetH > ratio) {
-      targetW = targetH * ratio;
-    } else {
-      targetH = targetW / ratio;
-    }
+    if (targetW / targetH > ratio) targetW = targetH * ratio;
+    else targetH = targetW / ratio;
   }
 
   const targetX = x + (maxW - targetW) / 2;
@@ -283,30 +348,32 @@ async function addImageSafe(
 
   try {
     doc.addImage(dataUrl, fmt, targetX, targetY, targetW, targetH);
-  } catch (e) {
-    console.error('Failed to add image:', e);
-    // Optionally try the other format as fallback
-    const altFmt = fmt === 'JPEG' ? 'PNG' : 'JPEG';
+  } catch {
+    const altFmt = fmt === "JPEG" ? "PNG" : "JPEG";
     try {
       doc.addImage(dataUrl, altFmt, targetX, targetY, targetW, targetH);
     } catch {
-      // Ignore
+      // ignore
     }
   }
 }
 
 /* ---------------- CORE RENDER ---------------- */
 
-async function renderClientInvoice(doc: Doc, data: ClientInvoiceData, assets?: ClientInvoiceAssets) {
+async function renderClientInvoice(
+  doc: Doc,
+  data: ClientInvoiceData,
+  assets?: ClientInvoiceAssets
+) {
   const L = 12;
   const R = 198;
   const W = R - L;
 
-  // Totals (ALWAYS consistent)
-  // CLIENT INVOICES: Force 0% GST and Total = Taxable Amount (as per your requirement)
+  // CLIENT INVOICES: Force 0% GST and Total = Taxable
   const taxable = Number(data.taxableValue || 0);
-  const gst = 0;                    // Always 0
-  const total = taxable;            // Total must equal taxable (payment amount)
+  const gst = 0;
+  const total = taxable;
+
   const roundedTotal = Math.round(total);
   const roundOff = +(roundedTotal - total).toFixed(2);
 
@@ -316,12 +383,11 @@ async function renderClientInvoice(doc: Doc, data: ClientInvoiceData, assets?: C
   doc.setFontSize(12);
   doc.text(COMPANY.title, (L + R) / 2, 14, { align: "center" });
 
-  /* ---------------- HEADER (NO INNER BORDERS) ---------------- */
+  /* ---------------- HEADER ---------------- */
   let y = 18;
   const headerH = 24;
   rect(doc, L, y, W, headerH);
 
-  // layout areas (no dividing lines drawn)
   const logoAreaW = 26;
   const rightAreaW = 62;
   const centerAreaW = W - logoAreaW - rightAreaW;
@@ -330,7 +396,6 @@ async function renderClientInvoice(doc: Doc, data: ClientInvoiceData, assets?: C
   const centerX = L + logoAreaW;
   const rightX = centerX + centerAreaW;
 
-  // Logo
   await addImageSafe(
     doc,
     assets?.logoDataUrl,
@@ -342,16 +407,18 @@ async function renderClientInvoice(doc: Doc, data: ClientInvoiceData, assets?: C
     assets?.logoHeight
   );
 
-  // Company center
   doc.setFont("Helvetica", "bold");
   doc.setFontSize(12);
-  doc.text(COMPANY.name, centerX + centerAreaW / 2, y + 9, { align: "center" });
+  doc.text(COMPANY.name, centerX + centerAreaW / 2, y + 9, {
+    align: "center",
+  });
 
   doc.setFont("Helvetica", "normal");
   doc.setFontSize(7.2);
-  doc.text(COMPANY.addressLine, centerX + centerAreaW / 2, y + 14, { align: "center" });
+  doc.text(COMPANY.addressLine, centerX + centerAreaW / 2, y + 14, {
+    align: "center",
+  });
 
-  // Right info (clamped)
   const pad = 2;
   const maxW = rightAreaW - pad * 2;
   doc.setFont("Helvetica", "normal");
@@ -370,7 +437,6 @@ async function renderClientInvoice(doc: Doc, data: ClientInvoiceData, assets?: C
   const billW = 112;
   vLine(doc, L + billW, y, y + topRowH);
 
-  // Bill To
   doc.setFont("Helvetica", "bold");
   doc.setFontSize(8.2);
   doc.text("Bill To:", L + 2, y + 6);
@@ -389,7 +455,6 @@ async function renderClientInvoice(doc: Doc, data: ClientInvoiceData, assets?: C
 
   textBox(doc, billToText, L, y + 6, billW, topRowH - 6, 7.4, 3.4);
 
-  // Invoice Details (single clean block – no overlay)
   const invX = L + billW;
   const invW = W - billW;
 
@@ -410,8 +475,7 @@ async function renderClientInvoice(doc: Doc, data: ClientInvoiceData, assets?: C
 
   y += topRowH + 4;
 
-  /* ---------------- ITEMS TABLE (perfect width) ---------------- */
-  // Sum widths = 186 (W) exactly
+  /* ---------------- ITEMS TABLE ---------------- */
   autoTable(doc, {
     startY: y,
     theme: "grid",
@@ -442,7 +506,18 @@ async function renderClientInvoice(doc: Doc, data: ClientInvoiceData, assets?: C
       5: { cellWidth: 18, halign: "right" },
       6: { cellWidth: 22, halign: "right" },
     },
-    head: [["#", "Item name", "HSN / SAC", "Quantity", "Price / Unit (Rs.)", "GST (Rs.)", "Amount (Rs.)"]],
+    // ✅ CHANGED: "Item name" -> "Description"
+    head: [
+      [
+        "#",
+        "Description",
+        "HSN / SAC",
+        "Quantity",
+        "Price / Unit (Rs.)",
+        "GST (Rs.)",
+        "Amount (Rs.)",
+      ],
+    ],
     body: [
       [
         "1",
@@ -467,8 +542,8 @@ async function renderClientInvoice(doc: Doc, data: ClientInvoiceData, assets?: C
 
   y += 10;
 
-  /* ---------------- TAX SUMMARY + TOTALS (fix words row) ---------------- */
-  const lowerH = 38; // increased so "Words" never clips
+  /* ---------------- TAX SUMMARY + TOTALS (WITH PAYMENT DETAILS INSIDE LEFT BOX) ---------------- */
+  const lowerH = 38;
   rect(doc, L, y, W, lowerH);
 
   const leftLowerW = 112;
@@ -482,7 +557,7 @@ async function renderClientInvoice(doc: Doc, data: ClientInvoiceData, assets?: C
   doc.setFontSize(7.6);
   doc.text("Tax Summary:", L + 2, y + 5);
 
-  // Tax table inside left
+  // Tax table inside left (top portion)
   const taxTableY = y + taxTitleH;
   autoTable(doc, {
     startY: taxTableY,
@@ -516,11 +591,50 @@ async function renderClientInvoice(doc: Doc, data: ClientInvoiceData, assets?: C
     foot: [["TOTAL", money(taxable), "", money(gst)]],
   });
 
+  // ✅ Payment Details in remaining empty space under the tax table (LEFT side)
+  const lastTaxY = (doc as any).lastAutoTable.finalY as number;
+  const paymentBoxTop = lastTaxY + 1.5;
+  const paymentBoxBottom = y + lowerH;
+  const paymentBoxH = Math.max(0, paymentBoxBottom - paymentBoxTop);
+
+  if (paymentBoxH > 6) {
+    // separator line (looks neat)
+    hLine(doc, L, L + leftLowerW, paymentBoxTop);
+
+    doc.setFont("Helvetica", "bold");
+    doc.setFontSize(7.6);
+    doc.text("Payment Details:", L + 2, paymentBoxTop + 5);
+
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(7.2);
+
+    const paymentLines = [
+      `Mode: ${data.paymentMode || COMPANY.defaultPaymentMode}`,
+      data.referenceNo ? `Reference No: ${data.referenceNo}` : "",
+      data.paymentRef ? `Payment Ref: ${data.paymentRef}` : "",
+      data.paymentdetails ? `Notes: ${data.paymentdetails}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    // Place to the right of label, clamp inside leftLowerW area
+    textBox(
+      doc,
+      paymentLines,
+      L + 26,
+      paymentBoxTop + 1.5,
+      leftLowerW - 26,
+      paymentBoxH - 1.5,
+      7.2,
+      3.2
+    );
+  }
+
   // Right totals panel
   const rightX2 = L + leftLowerW;
 
   const row1H = 12;
-  const row2H = 14; // bigger for words
+  const row2H = 14;
   const row3H = lowerH - row1H - row2H;
 
   hLine(doc, rightX2, R, y + row1H);
@@ -533,22 +647,34 @@ async function renderClientInvoice(doc: Doc, data: ClientInvoiceData, assets?: C
   doc.text(`Rs. ${money(total)}`, R - 3, y + 4.5, { align: "right" });
 
   doc.text("Round Off", rightX2 + 2, y + 8.5);
-  doc.text(`${roundOff >= 0 ? "" : "-"}Rs. ${money(Math.abs(roundOff))}`, R - 3, y + 8.5, { align: "right" });
+  doc.text(
+    `${roundOff >= 0 ? "" : "-"}Rs. ${money(Math.abs(roundOff))}`,
+    R - 3,
+    y + 8.5,
+    { align: "right" }
+  );
 
   doc.setFont("Helvetica", "bold");
   doc.text("Total", rightX2 + 2, y + 11.3);
   doc.text(`Rs. ${money(roundedTotal)}`, R - 3, y + 11.3, { align: "right" });
 
-  // Words
   const wordsY = y + row1H;
   doc.setFont("Helvetica", "bold");
   doc.setFontSize(7.0);
   doc.text("Invoice amount in Words:", rightX2 + 2, wordsY + 4.6);
 
   doc.setFont("Helvetica", "normal");
-  textBox(doc, amountToWords(roundedTotal), rightX2, wordsY + 5.2, R - rightX2, row2H - 5, 6.9, 3.2);
+  textBox(
+    doc,
+    amountToWords(roundedTotal),
+    rightX2,
+    wordsY + 5.2,
+    R - rightX2,
+    row2H - 5,
+    6.9,
+    3.2
+  );
 
-  // Received/Balance
   const r3Y = y + row1H + row2H;
   doc.setFont("Helvetica", "normal");
   doc.setFontSize(7.0);
@@ -561,16 +687,6 @@ async function renderClientInvoice(doc: Doc, data: ClientInvoiceData, assets?: C
 
   y += lowerH;
 
-  /* ---------------- PAYMENT MODE ---------------- */
-  const payH = 10;
-  rect(doc, L, y, W, payH);
-  doc.setFont("Helvetica", "bold");
-  doc.setFontSize(7.6);
-  doc.text("Payment Mode:", L + 2, y + 6);
-  doc.setFont("Helvetica", "normal");
-  doc.text(data.paymentMode || COMPANY.defaultPaymentMode, L + 30, y + 6);
-  y += payH;
-
   /* ---------------- TERMS ---------------- */
   const termsH = 12;
   rect(doc, L, y, W, termsH);
@@ -582,7 +698,7 @@ async function renderClientInvoice(doc: Doc, data: ClientInvoiceData, assets?: C
   doc.text("Thanks for doing business with us!", L + 2, y + 10);
   y += termsH;
 
-  /* ---------------- FOOTER (Bank | Customer Sign | Company Sign) ---------------- */
+  /* ---------------- FOOTER ---------------- */
   const footerH = 28;
   rect(doc, L, y, W, footerH);
 
@@ -593,7 +709,6 @@ async function renderClientInvoice(doc: Doc, data: ClientInvoiceData, assets?: C
   const rightMid = L + bankW + rightFooterW / 2;
   vLine(doc, rightMid, y, y + footerH);
 
-  // Bank Details (no big blank space)
   doc.setFont("Helvetica", "bold");
   doc.setFontSize(7.6);
   doc.text("Bank Details:", L + 2, y + 5);
@@ -604,38 +719,45 @@ IFSC code : ${COMPANY.bankIfsc}
 Account holder's name : ${COMPANY.accountHolder}`;
 
   if (assets?.qrDataUrl) {
-    addImageSafe(doc, assets.qrDataUrl, L + 2, y + 7, 18, 18);
+    await addImageSafe(doc, assets.qrDataUrl, L + 2, y + 7, 18, 18);
     textBox(doc, bankText, L + 20, y + 5, bankW - 20, footerH - 5, 7.0, 3.1);
   } else {
     textBox(doc, bankText, L, y + 5, bankW, footerH - 5, 7.0, 3.1);
   }
 
-  // Customer sign box
   doc.setFont("Helvetica", "bold");
   doc.setFontSize(7.4);
   doc.text("Customer Seal & Signature", L + bankW + 2, y + 6);
 
-  // Company sign box
   doc.setFont("Helvetica", "bold");
   doc.setFontSize(7.4);
   doc.text(`For ${COMPANY.name}:`, rightMid + 2, y + 6);
 
-  // Optional signature
-  addImageSafe(doc, assets?.signatureDataUrl, rightMid + 8, y + 9, 40, 12);
+  await addImageSafe(doc, assets?.signatureDataUrl, rightMid + 8, y + 9, 40, 12);
 
   doc.setFont("Helvetica", "normal");
   doc.setFontSize(7.2);
-  doc.text("Authorized Signatory", rightMid + (rightFooterW / 2) / 2, y + footerH - 5, { align: "center" });
+  doc.text(
+    "Authorized Signatory",
+    rightMid + (rightFooterW / 2) / 2,
+    y + footerH - 5,
+    { align: "center" }
+  );
 
-  // Bottom note
   doc.setFont("Helvetica", "normal");
   doc.setFontSize(7.2);
-  doc.text("This is a Computer Generated Invoice", (L + R) / 2, 292, { align: "center" });
+  doc.text("This is a Computer Generated Invoice", (L + R) / 2, 292, {
+    align: "center",
+  });
 }
 
 /* ---------------- EXPORTS ---------------- */
 
-export async function buildClientInvoicePDF(JsPDF: typeof jsPDF, data: ClientInvoiceData, assets?: ClientInvoiceAssets) {
+export async function buildClientInvoicePDF(
+  JsPDF: typeof jsPDF,
+  data: ClientInvoiceData,
+  assets?: ClientInvoiceAssets
+) {
   const doc = new JsPDF("p", "mm", "a4");
   await renderClientInvoice(doc, data, assets);
   return doc.output("arraybuffer");
@@ -656,11 +778,7 @@ export async function generateClientInvoicePDF(
   setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
 
-/* ---------------- CLIENT HELPER ----------------
-   Put your file here:
-   ✅ public/favicon.jpg
-   Then load it using: loadImageAsDataUrl("/favicon.jpg")
------------------------------------------------- */
+/* ---------------- CLIENT HELPER ---------------- */
 
 export async function loadImageAsDataUrl(path: string): Promise<string> {
   const res = await fetch(path, { cache: "no-store" });

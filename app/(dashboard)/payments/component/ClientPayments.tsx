@@ -310,7 +310,7 @@ export function ClientPayments() {
         <div className="flex flex-col sm:flex-row gap-3">
           <Button
             onClick={handleSave}
-            disabled={saveMutation.isPending || loadingClients}
+            disabled={saveMutation.isPending}
             className="bg-[#139BC3] text-white hover:bg-[#1088AA]"
           >
             <Save className="w-4 h-4 mr-2" />

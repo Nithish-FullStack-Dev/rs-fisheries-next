@@ -1,3 +1,4 @@
+// app\api\client-loading\[id]\route.tsx
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 

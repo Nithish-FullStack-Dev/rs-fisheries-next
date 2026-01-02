@@ -1,4 +1,3 @@
-// lib/pdf/vendor-invoice.ts
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 
@@ -19,19 +18,21 @@ export interface VendorInvoiceData {
     gstAmount: number;
     totalAmount: number;
 
+    // ✅ Payment block
+    paymentMode?: string;
     referenceNo?: string;
+    paymentRef?: string;
+    paymentdetails?: string;
+
     placeOfSupply?: string;
     contactNo?: string;
     state?: string;
     gstin?: string;
-
-    paymentMode?: string;
 }
 
 type Doc = InstanceType<typeof jsPDF>;
 
 export type VendorInvoiceAssets = {
-    /** Must be DataURL: data:image/jpeg;base64,... or data:image/png;base64,... */
     logoDataUrl?: string;
     logoWidth?: number;
     logoHeight?: number;
@@ -196,33 +197,35 @@ function detectImageFormat(dataUrl: string): "PNG" | "JPEG" | null {
 
 function detectImageFormatFromContent(dataUrl: string): "PNG" | "JPEG" | null {
     if (!dataUrl.startsWith("data:image/")) return null;
-    const parts = dataUrl.split(',');
+
+    const parts = dataUrl.split(",");
     if (parts.length < 2) return null;
     const base64 = parts[1];
 
-    // Decode first few bytes
-    let bin = '';
+    let bytes: Uint8Array;
     try {
-        bin = atob(base64.slice(0, 32));
+        const bin = atob(base64.slice(0, 64));
+        const arr = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        bytes = arr;
     } catch {
         return null;
     }
 
-    const bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) {
-        bytes[i] = bin.charCodeAt(i);
-    }
-
-    // PNG signature
     if (
-        bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47 &&
-        bytes[4] === 0x0D && bytes[5] === 0x0A && bytes[6] === 0x1A && bytes[7] === 0x0A
+        bytes[0] === 0x89 &&
+        bytes[1] === 0x50 &&
+        bytes[2] === 0x4e &&
+        bytes[3] === 0x47 &&
+        bytes[4] === 0x0d &&
+        bytes[5] === 0x0a &&
+        bytes[6] === 0x1a &&
+        bytes[7] === 0x0a
     ) {
         return "PNG";
     }
 
-    // JPEG signature
-    if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) {
+    if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
         return "JPEG";
     }
 
@@ -248,28 +251,35 @@ async function addImageSafe(
     let width = logoWidth;
     let height = logoHeight;
 
-    if (width === undefined || height === undefined || width <= 0 || height <= 0) {
-        // Load image to get dimensions
-        const imgProps = await new Promise<{ width: number, height: number }>((resolve, reject) => {
+    if (
+        (width === undefined || height === undefined || width <= 0 || height <= 0) &&
+        typeof Image !== "undefined"
+    ) {
+        const imgProps = await new Promise<{ width: number; height: number }>((resolve, reject) => {
             const img = new Image();
             img.onload = () => resolve({ width: img.width, height: img.height });
             img.onerror = reject;
             img.src = dataUrl;
-        });
-        width = imgProps.width;
-        height = imgProps.height;
+        }).catch(() => null);
+
+        if (imgProps) {
+            width = imgProps.width;
+            height = imgProps.height;
+        }
     }
 
-    // Calculate fitting size preserving aspect ratio
+    if (!width || !height) {
+        width = maxW;
+        height = maxH;
+    }
+
     let targetW = maxW;
     let targetH = maxH;
+
     if (width > 0 && height > 0) {
         const ratio = width / height;
-        if (targetW / targetH > ratio) {
-            targetW = targetH * ratio;
-        } else {
-            targetH = targetW / ratio;
-        }
+        if (targetW / targetH > ratio) targetW = targetH * ratio;
+        else targetH = targetW / ratio;
     }
 
     const targetX = x + (maxW - targetW) / 2;
@@ -277,14 +287,12 @@ async function addImageSafe(
 
     try {
         doc.addImage(dataUrl, fmt, targetX, targetY, targetW, targetH);
-    } catch (e) {
-        console.error('Failed to add image:', e);
-        // Optionally try the other format as fallback
-        const altFmt = fmt === 'JPEG' ? 'PNG' : 'JPEG';
+    } catch {
+        const altFmt = fmt === "JPEG" ? "PNG" : "JPEG";
         try {
             doc.addImage(dataUrl, altFmt, targetX, targetY, targetW, targetH);
         } catch {
-            // Ignore
+            // ignore
         }
     }
 }
@@ -296,7 +304,6 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData, assets?: V
     const R = 198;
     const W = R - L;
 
-    // Totals (ALWAYS consistent)
     const taxable = Number(data.taxableValue || 0);
     const gstPercent = Number(data.gstPercent || 0);
 
@@ -317,12 +324,11 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData, assets?: V
     doc.setFontSize(12);
     doc.text(COMPANY.title, (L + R) / 2, 14, { align: "center" });
 
-    /* ---------------- HEADER (NO INNER BORDERS) ---------------- */
+    /* ---------------- HEADER ---------------- */
     let y = 18;
     const headerH = 24;
     rect(doc, L, y, W, headerH);
 
-    // layout areas (no dividing lines drawn)
     const logoAreaW = 26;
     const rightAreaW = 62;
     const centerAreaW = W - logoAreaW - rightAreaW;
@@ -331,19 +337,8 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData, assets?: V
     const centerX = L + logoAreaW;
     const rightX = centerX + centerAreaW;
 
-    // Logo
-    await addImageSafe(
-        doc,
-        assets?.logoDataUrl,
-        logoX,
-        y,
-        logoAreaW,
-        headerH,
-        assets?.logoWidth,
-        assets?.logoHeight
-    );
+    await addImageSafe(doc, assets?.logoDataUrl, logoX, y, logoAreaW, headerH, assets?.logoWidth, assets?.logoHeight);
 
-    // Company center
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(12);
     doc.text(COMPANY.name, centerX + centerAreaW / 2, y + 9, { align: "center" });
@@ -352,7 +347,6 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData, assets?: V
     doc.setFontSize(7.2);
     doc.text(COMPANY.addressLine, centerX + centerAreaW / 2, y + 14, { align: "center" });
 
-    // Right info (clamped)
     const pad = 2;
     const maxW = rightAreaW - pad * 2;
     doc.setFont("Helvetica", "normal");
@@ -371,7 +365,6 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData, assets?: V
     const billW = 112;
     vLine(doc, L + billW, y, y + topRowH);
 
-    // Bill To
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(8.2);
     doc.text("Bill To:", L + 2, y + 6);
@@ -389,7 +382,6 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData, assets?: V
 
     textBox(doc, billToText, L, y + 6, billW, topRowH - 6, 7.4, 3.4);
 
-    // Invoice Details (single clean block – no overlay)
     const invX = L + billW;
     const invW = W - billW;
 
@@ -410,8 +402,7 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData, assets?: V
 
     y += topRowH + 4;
 
-    /* ---------------- ITEMS TABLE (perfect width) ---------------- */
-    // Sum widths = 186 (W) exactly
+    /* ---------------- ITEMS TABLE ---------------- */
     autoTable(doc, {
         startY: y,
         theme: "grid",
@@ -442,18 +433,8 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData, assets?: V
             5: { cellWidth: 18, halign: "right" },
             6: { cellWidth: 22, halign: "right" },
         },
-        head: [["#", "Item name", "HSN / SAC", "Quantity", "Price / Unit (Rs.)", "GST (Rs.)", "Amount (Rs.)"]],
-        body: [
-            [
-                "1",
-                data.description || "Goods / Service",
-                data.hsn,
-                "1",
-                money(taxable),
-                money(gst),
-                money(total),
-            ],
-        ],
+        head: [["#", "Description", "HSN / SAC", "Quantity", "Price / Unit (Rs.)", "GST (Rs.)", "Amount (Rs.)"]],
+        body: [["1", data.description || "Goods / Service", data.hsn, "1", money(taxable), money(gst), money(total)]],
     });
 
     y = (doc as any).lastAutoTable.finalY + 2;
@@ -467,14 +448,13 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData, assets?: V
 
     y += 10;
 
-    /* ---------------- TAX SUMMARY + TOTALS (fix words row) ---------------- */
-    const lowerH = 38; // increased so "Words" never clips
+    /* ---------------- TAX SUMMARY + TOTALS ---------------- */
+    const lowerH = 38;
     rect(doc, L, y, W, lowerH);
 
     const leftLowerW = 112;
     vLine(doc, L + leftLowerW, y, y + lowerH);
 
-    // Left title
     const taxTitleH = 7;
     hLine(doc, L, L + leftLowerW, y + taxTitleH);
 
@@ -482,7 +462,6 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData, assets?: V
     doc.setFontSize(7.6);
     doc.text("Tax Summary:", L + 2, y + 5);
 
-    // Tax table inside left
     const taxTableY = y + taxTitleH;
     autoTable(doc, {
         startY: taxTableY,
@@ -516,11 +495,10 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData, assets?: V
         foot: [["TOTAL", money(taxable), "", money(gst)]],
     });
 
-    // Right totals panel
     const rightX2 = L + leftLowerW;
 
     const row1H = 12;
-    const row2H = 14; // bigger for words
+    const row2H = 14;
     const row3H = lowerH - row1H - row2H;
 
     hLine(doc, rightX2, R, y + row1H);
@@ -539,7 +517,6 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData, assets?: V
     doc.text("Total", rightX2 + 2, y + 11.3);
     doc.text(`Rs. ${money(roundedTotal)}`, R - 3, y + 11.3, { align: "right" });
 
-    // Words
     const wordsY = y + row1H;
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(7.0);
@@ -548,7 +525,6 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData, assets?: V
     doc.setFont("Helvetica", "normal");
     textBox(doc, amountToWords(roundedTotal), rightX2, wordsY + 5.2, R - rightX2, row2H - 5, 6.9, 3.2);
 
-    // Received/Balance
     const r3Y = y + row1H + row2H;
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(7.0);
@@ -559,16 +535,31 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData, assets?: V
     doc.text("Balance", rightX2 + 2, r3Y + 9.0);
     doc.text(`Rs. ${money(total)}`, R - 3, r3Y + 9.0, { align: "right" });
 
-    y += lowerH + 4;
+    // ✅ IMPORTANT: remove extra gap so next box sits in empty space
+    y += lowerH;
 
-    /* ---------------- PAYMENT MODE ---------------- */
-    const payH = 10;
+    /* ---------------- PAYMENT DETAILS (SAME AS CLIENT) ---------------- */
+    const payH = 14;
     rect(doc, L, y, W, payH);
+
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(7.6);
-    doc.text("Payment Mode:", L + 2, y + 6);
+    doc.text("Payment Details:", L + 2, y + 6);
+
     doc.setFont("Helvetica", "normal");
-    doc.text(data.paymentMode || COMPANY.defaultPaymentMode, L + 30, y + 6);
+    doc.setFontSize(7.2);
+
+    const paymentLines = [
+        `Mode: ${data.paymentMode || COMPANY.defaultPaymentMode}`,
+        data.referenceNo ? `Reference No: ${data.referenceNo}` : "",
+        data.paymentRef ? `Payment Ref: ${data.paymentRef}` : "",
+        data.paymentdetails ? `Notes: ${data.paymentdetails}` : "",
+    ]
+        .filter(Boolean)
+        .join("\n");
+
+    textBox(doc, paymentLines, L + 28, y + 2, W - 30, payH - 2, 7.2, 3.4);
+
     y += payH;
 
     /* ---------------- TERMS ---------------- */
@@ -582,7 +573,7 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData, assets?: V
     doc.text("Thanks for doing business with us!", L + 2, y + 10);
     y += termsH;
 
-    /* ---------------- FOOTER (Bank | Customer Sign | Company Sign) ---------------- */
+    /* ---------------- FOOTER ---------------- */
     const footerH = 28;
     rect(doc, L, y, W, footerH);
 
@@ -593,7 +584,6 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData, assets?: V
     const rightMid = L + bankW + rightFooterW / 2;
     vLine(doc, rightMid, y, y + footerH);
 
-    // Bank Details (no big blank space)
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(7.6);
     doc.text("Bank Details:", L + 2, y + 5);
@@ -604,30 +594,26 @@ IFSC code : ${COMPANY.bankIfsc}
 Account holder's name : ${COMPANY.accountHolder}`;
 
     if (assets?.qrDataUrl) {
-        addImageSafe(doc, assets.qrDataUrl, L + 2, y + 7, 18, 18);
+        await addImageSafe(doc, assets.qrDataUrl, L + 2, y + 7, 18, 18);
         textBox(doc, bankText, L + 20, y + 5, bankW - 20, footerH - 5, 7.0, 3.1);
     } else {
         textBox(doc, bankText, L, y + 5, bankW, footerH - 5, 7.0, 3.1);
     }
 
-    // Customer sign box
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(7.4);
     doc.text("Customer Seal & Signature", L + bankW + 2, y + 6);
 
-    // Company sign box
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(7.4);
     doc.text(`For ${COMPANY.name}:`, rightMid + 2, y + 6);
 
-    // Optional signature
-    addImageSafe(doc, assets?.signatureDataUrl, rightMid + 8, y + 9, 40, 12);
+    await addImageSafe(doc, assets?.signatureDataUrl, rightMid + 8, y + 9, 40, 12);
 
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(7.2);
     doc.text("Authorized Signatory", rightMid + (rightFooterW / 2) / 2, y + footerH - 5, { align: "center" });
 
-    // Bottom note
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(7.2);
     doc.text("This is a Computer Generated Invoice", (L + R) / 2, 292, { align: "center" });
@@ -641,11 +627,7 @@ export async function buildVendorInvoicePDF(JsPDF: typeof jsPDF, data: VendorInv
     return doc.output("arraybuffer");
 }
 
-export async function generateVendorInvoicePDF(
-    JsPDF: typeof jsPDF,
-    data: VendorInvoiceData,
-    assets?: VendorInvoiceAssets
-) {
+export async function generateVendorInvoicePDF(JsPDF: typeof jsPDF, data: VendorInvoiceData, assets?: VendorInvoiceAssets) {
     const buf = await buildVendorInvoicePDF(JsPDF, data, assets);
     const blob = new Blob([buf], { type: "application/pdf" });
     const url = URL.createObjectURL(blob);
@@ -655,12 +637,6 @@ export async function generateVendorInvoicePDF(
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
-
-/* ---------------- CLIENT HELPER ----------------
-   Put your file here:
-   ✅ public/favicon.jpg
-   Then load it using: loadImageAsDataUrl("/favicon.jpg")
------------------------------------------------- */
 
 export async function loadImageAsDataUrl(path: string): Promise<string> {
     const res = await fetch(path, { cache: "no-store" });

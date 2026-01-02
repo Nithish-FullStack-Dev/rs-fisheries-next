@@ -1,7 +1,6 @@
-// app/(dashboard)/receipts/page.tsx
 "use client";
 
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { CardCustom } from "@/components/ui/card-custom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -166,7 +165,6 @@ export default function ReceiptsPage() {
       try {
         let url = apiMap[activeTab];
 
-        // If your APIs do NOT support from/to, this still works (we filter client-side too)
         const params = new URLSearchParams();
         if (dateFrom) params.append("from", dateFrom);
         if (dateTo) params.append("to", dateTo);
@@ -179,11 +177,9 @@ export default function ReceiptsPage() {
         const rawData = json?.data?.payments || json.records || json.data || [];
         const normalized: Receipt[] = rawData.map((item: any) => ({
           ...item,
-          // normalize date fields so sorting works always
           date: item.date || item.createdAt || new Date(),
         }));
 
-        // Always latest first
         normalized.sort(
           (a: any, b: any) =>
             new Date(b.date || b.createdAt).getTime() -
@@ -308,6 +304,99 @@ export default function ReceiptsPage() {
     const start = (page - 1) * PAGE_SIZE;
     return filteredReceipts.slice(start, start + PAGE_SIZE);
   }, [filteredReceipts, page]);
+
+  // ✅ Shared generator (used for mobile + desktop)
+  const handleGenerateInvoice = async (r: any) => {
+    const endpoint =
+      activeTab === "vendor"
+        ? `/api/invoices/vendor/by-payment?paymentId=${r.id}`
+        : `/api/invoices/client/by-payment?paymentId=${r.id}`;
+
+    const res = await fetch(endpoint);
+    if (!res.ok) {
+      toast.error("Invoice not found");
+      return;
+    }
+
+    // ✅ IMPORTANT: now we read BOTH invoice and payment (client route returns payment)
+    const json = await res.json();
+    const invoice = json?.invoice;
+    const payment = json?.payment; // may be undefined for vendor if you didn't add it
+
+    const { jsPDF } = await import("jspdf");
+    await import("jspdf-autotable");
+
+    const LOGO_PATH = "/assets/favicon.png";
+    if (activeTab === "vendor") {
+      const { generateVendorInvoicePDF, loadImageAsDataUrl } = await import(
+        "@/lib/pdf/vendor-invoice"
+      );
+
+      let logoDataUrl: string | undefined;
+      try {
+        logoDataUrl = await loadImageAsDataUrl(LOGO_PATH);
+      } catch (e) {
+        console.error("Failed to load logo:", e);
+      }
+
+      await generateVendorInvoicePDF(
+        jsPDF,
+        {
+          ...invoice,
+          description: invoice?.description ?? "",
+
+          // ✅ Payment details from API
+          paymentMode: payment?.paymentMode,
+          referenceNo: payment?.referenceNo,
+          paymentRef: payment?.paymentRef,
+          paymentdetails: payment?.paymentdetails,
+        },
+        { logoDataUrl }
+      );
+
+      return;
+    }
+
+    // CLIENT
+    const { generateClientInvoicePDF, loadImageAsDataUrl } = await import(
+      "@/lib/pdf/client-invoice"
+    );
+
+    let logoDataUrl: string | undefined;
+    try {
+      logoDataUrl = await loadImageAsDataUrl(LOGO_PATH);
+    } catch (e) {
+      console.error("Failed to load logo:", e);
+    }
+
+    const baseAmount = Number(invoice?.taxableValue ?? 0);
+
+    await generateClientInvoicePDF(
+      jsPDF,
+      {
+        invoiceNo: invoice.invoiceNo,
+        invoiceDate: invoice.invoiceDate || new Date().toISOString(),
+        clientName: (r as ClientReceipt).clientName || "Client",
+        billTo: invoice.billTo,
+        shipTo: invoice.shipTo,
+
+        description: invoice.description || "Supply of fresh fish",
+        hsn: invoice.hsn || "0302",
+
+        gstPercent: 0,
+        taxableValue: baseAmount,
+        gstAmount: 0,
+        totalAmount: baseAmount,
+
+        // ✅ Payment details shown in PDF
+        paymentMode: payment?.paymentMode,
+        referenceNo: payment?.referenceNo,
+        paymentRef: payment?.paymentRef,
+        paymentdetails: payment?.paymentdetails,
+      },
+      { logoDataUrl }
+    );
+  };
 
   return (
     <div className="space-y-4 sm:space-y-6 p-3 sm:p-4 md:p-6">
@@ -503,92 +592,7 @@ export default function ReceiptsPage() {
                           size="sm"
                           className="gap-2 bg-[#139BC3] text-white hover:bg-[#1088AA] disabled:opacity-20"
                           disabled={!invoiceMap[r.id]}
-                          onClick={async () => {
-                            const endpoint =
-                              activeTab === "vendor"
-                                ? `/api/invoices/vendor/by-payment?paymentId=${r.id}`
-                                : `/api/invoices/client/by-payment?paymentId=${r.id}`;
-
-                            const res = await fetch(endpoint);
-                            if (!res.ok) {
-                              toast.error("Invoice not found");
-                              return;
-                            }
-
-                            const { invoice } = await res.json();
-
-                            const { jsPDF } = await import("jspdf");
-                            await import("jspdf-autotable");
-
-                            const LOGO_PATH = "/assets/favicon.png";
-
-                            if (activeTab === "vendor") {
-                              const {
-                                generateVendorInvoicePDF,
-                                loadImageAsDataUrl,
-                              } = await import("@/lib/pdf/vendor-invoice");
-
-                              let logoDataUrl: string | undefined;
-                              try {
-                                logoDataUrl = await loadImageAsDataUrl(
-                                  LOGO_PATH
-                                );
-                              } catch (e) {
-                                console.error("Failed to load logo:", e);
-                              }
-
-                              await generateVendorInvoicePDF(
-                                jsPDF,
-                                {
-                                  ...invoice,
-                                  description: invoice.description ?? "",
-                                },
-                                { logoDataUrl }
-                              );
-                            } else {
-                              const { generateClientInvoicePDF } = await import(
-                                "@/lib/pdf/client-invoice"
-                              );
-                              const { loadImageAsDataUrl } = await import(
-                                "@/lib/pdf/client-invoice"
-                              );
-
-                              let logoDataUrl: string | undefined;
-                              try {
-                                logoDataUrl = await loadImageAsDataUrl(
-                                  LOGO_PATH
-                                );
-                              } catch (e) {
-                                console.error("Failed to load logo:", e);
-                              }
-
-                              const baseAmount =
-                                invoice.taxableValue || invoice.amount || 0;
-
-                              await generateClientInvoicePDF(
-                                jsPDF,
-                                {
-                                  invoiceNo: invoice.invoiceNo,
-                                  invoiceDate:
-                                    invoice.invoiceDate ||
-                                    new Date().toISOString(),
-                                  clientName:
-                                    (r as ClientReceipt).clientName || "Client",
-                                  billTo: invoice.billTo,
-                                  shipTo: invoice.shipTo,
-                                  description:
-                                    invoice.description ||
-                                    "Supply of fresh fish",
-                                  hsn: "0302",
-                                  gstPercent: 0,
-                                  taxableValue: baseAmount,
-                                  gstAmount: 0,
-                                  totalAmount: baseAmount,
-                                },
-                                { logoDataUrl }
-                              );
-                            }
-                          }}
+                          onClick={() => handleGenerateInvoice(r)}
                         >
                           <FileText className="w-4 h-4" />
                           Generate Invoice
@@ -740,96 +744,7 @@ export default function ReceiptsPage() {
                                 size="sm"
                                 className="gap-2 bg-[#139BC3] text-white hover:bg-[#1088AA] disabled:opacity-20"
                                 disabled={!invoiceMap[r.id]}
-                                onClick={async () => {
-                                  const endpoint =
-                                    activeTab === "vendor"
-                                      ? `/api/invoices/vendor/by-payment?paymentId=${r.id}`
-                                      : `/api/invoices/client/by-payment?paymentId=${r.id}`;
-
-                                  const res = await fetch(endpoint);
-                                  if (!res.ok) {
-                                    toast.error("Invoice not found");
-                                    return;
-                                  }
-
-                                  const { invoice } = await res.json();
-
-                                  const { jsPDF } = await import("jspdf");
-                                  await import("jspdf-autotable");
-
-                                  const LOGO_PATH = "/assets/favicon.png";
-
-                                  if (activeTab === "vendor") {
-                                    const {
-                                      generateVendorInvoicePDF,
-                                      loadImageAsDataUrl,
-                                    } = await import(
-                                      "@/lib/pdf/vendor-invoice"
-                                    );
-
-                                    let logoDataUrl: string | undefined;
-                                    try {
-                                      logoDataUrl = await loadImageAsDataUrl(
-                                        LOGO_PATH
-                                      );
-                                    } catch (e) {
-                                      console.error("Failed to load logo:", e);
-                                    }
-
-                                    await generateVendorInvoicePDF(
-                                      jsPDF,
-                                      {
-                                        ...invoice,
-                                        description: invoice.description ?? "",
-                                      },
-                                      { logoDataUrl }
-                                    );
-                                  } else {
-                                    const { generateClientInvoicePDF } =
-                                      await import("@/lib/pdf/client-invoice");
-                                    const { loadImageAsDataUrl } = await import(
-                                      "@/lib/pdf/client-invoice"
-                                    );
-
-                                    let logoDataUrl: string | undefined;
-                                    try {
-                                      logoDataUrl = await loadImageAsDataUrl(
-                                        LOGO_PATH
-                                      );
-                                    } catch (e) {
-                                      console.error("Failed to load logo:", e);
-                                    }
-
-                                    const baseAmount =
-                                      invoice.taxableValue ||
-                                      invoice.amount ||
-                                      0;
-
-                                    await generateClientInvoicePDF(
-                                      jsPDF,
-                                      {
-                                        invoiceNo: invoice.invoiceNo,
-                                        invoiceDate:
-                                          invoice.invoiceDate ||
-                                          new Date().toISOString(),
-                                        clientName:
-                                          (r as ClientReceipt).clientName ||
-                                          "Client",
-                                        billTo: invoice.billTo,
-                                        shipTo: invoice.shipTo,
-                                        description:
-                                          invoice.description ||
-                                          "Supply of fresh fish",
-                                        hsn: "0302",
-                                        gstPercent: 0,
-                                        taxableValue: baseAmount,
-                                        gstAmount: 0,
-                                        totalAmount: baseAmount,
-                                      },
-                                      { logoDataUrl }
-                                    );
-                                  }
-                                }}
+                                onClick={() => handleGenerateInvoice(r)}
                               >
                                 <FileText className="w-4 h-4" />
                                 Generate Invoice
@@ -862,7 +777,7 @@ export default function ReceiptsPage() {
               </div>
             </div>
 
-            {/* Pagination (same style like your bills pages) */}
+            {/* Pagination */}
             {totalPages >= 1 && (
               <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
                 <div className="text-sm text-slate-500">

@@ -38,6 +38,7 @@ import {
   startOfDay,
   startOfWeek,
   startOfMonth,
+  parseISO, // ← ADD THIS
 } from "date-fns";
 
 /* ---------------- Types ---------------- */
@@ -77,8 +78,8 @@ type StockRow = {
 
 /* ---------------- Helpers ---------------- */
 const THEME = "#139BC3";
-const TRAY_SIZE = 20; // main table tray split
-const STOCK_TRAY_KGS = 35; // availability loose calc
+const TRAY_SIZE = 20;
+const STOCK_TRAY_KGS = 35;
 
 const cls = (...x: Array<string | false | null | undefined>) =>
   x.filter(Boolean).join(" ");
@@ -90,10 +91,16 @@ const splitTrayLoose = (kgs: number) => {
   return { trays, loose };
 };
 
-const parseDateSafe = (value?: string) => {
+// ✅ FIXED: Robust date parsing using parseISO from date-fns
+const parseDateSafe = (value?: string): Date | null => {
   if (!value) return null;
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? null : d;
+  try {
+    // parseISO handles ISO strings reliably (with or without Z/timezone)
+    const d = parseISO(value);
+    return isNaN(d.getTime()) ? null : d;
+  } catch {
+    return null;
+  }
 };
 
 const inRange = (d: Date | null, from: Date, toExclusive: Date) => {
@@ -169,7 +176,7 @@ function Pill({
   );
 }
 
-/* ---------------- Date Range Picker (shadcn) ---------------- */
+/* ---------------- Date Range Picker ---------------- */
 function GlobalDateRangePicker({
   value,
   onChange,
@@ -251,7 +258,6 @@ function GlobalDateRangePicker({
 
       <PopoverContent className="w-[760px] p-0" align="start">
         <div className="grid grid-cols-[220px_1fr]">
-          {/* Left presets */}
           <div className="border-r border-slate-200 p-3">
             <div className="text-xs font-semibold text-slate-500 px-2 py-2">
               Quick ranges
@@ -289,7 +295,6 @@ function GlobalDateRangePicker({
             </div>
           </div>
 
-          {/* Right calendar */}
           <div className="p-3">
             <Calendar
               mode="range"
@@ -326,13 +331,11 @@ export default function StocksPage() {
   const [sortBy, setSortBy] = useState<"stockDesc" | "code">("stockDesc");
   const [selectedVariety, setSelectedVariety] = useState<string>("ALL");
 
-  // ✅ GLOBAL DATE RANGE FILTER (applies to incoming + outgoing)
   const [globalRange, setGlobalRange] = useState<DateRange>(() => {
     const today = new Date();
     return { from: today, to: today };
   });
 
-  // main data load
   useEffect(() => {
     Promise.all([
       axios.get("/api/fish-varieties"),
@@ -347,7 +350,6 @@ export default function StocksPage() {
     });
   }, []);
 
-  // availability polling (no reload)
   useEffect(() => {
     let alive = true;
 
@@ -383,18 +385,14 @@ export default function StocksPage() {
           farmerKgs: 0,
           agentKgs: 0,
           incomingKgs: 0,
-
           outgoingKgs: 0,
 
           farmerTrays: 0,
           farmerLoose: 0,
-
           agentTrays: 0,
           agentLoose: 0,
-
           incomingTrays: 0,
           incomingLoose: 0,
-
           outgoingTrays: 0,
           outgoingLoose: 0,
         });
@@ -402,7 +400,7 @@ export default function StocksPage() {
       return map.get(code)!;
     };
 
-    // ✅ incoming (former) filtered by globalRange
+    // Farmer incoming
     former.forEach((l) => {
       const d = parseDateSafe(l.date);
       const ok = d ? inRange(d, rangeFrom, rangeTo) : true;
@@ -411,7 +409,7 @@ export default function StocksPage() {
       l.items.forEach((i) => (ensure(i.varietyCode).farmerKgs += i.totalKgs));
     });
 
-    // ✅ incoming (agent) filtered by globalRange
+    // Agent incoming
     agent.forEach((l) => {
       const d = parseDateSafe(l.date);
       const ok = d ? inRange(d, rangeFrom, rangeTo) : true;
@@ -420,7 +418,7 @@ export default function StocksPage() {
       l.items.forEach((i) => (ensure(i.varietyCode).agentKgs += i.totalKgs));
     });
 
-    // ✅ outgoing (client) filtered by globalRange
+    // Client outgoing (THIS WAS FAILING IN PRODUCTION)
     client.forEach((l) => {
       const d = parseDateSafe(l.date);
       const ok = d ? inRange(d, rangeFrom, rangeTo) : true;
@@ -429,7 +427,7 @@ export default function StocksPage() {
       l.items.forEach((i) => (ensure(i.varietyCode).outgoingKgs += i.totalKgs));
     });
 
-    // finalize computed fields
+    // Compute derived values
     map.forEach((r) => {
       r.incomingKgs = r.farmerKgs + r.agentKgs;
 
@@ -440,13 +438,10 @@ export default function StocksPage() {
 
       r.farmerTrays = farmer.trays;
       r.farmerLoose = farmer.loose;
-
       r.agentTrays = agentS.trays;
       r.agentLoose = agentS.loose;
-
       r.incomingTrays = incoming.trays;
       r.incomingLoose = incoming.loose;
-
       r.outgoingTrays = outgoing.trays;
       r.outgoingLoose = outgoing.loose;
     });
@@ -509,10 +504,10 @@ export default function StocksPage() {
     return { top, remaining };
   }, [availableVarieties]);
 
+  // Rest of UI remains unchanged...
   return (
     <div className="bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto p-4 space-y-6">
-        {/* Header */}
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
           <div className="flex items-center gap-3">
             <div
@@ -530,7 +525,6 @@ export default function StocksPage() {
           </div>
 
           <div className="flex flex-col md:flex-row gap-3 md:items-center">
-            {/* ✅ GLOBAL DATE FILTER */}
             <GlobalDateRangePicker
               value={globalRange}
               onChange={setGlobalRange}
@@ -557,7 +551,6 @@ export default function StocksPage() {
           </div>
         </div>
 
-        {/* Variety pills */}
         <Card className="p-4">
           <div className="flex flex-wrap gap-2">
             <Pill
@@ -582,9 +575,7 @@ export default function StocksPage() {
           </div>
         </Card>
 
-        {/* Summary Cards */}
         <div className="space-y-5">
-          {/* Availability stock */}
           <Card className="p-6">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -652,7 +643,6 @@ export default function StocksPage() {
             </div>
           </Card>
 
-          {/* Top row */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             <Card className="p-5">
               <div className="flex items-center justify-between">
@@ -702,7 +692,6 @@ export default function StocksPage() {
           </div>
         </div>
 
-        {/* Table (desktop) */}
         <Card className="overflow-hidden hidden md:block">
           <table className="w-full text-sm">
             <thead style={{ backgroundColor: "rgba(19,155,195,.12)" }}>
@@ -780,7 +769,6 @@ export default function StocksPage() {
           </table>
         </Card>
 
-        {/* Mobile cards */}
         <div className="md:hidden space-y-3">
           {stockRows.map((r) => (
             <Card key={r.code} className="p-4">

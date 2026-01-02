@@ -163,9 +163,10 @@ export function PackingAmount() {
         const err = await res.json();
         throw new Error(err.error || "Save failed");
       }
+      // Immediately refresh the bill list to remove the used one
+      await loadBills();
 
       toast.success("Packing amount saved successfully!");
-
       // Reset form
       setWorkers("");
       setTemperature("");
@@ -173,9 +174,6 @@ export function PackingAmount() {
       setSelectedBillId("");
       setPaymentMode("CASH");
       setReference("");
-
-      // Immediately refresh the bill list to remove the used one
-      await loadBills();
     } catch (err: any) {
       toast.error(err.message || "Failed to save");
     } finally {
@@ -259,7 +257,9 @@ export function PackingAmount() {
               <Input
                 type="number"
                 value={workers}
-                onChange={(e) => setWorkers(e.target.value)}
+                onChange={(e) =>
+                  setWorkers(Math.max(0, Number(e.target.value)).toString())
+                }
                 placeholder="e.g. 8"
                 min="1"
                 className="h-11 border-slate-200 bg-white shadow-sm focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
@@ -282,9 +282,11 @@ export function PackingAmount() {
             <Input
               type="number"
               value={total}
-              onChange={(e) => setTotal(e.target.value)}
+              onChange={(e) =>
+                setTotal(Math.max(0, Number(e.target.value)).toString())
+              }
               placeholder="Enter total amount"
-              min="0"
+              min={0}
               step="100"
               className="h-12 border-slate-200 bg-white shadow-sm text-2xl font-bold focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
             />

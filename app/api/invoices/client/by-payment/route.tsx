@@ -1,4 +1,4 @@
-// app\api\invoices\client\by-payment\route.tsx
+// app/api/invoices/client/by-payment/route.tsx
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
@@ -17,5 +17,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ message: "Invoice not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ invoice });
+  const payment = await prisma.clientPayment.findUnique({
+    where: { id: paymentId },
+    select: {
+      paymentMode: true,
+      referenceNo: true,
+      paymentRef: true,
+      paymentdetails: true,
+      accountNumber: true,
+      ifsc: true,
+      bankName: true,
+      bankAddress: true,
+    },
+  });
+
+  return NextResponse.json({ invoice, payment });
 }
