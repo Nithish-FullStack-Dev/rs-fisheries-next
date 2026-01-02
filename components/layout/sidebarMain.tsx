@@ -14,6 +14,7 @@ import {
   Wallet,
   Warehouse,
   Users,
+  User2,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -43,13 +44,16 @@ const menuItems = [
   { href: "/payments", label: "Payments", icon: CreditCard },
   { href: "/receipts", label: "Receipts", icon: Receipt },
   { href: "/vehicles", label: "Vehicles", icon: Car },
-  { href: "/salaries", label: "Salaries", icon: Wallet },
+  // { href: "/salaries", label: "Salaries", icon: Wallet },
+  { href: "/employee", label: "Employee", icon: User2 },
   { href: "/teams-members", label: "Team Members", icon: Users },
 ];
 
 export default function AppSidebar() {
+  const { state, isMobile, setOpenMobile } = useSidebar();
+
   const pathname = usePathname();
-  const { state } = useSidebar();
+  // const { state } = useSidebar();
   const collapsed = state === "collapsed";
 
   const { newVendorBillsCount, markVendorBillsAsSeen } = useVendorBillsBadge();
@@ -57,6 +61,9 @@ export default function AppSidebar() {
   useEffect(() => {
     if (pathname === "/vendor-bills") markVendorBillsAsSeen();
   }, [pathname, markVendorBillsAsSeen]);
+  useEffect(() => {
+    if (isMobile) setOpenMobile(false);
+  }, [pathname, isMobile, setOpenMobile]);
 
   return (
     <Sidebar
@@ -146,6 +153,9 @@ export default function AppSidebar() {
                     >
                       <Link
                         href={item.href}
+                        onClick={() => {
+                          if (isMobile) setOpenMobile(false);
+                        }}
                         className={[
                           "flex w-full items-center",
                           collapsed ? "justify-center" : "gap-3",
@@ -215,6 +225,20 @@ export default function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      {/* FOOTER */}
+      <div className="border-t bg-white px-4 py-3">
+        <p className="text-center text-xs text-slate-500">
+          Powered by{" "}
+          <a
+            href="https://www.outrightcreators.com/"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-[#139BC3] hover:underline"
+          >
+            Outright Creators
+          </a>
+        </p>
+      </div>
     </Sidebar>
   );
 }

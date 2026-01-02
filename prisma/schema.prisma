@@ -12,20 +12,28 @@ enum Role {
   clerk
   documentation
   sales
-  readOnly
+  partner
+  seniorExecutive
+  juniorExecutive
+  executive
+  supervisor
+  others
 }
 
 model User {
-  id               String            @id @default(cuid())
-  email            String            @unique
-  password         String
-  name             String?
-  role             Role              @default(readOnly)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  salaries         Salaries[]
-  employeePayments EmployeePayment[]
-  packingAmounts   PackingAmount[]
+  id       String @id @default(cuid())
+  password String
+
+  email String @unique
+
+  employeeId String   @unique
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  packingAmounts  PackingAmount[]
+  dispatchCharges DispatchCharge[]
 }
 
 model FishVariety {
@@ -35,6 +43,11 @@ model FishVariety {
   createdAt DateTime @default(now())
 }
 
+enum TripStatus {
+  RUNNING
+  COMPLETED
+}
+
 model FormerLoading {
   id         String   @id @default(uuid())
   fishCode   String
@@ -42,8 +55,14 @@ model FormerLoading {
   FarmerName String?
   village    String
   date       DateTime
-  vehicleId  String
-  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id])
+
+  vehicleId String?
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id])
+  vehicleNo String?
+
+  tripStatus  TripStatus @default(RUNNING)
+  startedAt   DateTime   @default(now())
+  completedAt DateTime?
 
   totalTrays    Int   @default(0)
   totalLooseKgs Float @default(0)
@@ -51,27 +70,29 @@ model FormerLoading {
   totalKgs      Float @default(0)
   totalPrice    Float @default(0)
 
-  accountNumber String?
-  ifsc          String?
-  bankName      String?
-  bankAddress   String?
+  dispatchChargesTotal Float @default(0)
+  packingAmountTotal   Float @default(0)
+  grandTotal           Float @default(0)
 
-  grandTotal Float        @default(0)
-  items      FormerItem[]
-  createdAt  DateTime     @default(now())
+  items           FormerItem[]
+  dispatchCharges DispatchCharge[] @relation("FormerDispatchCharges")
+  packingAmounts  PackingAmount[]  @relation("FormerPackingAmounts")
+
+  createdAt DateTime @default(now())
 }
 
 model FormerItem {
-  id              String        @id @default(uuid())
-  formerLoadingId String // ← changed from Int to String
+  id              String @id @default(uuid())
+  formerLoadingId String
   varietyCode     String
   noTrays         Int
   trayKgs         Float
   loose           Float
   totalKgs        Float
-  pricePerKg      Float         @default(0)
-  totalPrice      Float         @default(0)
-  loading         FormerLoading @relation(fields: [formerLoadingId], references: [id], onDelete: Cascade)
+  pricePerKg      Float  @default(0)
+  totalPrice      Float  @default(0)
+
+  loading FormerLoading @relation(fields: [formerLoadingId], references: [id], onDelete: Cascade)
 
   @@index([formerLoadingId])
 }
@@ -83,39 +104,42 @@ model AgentLoading {
   billNo    String   @unique
   village   String
   date      DateTime
-  vehicleId String
-  vehicle   Vehicle  @relation(fields: [vehicleId], references: [id])
 
-  // SAME TOTALS AS FARMER — REQUIRED
+  vehicleId String?
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id])
+  vehicleNo String?
+
+  tripStatus  TripStatus @default(RUNNING)
+  startedAt   DateTime   @default(now())
+  completedAt DateTime?
+
   totalTrays    Int   @default(0)
   totalLooseKgs Float @default(0)
   totalTrayKgs  Float @default(0)
   totalKgs      Float @default(0)
   totalPrice    Float @default(0)
 
-  accountNumber String?
-  ifsc          String?
-  bankName      String?
-  bankAddress   String?
+  dispatchChargesTotal Float @default(0)
+  packingAmountTotal   Float @default(0)
+  grandTotal           Float @default(0)
 
-  grandTotal Float @default(0)
+  items           AgentItem[]
+  dispatchCharges DispatchCharge[] @relation("AgentDispatchCharges")
+  packingAmounts  PackingAmount[]  @relation("AgentPackingAmounts")
 
-  createdAt DateTime    @default(now())
-  items     AgentItem[]
+  createdAt DateTime @default(now())
 }
 
 model AgentItem {
   id             String @id @default(uuid())
   agentLoadingId String
   varietyCode    String
-
-  noTrays  Int
-  trayKgs  Float
-  loose    Float
-  totalKgs Float
-
-  pricePerKg Float @default(0)
-  totalPrice Float @default(0)
+  noTrays        Int
+  trayKgs        Float
+  loose          Float
+  totalKgs       Float
+  pricePerKg     Float  @default(0)
+  totalPrice     Float  @default(0)
 
   loading AgentLoading @relation(fields: [agentLoadingId], references: [id], onDelete: Cascade)
 
@@ -127,62 +151,60 @@ model ClientLoading {
   clientName String
   billNo     String   @unique
   date       DateTime
-  vehicleId  String
-  vehicle    Vehicle  @relation(fields: [vehicleId], references: [id])
-  fishCode   String
-  village    String
 
-  // SAME TOTALS AS FARMER — REQUIRED
+  vehicleId String?
+  vehicle   Vehicle? @relation(fields: [vehicleId], references: [id])
+  vehicleNo String?
 
-  totalTrays    Int   @default(0)
-  totalLooseKgs Float @default(0)
-  totalTrayKgs  Float @default(0)
-  totalKgs      Float @default(0)
-  totalPrice    Float @default(0)
-  grandTotal    Float @default(0)
+  tripStatus  TripStatus @default(RUNNING)
+  startedAt   DateTime   @default(now())
+  completedAt DateTime?
+
+  fishCode      String
+  village       String
+  totalTrays    Int    @default(0)
+  totalLooseKgs Float  @default(0)
+  totalTrayKgs  Float  @default(0)
+  totalKgs      Float  @default(0)
+  totalPrice    Float  @default(0)
+
+  dispatchChargesTotal Float @default(0)
+  packingAmountTotal   Float @default(0)
+  grandTotal           Float @default(0)
 
   accountNumber String?
   ifsc          String?
   bankName      String?
   bankAddress   String?
 
-  items          ClientItem[]
-  createdAt      DateTime        @default(now())
-  clientPayments ClientPayment[]
+  items           ClientItem[]
+  clientPayments  ClientPayment[]
+  dispatchCharges DispatchCharge[] @relation("ClientDispatchCharges")
+  packingAmounts  PackingAmount[]  @relation("ClientPackingAmounts")
+
+  createdAt DateTime @default(now())
 }
 
 model ClientItem {
   id              String @id @default(uuid())
   clientLoadingId String
   varietyCode     String
-
-  noTrays  Int
-  trayKgs  Float
-  loose    Float
-  totalKgs Float
-
-  pricePerKg Float @default(0)
-  totalPrice Float @default(0)
+  noTrays         Int
+  trayKgs         Float
+  loose           Float
+  totalKgs        Float
+  pricePerKg      Float  @default(0)
+  totalPrice      Float  @default(0)
 
   loading ClientLoading @relation(fields: [clientLoadingId], references: [id], onDelete: Cascade)
 
   @@index([clientLoadingId])
 }
 
-model Salaries {
-  id     String   @id @default(cuid())
-  userId String
-  month  DateTime
-  amount Int
-  notes  String
-  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  createdAt DateTime @default(now())
-}
-
 model VendorPayment {
   id                String          @id @default(uuid())
   vendorId          String
+  vendorKey         String
   vendorName        String
   source            String
   date              DateTime
@@ -202,30 +224,37 @@ model VendorPayment {
   vendorInvoice     VendorInvoice[]
 
   @@index([vendorId])
+  @@index([vendorKey])
   @@index([source])
 }
 
 model ClientPayment {
-  id            String      @id @default(uuid())
-  clientId      String
-  clientName    String
-  date          DateTime
-  amount        Float
-  paymentMode   PaymentMode
-  reference     String?
-  imageUrl      String?
-  isInstallment Boolean     @default(false) // NEW
-  createdAt     DateTime    @default(now())
+  id                String   @id @default(uuid())
+  clientId          String
+  clientKey         String
+  clientName        String
+  date              DateTime
+  amount            Float
+  paymentMode       String
+  referenceNo       String?
+  paymentRef        String?
+  accountNumber     String?
+  ifsc              String?
+  bankName          String?
+  bankAddress       String?
+  paymentdetails    String?
+  isInstallment     Boolean  @default(false)
+  installments      Int?
+  installmentNumber Int?
+  createdAt         DateTime @default(now())
 
-  // Relation to ClientLoading (safe even if not migrated yet)
-  // client ClientLoading? @relation(fields: [clientId], references: [id], onDelete: Restrict)
-client ClientLoading @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client        ClientLoading  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  clientInvoice ClientInvoice?
 
   @@index([clientId])
+  @@index([clientKey])
   @@index([date])
 }
-
-// ! VEHICLE 
 
 enum VehicleOwnership {
   OWN
@@ -252,135 +281,135 @@ enum PaymentMode {
 }
 
 model VehicleEntry {
-  id        String  @id @default(cuid())
-  vehicleId String
-  vehicle   Vehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-
-  type VehicleType // OWN or RENT
-
-  trip String
-  date DateTime
-
-  // Own vehicle expenses
-  diesel   Float? @default(0)
-  service  Float? @default(0)
-  fastag   Float? @default(0)
-  eChallan Float? @default(0)
-  tyres    Float? @default(0)
-
-  // Rent-specific fields
-  rentAmount  Float?
-  paymentMode PaymentMode?
-
-  totalExpense Float @default(0)
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String       @id @default(cuid())
+  vehicleId    String
+  vehicle      Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  type         VehicleType
+  trip         String
+  date         DateTime
+  diesel       Float?       @default(0)
+  service      Float?       @default(0)
+  fastag       Float?       @default(0)
+  eChallan     Float?       @default(0)
+  tyres        Float?       @default(0)
+  rentAmount   Float?
+  paymentMode  PaymentMode?
+  totalExpense Float        @default(0)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
   @@index([vehicleId])
 }
 
 model Vehicle {
-  id            String           @id @default(cuid())
-  vehicleNumber String           @unique
-  ownership     VehicleOwnership
-
-  // Basic details
+  id                String           @id @default(cuid())
+  vehicleNumber     String           @unique
+  ownership         VehicleOwnership
   manufacturer      String?
   model             String?
   yearOfManufacture Int?
   fuelType          FuelType?
-  engineNumber      String?   @unique
-  chassisNumber     String?   @unique
-
-  // Transport details
-  capacityInTons Float?
-  bodyType       String?
-
-  // Regulatory documents
-  rcValidity      DateTime?
-  insuranceExpiry DateTime?
-  fitnessExpiry   DateTime?
-  pollutionExpiry DateTime?
-  permitExpiry    DateTime?
-  roadTaxExpiry   DateTime?
-
-  // Driver assignment (NEW)
-  assignedDriverId String? @unique
-  assignedDriver   Driver? @relation(fields: [assignedDriverId], references: [id])
-
-  // For rent vehicles
-  rentalAgency     String?
-  rentalRatePerDay Float?
-
-  // Status
-  isActive Boolean @default(true)
-  remarks  String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  engineNumber      String?          @unique
+  chassisNumber     String?          @unique
+  capacityInTons    Float?
+  bodyType          String?
+  rcValidity        DateTime?
+  insuranceExpiry   DateTime?
+  fitnessExpiry     DateTime?
+  pollutionExpiry   DateTime?
+  permitExpiry      DateTime?
+  roadTaxExpiry     DateTime?
+  assignedDriverId  String?          @unique
+  assignedDriver    Driver?          @relation(fields: [assignedDriverId], references: [id])
+  rentalAgency      String?
+  rentalRatePerDay  Float?
+  isActive          Boolean          @default(true)
+  remarks           String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
   farmerLoadings FormerLoading[]
   agentLoadings  AgentLoading[]
   clientLoadings ClientLoading[]
-
-  // 1 Vehicle → Many Trips
-  trips VehicleEntry[]
+  trips          VehicleEntry[]
 }
 
 model Driver {
-  id            String   @id @default(cuid())
+  id            String @id @default(cuid())
   name          String
-  phone         String   @unique
-  licenseNumber String   @unique
+  phone         String @unique
+  licenseNumber String @unique
   address       String
   age           Int
-  aadharNumber  String   @unique
-  createdAt     DateTime @default(now())
+  aadharNumber  String @unique
+
+  aadharProof  String?
+  licenseProof String?
+
+  createdAt DateTime @default(now())
 
   assignedVehicle Vehicle?
 }
 
 model EmployeePayment {
   id           String      @id @default(uuid())
-  userId       String
+  employeeId   String
   employeeName String
+  salaryMonth  String
   date         DateTime
   amount       Float
   paymentMode  PaymentMode
-  reference    String? // UTR, Cheque No., etc.
+  reference    String?
   createdAt    DateTime    @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
+  @@unique([employeeId, salaryMonth])
+  @@index([employeeId])
   @@index([date])
+  @@index([salaryMonth])
 }
 
 model PackingAmount {
-  id             String      @id @default(uuid())
-  billNo         String      @unique
+  id             String              @id @default(uuid())
+  billNo         String              @unique
   mode           String
-  sourceRecordId String?
-  workers        Int
-  temperature    Float
-  totalAmount    Float
-  paymentMode    PaymentMode @default(CASH) // ← NEW FIELD
-  reference      String? // ← Optional reference (UTR, Cheque no.)
-  createdAt      DateTime    @default(now())
-  createdById    String?
-  createdBy      User?       @relation(fields: [createdById], references: [id])
+  sourceType     DispatchSourceType? // For filtering/querying
+  sourceRecordId String? // Legacy field (optional)
 
-  @@index([mode])
+  workers     Int
+  temperature Float
+  totalAmount Float
+  paymentMode PaymentMode @default(CASH)
+  reference   String?
+  createdAt   DateTime    @default(now())
+  createdById String?
+  createdBy   User?       @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  // NEW: Separate foreign key fields
+  formerLoadingId String?
+  agentLoadingId  String?
+  clientLoadingId String?
+
+  // Clean relations using dedicated FKs
+  formerLoading FormerLoading? @relation("FormerPackingAmounts", fields: [formerLoadingId], references: [id], onDelete: Cascade)
+  agentLoading  AgentLoading?  @relation("AgentPackingAmounts", fields: [agentLoadingId], references: [id], onDelete: Cascade)
+  clientLoading ClientLoading? @relation("ClientPackingAmounts", fields: [clientLoadingId], references: [id], onDelete: Cascade)
+
+  @@index([sourceType, sourceRecordId])
   @@index([createdAt])
+  @@index([formerLoadingId])
+  @@index([agentLoadingId])
+  @@index([clientLoadingId])
 }
 
 model InvoiceCounter {
-  id           Int  @id @default(1)
-  count        Int  @default(0) // for general invoices (if used)
-  packingCount Int  @default(0) // ← NEW: for packing
-  packingYear  Int? // ← NEW: last year used
-  invoiceCount Int  @default(0)
+  id            Int     @id @default(1)
+  count         Int     @default(0)
+  packingCount  Int     @default(0)
+  financialYear String?
+  packingYear   Int?
+  invoiceCount  Int     @default(0)
 }
 
 model Invoice {
@@ -391,7 +420,7 @@ model Invoice {
   partyName     String?
   partyAddress  String?
   date          DateTime @default(now())
-  items         Json // array of { description, hsn, qty, rate, amount }
+  items         Json
   subtotal      Float
   taxAmount     Float
   total         Float
@@ -405,55 +434,175 @@ model Invoice {
   createdAt     DateTime @default(now())
 }
 
-// model VendorInvoice {
-//   id String @id @default(uuid())
-
-//   vendorId       String
-//   vendorName     String
-//   source         String // "farmer" | "agent"
-//   sourceRecordId String
-
-//   invoiceNo   String   @unique
-//   invoiceDate DateTime
-
-//   hsn        String
-//   gstPercent Float  @default(0)
-
-//   taxableValue Float
-//   gstAmount    Float
-//   totalAmount  Float
-
-//   billTo Json
-//   shipTo Json
-//   terms  String?
-
-//   isFinalized Boolean @default(false)
-
-//   createdAt DateTime @default(now())
-
-//   @@index([vendorId, source])
-// }
 model VendorInvoice {
-  id         String @id @default(uuid())
-  paymentId  String @unique
-  vendorId   String
-  vendorName String
-  source     String
+  id             String  @id @default(uuid())
+  paymentId      String  @unique
+  vendorId       String
+  vendorName     String
+  source         String
+  sourceRecordId String? // loading ID
 
   invoiceNo   String   @unique
   invoiceDate DateTime
 
-  hsn          String
-  gstPercent   Float
+  hsn        String
+  gstPercent Float
+
   taxableValue Float
   gstAmount    Float
   totalAmount  Float
 
-  billTo String
-  shipTo String
+  description   String?
+  vendorAddress String? // ← NEW FIELD
+
+  // Remove or make optional these if you no longer store them
+  // billTo String?
+  // shipTo String?
 
   isFinalized Boolean  @default(false)
   createdAt   DateTime @default(now())
 
   payment VendorPayment @relation(fields: [paymentId], references: [id])
+
+  @@index([vendorId])
+  @@index([source])
+}
+
+model ClientInvoice {
+  id           String   @id @default(uuid())
+  paymentId    String   @unique // ← This must be present
+  clientId     String
+  clientName   String
+  invoiceNo    String   @unique
+  invoiceDate  DateTime
+  billTo       String
+  hsn          String   @default("0302")
+  gstPercent   Float    @default(5)
+  taxableValue Float
+  gstAmount    Float
+  totalAmount  Float
+  isFinalized  Boolean  @default(false)
+  createdAt    DateTime @default(now())
+
+  payment ClientPayment @relation(fields: [paymentId], references: [id])
+
+  @@index([clientId])
+}
+
+enum DispatchSourceType {
+  FORMER
+  AGENT
+  CLIENT
+}
+
+enum DispatchChargeType {
+  ICE_COOLING
+  TRANSPORT
+  OTHER
+  PACKING
+}
+
+model DispatchCharge {
+  id             String              @id @default(uuid())
+  sourceType     DispatchSourceType? // For filtering/querying (optional but useful)
+  sourceRecordId String? // Legacy — keep for backward compatibility if needed
+
+  type        DispatchChargeType
+  label       String?
+  amount      Float              @default(0)
+  notes       String?
+  createdAt   DateTime           @default(now())
+  createdById String?
+  createdBy   User?              @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  // NEW: Separate foreign key fields — no conflict!
+  formerLoadingId String?
+  agentLoadingId  String?
+  clientLoadingId String?
+
+  // Relations using dedicated FK fields
+  formerLoading FormerLoading? @relation("FormerDispatchCharges", fields: [formerLoadingId], references: [id], onDelete: Cascade)
+  agentLoading  AgentLoading?  @relation("AgentDispatchCharges", fields: [agentLoadingId], references: [id], onDelete: Cascade)
+  clientLoading ClientLoading? @relation("ClientDispatchCharges", fields: [clientLoadingId], references: [id], onDelete: Cascade)
+
+  @@index([sourceType, sourceRecordId])
+  @@index([type])
+  @@index([formerLoadingId])
+  @@index([agentLoadingId])
+  @@index([clientLoadingId])
+}
+
+enum Gender {
+  Male
+  Female
+  Other
+}
+
+enum MaritalStatus {
+  Single
+  Married
+}
+
+model Employee {
+  id String @id @default(uuid())
+
+  // Office Information
+  employeeId          String   @unique
+  doj                 DateTime
+  department          String
+  designation         String
+  basicSalary         Int
+  hra                 Int?
+  conveyanceAllowance Int?
+  specialAllowance    Int?
+  grossSalary         Int
+  ctc                 Int
+  workLocation        String?
+  shiftType           String?
+
+  // Personal Information
+  fullName         String
+  fatherName       String
+  dob              DateTime
+  gender           Gender
+  aadhaar          String         @unique
+  pan              String         @unique
+  mobile           String         @unique
+  altMobile        String?
+  email            String?        @unique
+  currentAddress   String
+  permanentAddress String
+  maritalStatus    MaritalStatus?
+  nationality      String?
+
+  // Bank Details
+  bankName      String
+  branchName    String
+  accountNumber String
+  ifsc          String
+
+  // documents
+  photo        String?
+  aadhaarProof String?
+  panProof     String?
+
+  user User?
+
+  employeePayments EmployeePayment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId])
+  @@index([department])
+  @@index([designation])
+  @@index([doj])
+  @@index([mobile])
+  @@index([createdAt])
+  @@map("employees")
+}
+
+model Counter {
+  id    String @id
+  value Int
 }

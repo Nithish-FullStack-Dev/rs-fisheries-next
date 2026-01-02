@@ -11,16 +11,7 @@ import axios, { AxiosError } from "axios";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-
-const rentSchema = z.object({
-  vehicleNumber: z.string().min(1, "Vehicle number is required"),
-  rentalAgency: z.string().min(1, "Rental agency is required"),
-  rentalRatePerDay: z.string().min(1, "Daily rate is required"),
-  assignedDriverId: z.string().optional(),
-  remarks: z.string().optional(),
-});
-
-type RentFormType = z.infer<typeof rentSchema>;
+import { RentFormType, rentSchema } from "./types";
 
 export function RentVehicleForm({ onSuccess }: { onSuccess: () => void }) {
   const {
@@ -95,7 +86,7 @@ export function RentVehicleForm({ onSuccess }: { onSuccess: () => void }) {
       </div>
 
       {/* DRIVER ID */}
-      <div className="flex flex-col space-y-1">
+      {/* <div className="flex flex-col space-y-1">
         <Label>Assigned Driver ID (optional)</Label>
         <Input {...register("assignedDriverId")} placeholder="Driver ID" />
         {errors.assignedDriverId && (
@@ -103,7 +94,7 @@ export function RentVehicleForm({ onSuccess }: { onSuccess: () => void }) {
             {errors.assignedDriverId.message}
           </p>
         )}
-      </div>
+      </div> */}
 
       {/* REMARKS */}
       <div className="flex flex-col space-y-1">

@@ -1,145 +1,214 @@
 // app/api/former-loading/route.ts
-
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+
+const TRAY_KG = 35;
+const MONEY_DEDUCTION_PERCENT = 5;
+
+type FormerItemInput = {
+  varietyCode: string;
+  noTrays: number | string;
+  loose: number | string;
+  pricePerKg: number | string;
+};
+
+type FormerLoadingBody = {
+  fishCode?: string;
+  billNo: string;
+  FarmerName?: string;
+  village?: string;
+  date?: string;
+  vehicleId?: string;
+  vehicleNo?: string;
+  items: FormerItemInput[];
+};
+
+const asTrim = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+
+const toNum = (v: unknown): number => {
+  const n = typeof v === "string" ? Number(v.trim()) : Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+
+const round2 = (n: number): number => Math.round(n * 100) / 100;
 
 export async function POST(req: Request) {
   try {
-    const data = await req.json();
+    const body = (await req.json()) as FormerLoadingBody;
 
-    // Basic validation
-    if (!data.vehicleId) {
-      return NextResponse.json(
-        { success: false, message: "Vehicle selection is required" },
-        { status: 400 }
-      );
-    }
-
-    if (!data.billNo) {
+    const billNo = asTrim(body.billNo);
+    if (!billNo) {
       return NextResponse.json(
         { success: false, message: "Bill number is required" },
         { status: 400 }
       );
     }
 
-    // Ensure date is a valid Date object
-    const loadingDate = data.date ? new Date(data.date) : new Date();
-    if (isNaN(loadingDate.getTime())) {
+    if (!Array.isArray(body.items) || body.items.length === 0) {
+      return NextResponse.json(
+        { success: false, message: "At least one item is required" },
+        { status: 400 }
+      );
+    }
+
+    const loadingDate = body.date ? new Date(body.date) : new Date();
+    if (Number.isNaN(loadingDate.getTime())) {
       return NextResponse.json(
         { success: false, message: "Invalid date provided" },
         { status: 400 }
       );
     }
 
-    const loading = await prisma.formerLoading.create({
-      data: {
-        fishCode: data.fishCode || "NA",
-        billNo: data.billNo,
-        FarmerName: data.FarmerName || null,
-        village: data.village || null,
-        date: loadingDate,
-        vehicle: {
-          connect: { id: data.vehicleId }, // Keep as string (UUID)
-        },
-        totalTrays: Number(data.totalTrays) || 0,
-        totalLooseKgs: Number(data.totalLooseKgs) || 0,
-        totalTrayKgs: Number(data.totalTrayKgs) || 0,
-        totalKgs: Number(data.totalKgs) || 0,
-        grandTotal: Number(data.grandTotal || data.totalKgs || 0),
-        items: {
-          create: (data.items || []).map((item: any) => {
-            const trays = Number(item.noTrays) || 0;
-            const loose = Number(item.loose) || 0;
-            const totalKgs = trays * 35 + loose;
+    const vehicleId = asTrim(body.vehicleId) || null;
+    const vehicleNo = asTrim(body.vehicleNo) || null;
 
-            const pricePerKg = Number(item.pricePerKg) || 0;
-            const totalPrice = Number(item.totalPrice) || pricePerKg * totalKgs;
-
-            return {
-              varietyCode: item.varietyCode,
-              noTrays: trays,
-              trayKgs: trays * 35,
-              loose,
-              totalKgs,
-              pricePerKg,
-              totalPrice,
-            };
-          }),
-        },
-
-      },
-      include: { items: true },
-    });
-
-    return NextResponse.json({ success: true, loading });
-  } catch (error: any) {
-    console.error("Error creating formerLoading:", error); // Log full error for debugging
-
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      if (error.code === "P2002") {
-        // Unique constraint violation (likely billNo)
-        const target = error.meta?.target || "field";
-        return NextResponse.json(
-          {
-            success: false,
-            message: `Duplicate ${target}. Bill number already exists. Please refresh.`,
-          },
-          { status: 400 }
-        );
-      }
-
-      if (error.code === "P2003") {
-        // Foreign key failure (e.g., invalid vehicleId)
-        return NextResponse.json(
-          { success: false, message: "Invalid vehicle selected" },
-          { status: 400 }
-        );
-      }
+    if (!vehicleId && !vehicleNo) {
+      return NextResponse.json(
+        { success: false, message: "Vehicle is required" },
+        { status: 400 }
+      );
     }
 
-    // Generic fallback
-    return NextResponse.json(
-      { success: false, message: "Save failed. Check server logs for details." },
-      { status: 500 }
-    );
+    const items = body.items.map((it) => {
+      const varietyCode = asTrim(it.varietyCode);
+      const noTrays = Math.max(0, Math.floor(toNum(it.noTrays)));
+      const loose = Math.max(0, toNum(it.loose));
+      const pricePerKg = Math.max(0, toNum(it.pricePerKg));
+
+      const trayKgs = noTrays * TRAY_KG;
+      const totalKgs = trayKgs + loose;
+
+      const gross = totalKgs * pricePerKg;
+      const totalPrice = round2(gross * (1 - MONEY_DEDUCTION_PERCENT / 100));
+
+      return {
+        varietyCode,
+        noTrays,
+        trayKgs,
+        loose,
+        totalKgs,
+        pricePerKg,
+        totalPrice,
+      };
+    });
+
+    const totalTrays = items.reduce((s, i) => s + i.noTrays, 0);
+    const totalLooseKgs = round2(items.reduce((s, i) => s + i.loose, 0));
+    const totalTrayKgs = round2(items.reduce((s, i) => s + i.trayKgs, 0));
+    const totalKgs = round2(items.reduce((s, i) => s + i.totalKgs, 0));
+
+    const totalPrice = round2(items.reduce((s, i) => s + i.totalPrice, 0));
+
+    const createData: Parameters<typeof prisma.formerLoading.create>[0]["data"] = {
+      fishCode: asTrim(body.fishCode) || "NA",
+      billNo,
+      FarmerName: asTrim(body.FarmerName) || null,
+      village: asTrim(body.village) || "",
+      date: loadingDate,
+
+      totalTrays,
+      totalLooseKgs,
+      totalTrayKgs,
+      totalKgs,
+
+      totalPrice,
+      dispatchChargesTotal: 0,
+      packingAmountTotal: 0,
+      grandTotal: totalPrice,
+
+      items: { create: items },
+    };
+
+    if (vehicleId) {
+      createData.vehicle = { connect: { id: vehicleId } };
+      createData.vehicleNo = null;
+    } else {
+      createData.vehicleNo = vehicleNo;
+    }
+
+    const saved = await prisma.formerLoading.create({
+      data: createData,
+      include: { items: true, vehicle: { select: { vehicleNumber: true } } },
+    });
+
+    return NextResponse.json({ success: true, data: saved }, { status: 201 });
+  } catch (err: unknown) {
+    console.error("FormerLoading POST error:", err);
+    const message =
+      err instanceof Error ? err.message : "Failed to save farmer loading";
+    return NextResponse.json({ success: false, message }, { status: 500 });
   }
 }
 
-// GET remains unchanged (it's fine)
 export async function GET() {
   try {
-    const loadings = await prisma.formerLoading.findMany({
+    const rows = await prisma.formerLoading.findMany({
       include: {
-        items: {
+        items: true,
+        vehicle: { select: { vehicleNumber: true } },
+        // Include all dispatch charges
+        dispatchCharges: {
           select: {
-            id: true,
-            varietyCode: true,
-            noTrays: true,
-            trayKgs: true,
-            loose: true,
-            totalKgs: true,
-            pricePerKg: true,
-            totalPrice: true,
+            type: true,
+            label: true,
+            amount: true,
           },
-        },
-        vehicle: {
-          select: {
-            vehicleNumber: true,  // ← ADD THIS
-          },
+          orderBy: { createdAt: "desc" },
         },
       },
       orderBy: { createdAt: "desc" },
     });
-    const formatted = loadings.map((l) => ({
-      ...l,
-      vehicleNo: l.vehicle?.vehicleNumber ?? "",
-    }));
-    return NextResponse.json({ data: formatted });
-  } catch (error) {
-    console.error("Error fetching agent loadings:", error);
+
+    const data = rows.map((l) => {
+      const itemsTotalPrice = round2(
+        l.items.reduce((s, it) => s + toNum(it.totalPrice), 0)
+      );
+
+      const totalPrice = itemsTotalPrice;
+
+      // ✅ Calculate breakdown from real dispatch charges
+      const breakdown = {
+        iceCooling: 0,
+        transportCharges: 0,
+        otherCharges: [] as { label: string; amount: number }[],
+        dispatchChargesTotal: 0,
+      };
+
+      l.dispatchCharges.forEach((c) => {
+        const amt = Number(c.amount);
+        breakdown.dispatchChargesTotal += amt;
+
+        if (c.type === "ICE_COOLING") {
+          breakdown.iceCooling += amt;
+        } else if (c.type === "TRANSPORT") {
+          breakdown.transportCharges += amt;
+        } else if (c.type === "OTHER" && c.label) {
+          breakdown.otherCharges.push({
+            label: c.label,
+            amount: amt,
+          });
+        }
+      });
+
+      const packingTotal = toNum(l.packingAmountTotal);
+
+      const grandTotal = round2(totalPrice + breakdown.dispatchChargesTotal + packingTotal);
+
+      return {
+        ...l,
+        totalPrice,
+        grandTotal,
+        vehicleNo: l.vehicle?.vehicleNumber ?? l.vehicleNo ?? "",
+        // ✅ Add breakdown to response
+        dispatchBreakdown: breakdown,
+      };
+    });
+
+    return NextResponse.json({ success: true, data }, { status: 200 });
+  } catch (err: unknown) {
+    console.error("FormerLoading GET error:", err);
     return NextResponse.json(
-      { message: "Failed to fetch agent loadings" },
+      { success: false, message: "Failed to fetch farmer loadings" },
       { status: 500 }
     );
   }

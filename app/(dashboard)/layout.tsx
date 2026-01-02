@@ -4,8 +4,8 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 import { TopNav } from "@/components/layout/top-nav";
 import AppSidebar from "@/components/layout/sidebarMain";
 import QueryProvider from "@/components/providers/query-provider";
-import { VendorBillsBadgeProvider } from "@/components/providers/VendorBillsBadgeProvider"; // ← Add this import
 import { Toaster } from "sonner";
+import { VendorBillsBadgeProvider } from "@/components/providers/VendorBillsBadgeProvider";
 
 export default function DashboardLayout({
   children,
@@ -17,15 +17,10 @@ export default function DashboardLayout({
       <Toaster />
       <SidebarProvider>
         <VendorBillsBadgeProvider>
-          {" "}
-          {/* ← Wrap everything inside SidebarProvider */}
           <div className="flex h-screen w-screen overflow-hidden">
-            {/* Sidebar */}
             <div className="shrink-0">
               <AppSidebar />
             </div>
-
-            {/* Right Content */}
             <div className="flex flex-col flex-1 min-w-0">
               <TopNav />
 

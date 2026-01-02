@@ -22,13 +22,13 @@ import { toast } from "sonner";
 type PaymentMode = "cash" | "ac" | "upi" | "cheque";
 
 type VendorRow = {
-  id: string; // vendorId used by backend: `${source}:${loadingId}`
+  id: string;
   name: string;
   source: "farmer" | "agent";
   billNos: string[];
-  loadingIds: string[]; // keep all loading ids
-  latestLoadingId: string; // used for saving payment
-  totalDue: number;
+  loadingIds: string[];
+  latestLoadingId: string;
+  totalDue: number; // ← Now correctly = grandTotal (what you owe vendor)
 
   accountNumber?: string;
   ifsc?: string;
@@ -38,7 +38,7 @@ type VendorRow = {
 
 type VendorPayment = {
   id: string;
-  vendorId: string; // MUST MATCH vendorRow.id
+  vendorId: string;
   vendorName: string;
   source: string;
   date: string;
@@ -70,85 +70,131 @@ export function VendorPayments() {
   const [paymentdetails, setPaymentdetails] = useState("");
   const [referenceNo, setReferenceNo] = useState("");
   const [paymentRef, setPaymentRef] = useState("");
-  const [isPartialPayment, setIsPartialPayment] = useState(false);
-
-  // Bank fields
+  // const [isPartialPayment, setIsPartialPayment] = useState(false);
+  const [isPartial, setIsPartial] = useState(false);
   const [accNo, setAccNo] = useState("");
   const [ifsc, setIfsc] = useState("");
   const [bankName, setBankName] = useState("");
   const [bankAddress, setBankAddress] = useState("");
 
-  // ✅ Vendors list
   const { data: vendorData = [], isLoading: loadingVendors } = useQuery<
     VendorRow[]
   >({
-    queryKey: ["vendors"],
+    queryKey: ["vendors-with-due"],
     queryFn: async () => {
-      const [fRes, aRes] = await Promise.all([
+      // Fetch loadings and payments in parallel
+      const [formerRes, agentRes, paymentRes] = await Promise.all([
         axios.get("/api/former-loading"),
         axios.get("/api/agent-loading"),
+        axios.get("/api/payments/vendor"),
       ]);
 
-      const farmers = (fRes.data?.data || []) as any[];
-      const agents = (aRes.data?.data || []) as any[];
+      const farmers = (formerRes.data?.data || []) as any[];
+      const agents = (agentRes.data?.data || []) as any[];
+      const payments = (paymentRes.data?.data || []) as any[];
 
-      // group by source+name for display, but keep latestLoadingId for payments
-      const map = new Map<string, VendorRow>();
+      // Step 1: Build map of total owed per vendor (grouped by source:name)
+      const vendorMap = new Map<
+        string,
+        {
+          name: string;
+          source: "farmer" | "agent";
+          billNos: string[];
+          loadingIds: string[];
+          latestLoadingId: string;
+          totalDue: number;
+          dispatchChargesTotal: number; // ← Add this
+          accountNumber?: string;
+          ifsc?: string;
+          bankName?: string;
+          bankAddress?: string;
+        }
+      >();
 
       [...farmers, ...agents].forEach((item: any) => {
         const name = (item.FarmerName || item.agentName || "").trim();
         if (!name) return;
 
         const source: "farmer" | "agent" = item.FarmerName ? "farmer" : "agent";
-
-        // IMPORTANT: loading id exists as item.id
         const loadingId = String(item.id || "").trim();
         if (!loadingId) return;
 
         const billNo = String(item.billNo || "").trim();
+        const totalOwed = Number(item.grandTotal || 0);
+        const dispatchCharges = Number(item.dispatchChargesTotal || 0); // ← Extract this
 
-        const total =
-          item.items?.reduce(
-            (s: number, i: any) => s + Number(i.totalPrice || 0),
-            0
-          ) || Number(item.grandTotal || 0);
+        const key = `${source}:${name.toLowerCase()}`;
 
-        const displayKey = `${source}:${name}`; // grouping key (for dropdown)
-        const vendorBackendId = `${source}:${loadingId}`; // backend vendorId format
-
-        if (!map.has(displayKey)) {
-          map.set(displayKey, {
-            id: vendorBackendId, // ✅ this MUST match payments.vendorId
+        if (!vendorMap.has(key)) {
+          vendorMap.set(key, {
             name,
             source,
             billNos: billNo ? [billNo] : [],
             loadingIds: [loadingId],
             latestLoadingId: loadingId,
-            totalDue: total,
-            accountNumber: item.accountNumber,
-            ifsc: item.ifsc,
-            bankName: item.bankName,
-            bankAddress: item.bankAddress,
+            totalDue: totalOwed,
+            dispatchChargesTotal: dispatchCharges,
+            accountNumber: item.accountNumber || undefined,
+            ifsc: item.ifsc || undefined,
+            bankName: item.bankName || undefined,
+            bankAddress: item.bankAddress || undefined,
           });
         } else {
-          const existing = map.get(displayKey)!;
-          existing.totalDue += total;
+          const existing = vendorMap.get(key)!;
+          existing.totalDue += totalOwed;
+          existing.dispatchChargesTotal += dispatchCharges; // ← Accumulate
           if (billNo) existing.billNos.push(billNo);
           existing.loadingIds.push(loadingId);
-
-          // choose latest as last seen (or use date compare if you want)
           existing.latestLoadingId = loadingId;
-          existing.id = `${source}:${existing.latestLoadingId}`; // keep backend id aligned
         }
       });
 
-      return Array.from(map.values()).sort((a, b) =>
-        a.name.localeCompare(b.name)
-      );
+      // Step 2: Calculate total paid per vendor
+      const paidMap = new Map<string, number>();
+      payments.forEach((p: any) => {
+        const vendorId = p.vendorId;
+        if (!vendorId) return;
+        const amount = Number(p.amount || 0);
+        paidMap.set(vendorId, (paidMap.get(vendorId) || 0) + amount);
+      });
+
+      // Step 3: Build final list — only if dispatchChargesTotal > 0 AND remaining > 0
+      const result: VendorRow[] = [];
+
+      for (const [key, vendor] of vendorMap) {
+        // Only include if total dispatch charges across all loadings > 0
+        if (vendor.dispatchChargesTotal <= 0) continue;
+
+        let totalPaid = 0;
+        for (const loadingId of vendor.loadingIds) {
+          const fullVendorId = `${vendor.source}:${loadingId}`;
+          totalPaid += paidMap.get(fullVendorId) || 0;
+        }
+
+        const remaining = vendor.totalDue - totalPaid;
+
+        if (remaining > 0) {
+          result.push({
+            id: `${vendor.source}:${vendor.latestLoadingId}`,
+            name: vendor.name,
+            source: vendor.source,
+            billNos: vendor.billNos,
+            loadingIds: vendor.loadingIds,
+            latestLoadingId: vendor.latestLoadingId,
+            totalDue: vendor.totalDue,
+            accountNumber: vendor.accountNumber,
+            ifsc: vendor.ifsc,
+            bankName: vendor.bankName,
+            bankAddress: vendor.bankAddress,
+          });
+        }
+      }
+
+      return result.sort((a, b) => a.name.localeCompare(b.name));
     },
+    staleTime: 1000 * 30,
   });
 
-  // ✅ Payments list
   const { data: payments = [] } = useQuery<VendorPayment[]>({
     queryKey: ["vendor-payments"],
     queryFn: () =>
@@ -157,7 +203,6 @@ export function VendorPayments() {
 
   const selected = vendorData.find((v) => v.id === vendorId);
 
-  // ✅ Paid amount updates immediately because it reads from react-query cache
   const paidAmount = useMemo(() => {
     if (!vendorId) return 0;
     return payments
@@ -168,7 +213,6 @@ export function VendorPayments() {
   const totalDue = selected?.totalDue || 0;
   const remaining = Math.max(0, totalDue - paidAmount);
 
-  // Auto-fill bank details
   useEffect(() => {
     if (paymentMode === "ac" && selected) {
       setAccNo(selected.accountNumber || "");
@@ -186,7 +230,7 @@ export function VendorPayments() {
   const validateForm = () => {
     if (!vendorId) return "Select a vendor";
     if (!amount || Number(amount) <= 0) return "Enter valid amount";
-    if (Number(amount) > remaining) return "Amount exceeds remaining";
+    if (Number(amount) > remaining) return "Amount exceeds remaining due";
 
     if (paymentMode !== "ac") {
       if (!referenceNo.trim()) return "Reference No is required";
@@ -207,74 +251,52 @@ export function VendorPayments() {
     return null;
   };
 
-  // ✅ Mutation: optimistic update cache so Paid/Remaining changes instantly
   const saveMutation = useMutation({
     mutationFn: (payload: any) => axios.post("/api/payments/vendor", payload),
-    onSuccess: (res, variables) => {
+    onSuccess: () => {
       toast.success("Payment saved successfully!");
 
-      // 🔥 Optimistically update list cache
-      queryClient.setQueryData(["vendor-payments"], (old: any) => {
-        const prev: VendorPayment[] = Array.isArray(old) ? old : [];
-        const newRow: VendorPayment = {
-          id: res.data?.data?.id || `temp-${Date.now()}`,
-          vendorId: variables.vendorId,
-          vendorName: variables.vendorName,
-          source: variables.source,
-          date: variables.date,
-          amount: Number(variables.amount),
-          paymentMode: variables.paymentMode,
-          referenceNo: variables.referenceNo ?? null,
-          paymentRef: variables.paymentRef ?? null,
-          accountNumber: variables.accountNumber ?? null,
-          ifsc: variables.ifsc ?? null,
-          bankName: variables.bankName ?? null,
-          bankAddress: variables.bankAddress ?? null,
-          paymentdetails: variables.paymentdetails ?? null,
-          isInstallment: Boolean(variables.isInstallment ?? false),
-          createdAt: new Date().toISOString(),
-        };
-        return [newRow, ...prev];
-      });
-
-      // Also refetch to ensure DB truth
+      // ✅ Critical: Invalidate the vendor list query
+      queryClient.invalidateQueries({ queryKey: ["vendors-with-due"] });
       queryClient.invalidateQueries({ queryKey: ["vendor-payments"] });
+
+      // Optional but recommended
+      queryClient.invalidateQueries({ queryKey: ["former-loading"] });
+      queryClient.invalidateQueries({ queryKey: ["agent-loading"] });
+
+      // Reset form and selection
       resetForm();
+      setVendorId("");
+      setPaymentMode("cash");
     },
     onError: (err: any) => {
-      console.error("Save error:", err.response?.data || err);
-      toast.error(err.response?.data?.message || "Failed to save");
+      toast.error(err.response?.data?.error || "Failed to save payment");
     },
   });
 
   const handleSave = () => {
     const error = validateForm();
     if (error) return toast.error(error);
-    if (!selected) return toast.error("Select a vendor");
+    if (!selected) return;
 
     const billNoToSend = selected.billNos?.[selected.billNos.length - 1] || "";
 
-    // ✅ If your backend supports billNo fallback, send it.
-    // ✅ Also send vendorId so optimistic UI can match.
     saveMutation.mutate({
-      vendorId: selected.id, // for cache matching
       source: selected.source,
-      billNo: billNoToSend, // fallback
-      sourceRecordId: selected.latestLoadingId, // if your backend still expects it, this makes it 100% valid
+      sourceRecordId: selected.latestLoadingId,
+      billNo: billNoToSend,
       vendorName: selected.name,
       date,
       amount: Number(amount),
-      paymentMode,
-      referenceNo,
-      paymentRef,
-
-      accountNumber: accNo,
-      ifsc,
-      bankName,
-      bankAddress,
-      paymentdetails,
-
-      isInstallment: isPartialPayment,
+      paymentMode: paymentMode.toUpperCase(),
+      referenceNo: referenceNo || null,
+      paymentRef: paymentRef || null,
+      accountNumber: paymentMode === "ac" ? accNo : null,
+      ifsc: paymentMode === "ac" ? ifsc : null,
+      bankName: paymentMode === "ac" ? bankName : null,
+      bankAddress: paymentMode === "ac" ? bankAddress : null,
+      paymentdetails: paymentdetails || null,
+      // isInstallment: isPartialPayment,
     });
   };
 
@@ -283,7 +305,8 @@ export function VendorPayments() {
     setPaymentdetails("");
     setReferenceNo("");
     setPaymentRef("");
-    setIsPartialPayment(false);
+    // setIsPartialPayment(false);
+    setIsPartial(false);
     setAccNo("");
     setIfsc("");
     setBankName("");
@@ -300,11 +323,11 @@ export function VendorPayments() {
     <CardCustom
       title="Vendor Payments"
       actions={
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-col sm:flex-row sm:flex-wrap gap-3 w-full sm:w-auto">
           <Button
             onClick={handleSave}
             disabled={saveMutation.isPending || loadingVendors}
-            className="bg-[#139BC3] text-white hover:bg-[#1088AA] focus-visible:ring-2 focus-visible:ring-[#139BC3]/40 shadow-sm"
+            className="w-full sm:w-auto bg-[#139BC3] text-white hover:bg-[#1088AA] focus-visible:ring-2 focus-visible:ring-[#139BC3]/40 shadow-sm"
           >
             <Save className="w-4 h-4 mr-2" />
             {saveMutation.isPending ? "Saving..." : "Save Payment"}
@@ -313,7 +336,7 @@ export function VendorPayments() {
           <Button
             variant="outline"
             onClick={handleReset}
-            className="border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm"
+            className="w-full sm:w-auto border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm"
           >
             <RotateCcw className="w-4 h-4 mr-2" />
             Reset
@@ -321,22 +344,23 @@ export function VendorPayments() {
         </div>
       }
     >
-      <div className="py-6">
-        <div className="max-w-6xl mx-auto space-y-8">
+      <div className="py-4 sm:py-6">
+        <div className="max-w-6xl mx-auto space-y-6 sm:space-y-8">
           {/* Top section */}
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-6">
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-end">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-end">
               {/* Vendor Select */}
-              <div className="lg:col-span-6 space-y-2">
+              <div className="lg:col-span-6 space-y-2 min-w-0">
                 <Label className="text-slate-700">
                   Vendor (Farmer / Agent)
                 </Label>
+
                 <Select
                   value={vendorId}
                   onValueChange={setVendorId}
                   disabled={loadingVendors}
                 >
-                  <SelectTrigger className="h-11 border-slate-200 bg-white shadow-sm focus:ring-2 focus:ring-[#139BC3]/30">
+                  <SelectTrigger className="h-11 w-full border-slate-200 bg-white shadow-sm focus:ring-2 focus:ring-[#139BC3]/30">
                     <SelectValue
                       placeholder={
                         loadingVendors ? "Loading..." : "Select vendor"
@@ -347,21 +371,19 @@ export function VendorPayments() {
                   <SelectContent className="border-slate-200">
                     {vendorData.map((v) => (
                       <SelectItem key={v.id} value={v.id} className="py-3">
-                        <div className="flex justify-between items-center w-full gap-4">
-                          <div className="min-w-0">
-                            <span className="font-medium text-slate-800 truncate">
-                              {v.name}
-                            </span>
-                          </div>
+                        <div className="flex items-center justify-between w-full gap-3 min-w-0">
+                          <span className="font-medium text-slate-800 truncate">
+                            {v.name}
+                          </span>
 
                           <Badge
                             variant="secondary"
-                            className="bg-slate-100 text-slate-700 border border-slate-200"
+                            className="shrink-0 bg-slate-100 text-slate-700 border border-slate-200"
                           >
                             {v.source}
                           </Badge>
 
-                          <span className="text-sm font-semibold text-[#139BC3]">
+                          <span className="shrink-0 whitespace-nowrap text-sm font-semibold text-[#139BC3]">
                             {currency(v.totalDue)}
                           </span>
                         </div>
@@ -373,22 +395,22 @@ export function VendorPayments() {
 
               {/* Totals */}
               <div className="lg:col-span-3">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center overflow-hidden">
                   <p className="text-xs font-medium text-slate-600">
                     Total Due
                   </p>
-                  <p className="mt-1 text-2xl font-bold text-slate-900">
+                  <p className="mt-1 font-bold text-slate-900 tabular-nums text-xl sm:text-2xl truncate">
                     {currency(totalDue)}
                   </p>
                 </div>
               </div>
 
               <div className="lg:col-span-3">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center">
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center overflow-hidden">
                   <p className="text-xs font-medium text-slate-600">
                     Remaining
                   </p>
-                  <p className="mt-1 text-2xl font-bold text-emerald-600">
+                  <p className="mt-1 font-bold text-emerald-600 tabular-nums text-xl sm:text-2xl truncate">
                     {currency(remaining)}
                   </p>
                 </div>
@@ -397,8 +419,8 @@ export function VendorPayments() {
           </div>
 
           {/* Form */}
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-6">
-            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-6">
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 sm:gap-6">
               <div className="space-y-2">
                 <Label className="text-slate-700">Date</Label>
                 <Input
@@ -414,13 +436,36 @@ export function VendorPayments() {
                 <Input
                   type="text"
                   value={amount}
-                  onChange={(e) =>
-                    /^\d*\.?\d*$/.test(e.target.value) &&
-                    setAmount(e.target.value)
-                  }
+                  onChange={(e) => {
+                    const value = e.target.value;
+
+                    // Allow only valid number format (digits, optional decimal)
+                    if (!/^\d*\.?\d*$/.test(value)) return;
+
+                    // If a vendor is selected and there's a remaining due, prevent exceeding it
+                    if (selected && remaining > 0) {
+                      const numericValue = value === "" ? 0 : parseFloat(value);
+                      if (!isNaN(numericValue) && numericValue > remaining) {
+                        toast.error(
+                          `Amount cannot exceed remaining due of ${currency(
+                            remaining
+                          )}`
+                        );
+                        return;
+                      }
+                    }
+
+                    setAmount(value);
+                  }}
                   placeholder="100000"
                   className="h-11 border-slate-200 bg-white shadow-sm font-mono text-lg focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
                 />
+                {/* Helpful hint below the input */}
+                {selected && remaining > 0 && (
+                  <p className="text-xs text-slate-500 mt-1">
+                    Maximum allowed: {currency(remaining)}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -465,8 +510,8 @@ export function VendorPayments() {
 
             {/* Conditional fields */}
             {paymentMode !== "ac" && (
-              <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                   <div className="space-y-2">
                     <Label className="text-slate-700">
                       Reference No <span className="text-rose-600">*</span>
@@ -504,8 +549,8 @@ export function VendorPayments() {
             )}
 
             {paymentMode === "ac" && (
-              <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-6">
-                <div className="flex items-center justify-between mb-4">
+              <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4">
                   <h3 className="text-lg font-semibold text-slate-900">
                     Bank Transfer Details
                   </h3>
@@ -514,7 +559,7 @@ export function VendorPayments() {
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                   <div className="space-y-2">
                     <Label className="text-slate-700">Account Number</Label>
                     <Input
@@ -564,14 +609,14 @@ export function VendorPayments() {
                 Payment Type
               </Label>
 
-              <div className="flex flex-col lg:flex-row lg:items-center gap-4 mt-3">
-                <div className="flex gap-2">
+              <div className="flex flex-col lg:flex-row lg:items-center gap-3 sm:gap-4 mt-3">
+                <div className="grid grid-cols-2 sm:flex gap-2 w-full sm:w-auto">
                   <button
                     type="button"
-                    onClick={() => setIsPartialPayment(false)}
+                    onClick={() => setIsPartial(false)}
                     className={[
-                      "px-5 py-2 rounded-full border text-sm font-semibold transition",
-                      !isPartialPayment
+                      "w-full sm:w-auto px-5 py-2 rounded-full border text-sm font-semibold transition",
+                      !isPartial
                         ? "bg-[#139BC3] text-white border-[#139BC3] hover:bg-[#1088AA]"
                         : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50",
                     ].join(" ")}
@@ -581,10 +626,10 @@ export function VendorPayments() {
 
                   <button
                     type="button"
-                    onClick={() => setIsPartialPayment(true)}
+                    onClick={() => setIsPartial(true)}
                     className={[
-                      "px-5 py-2 rounded-full border text-sm font-semibold transition",
-                      isPartialPayment
+                      "w-full sm:w-auto px-5 py-2 rounded-full border text-sm font-semibold transition",
+                      isPartial
                         ? "bg-[#139BC3] text-white border-[#139BC3] hover:bg-[#1088AA]"
                         : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50",
                     ].join(" ")}
@@ -593,7 +638,7 @@ export function VendorPayments() {
                   </button>
                 </div>
 
-                {isPartialPayment && (
+                {isPartial && (
                   <div className="text-sm text-slate-700">
                     Paying{" "}
                     <span className="font-semibold text-slate-900">
@@ -608,39 +653,39 @@ export function VendorPayments() {
               </div>
             </div>
 
-            {/* Summary */}
-            <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-6">
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-6 text-center">
-                <div className="rounded-xl bg-white border border-slate-200 p-4">
+            {/* Summary (✅ 1 by 1 on mobile) */}
+            <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 text-center">
+                <div className="rounded-xl bg-white border border-slate-200 p-4 overflow-hidden">
                   <p className="text-xs font-medium text-slate-600">
                     Total Due
                   </p>
-                  <p className="mt-1 text-xl font-bold text-slate-900">
+                  <p className="mt-1 font-bold text-slate-900 tabular-nums text-lg sm:text-xl truncate">
                     {currency(totalDue)}
                   </p>
                 </div>
 
-                <div className="rounded-xl bg-white border border-slate-200 p-4">
+                <div className="rounded-xl bg-white border border-slate-200 p-4 overflow-hidden">
                   <p className="text-xs font-medium text-slate-600">Paid</p>
-                  <p className="mt-1 text-xl font-bold text-slate-900">
+                  <p className="mt-1 font-bold text-slate-900 tabular-nums text-lg sm:text-xl truncate">
                     {currency(paidAmount)}
                   </p>
                 </div>
 
-                <div className="rounded-xl bg-white border border-slate-200 p-4">
+                <div className="rounded-xl bg-white border border-slate-200 p-4 overflow-hidden">
                   <p className="text-xs font-medium text-slate-600">
                     Remaining
                   </p>
-                  <p className="mt-1 text-xl font-bold text-emerald-600">
+                  <p className="mt-1 font-bold text-emerald-600 tabular-nums text-lg sm:text-xl truncate">
                     {currency(remaining)}
                   </p>
                 </div>
 
-                <div className="rounded-xl bg-white border border-slate-200 p-4">
+                <div className="rounded-xl bg-white border border-slate-200 p-4 overflow-hidden">
                   <p className="text-xs font-medium text-slate-600">
                     Paying Now
                   </p>
-                  <p className="mt-1 text-xl font-bold text-[#139BC3]">
+                  <p className="mt-1 font-bold text-[#139BC3] tabular-nums text-lg sm:text-xl truncate">
                     {currency(Number(amount) || 0)}
                   </p>
                 </div>

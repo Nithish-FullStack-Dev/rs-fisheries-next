@@ -16,5 +16,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ message: "Invoice not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ invoice });
+  // ✅ VendorPayment fields as per your schema
+  const payment = await prisma.vendorPayment.findUnique({
+    where: { id: paymentId },
+    select: {
+      id: true,
+      amount: true,
+      date: true,
+      paymentMode: true,
+      referenceNo: true,
+      paymentRef: true,
+      paymentdetails: true,
+    },
+  });
+
+  return NextResponse.json({ invoice, payment });
 }

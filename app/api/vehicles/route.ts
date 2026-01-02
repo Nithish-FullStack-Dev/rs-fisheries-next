@@ -90,25 +90,66 @@ export const POST = apiHandler(async (req: Request) => {
 
 export const GET = apiHandler(async () => {
   const vehicles = await prisma.vehicle.findMany({
-    orderBy: { createdAt: "desc" },
-    include: {
+    where: {
+      OR: [
+        { farmerLoadings: { some: { tripStatus: "RUNNING" } } },
+        { agentLoadings: { some: { tripStatus: "RUNNING" } } },
+        { clientLoadings: { some: { tripStatus: "RUNNING" } } },
+      ],
+    },
+
+    select: {
+      id: true,
+      vehicleNumber: true,
+      ownership: true,
       assignedDriver: {
+        select: { name: true },
+      },
+
+      // Only the ACTIVE farmer trip (if exists)
+      farmerLoadings: {
+        where: { tripStatus: "RUNNING" },
+        take: 1,
         select: {
-          assignedVehicle: {
-            select: {
-              vehicleNumber: true,
-              id: true,
-            },
-          },
-          name: true,
-          phone: true,
           id: true,
+          billNo: true,
+          village: true,
+          date: true,
+          FarmerName: true,
+        },
+      },
+
+      // Only the ACTIVE agent trip (if exists)
+      agentLoadings: {
+        where: { tripStatus: "RUNNING" },
+        take: 1,
+        select: {
+          id: true,
+          billNo: true,
+          village: true,
+          date: true,
+          agentName: true,
+        },
+      },
+
+      // Only the ACTIVE client trip (if exists)
+      clientLoadings: {
+        where: { tripStatus: "RUNNING" },
+        take: 1,
+        select: {
+          id: true,
+          billNo: true,
+          village: true,
+          date: true,
+          clientName: true,
         },
       },
     },
+
+    orderBy: { createdAt: "desc" },
   });
 
   return NextResponse.json(
-    new ApiResponse(200, vehicles, "Vehicles RENT fetched successfully")
+    new ApiResponse(200, vehicles, "Active trips fetched")
   );
 });

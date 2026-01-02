@@ -1,7 +1,6 @@
 "use client";
 
 import { useForm } from "react-hook-form";
-import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import { Input } from "@/components/ui/input";
@@ -19,43 +18,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useState } from "react";
-
-const indianVehicleNumberRegex = /^[A-Z]{2}\s[0-9]{2}\s[A-Z]{1,3}\s[0-9]{1,4}$/;
-
-const ownSchema = z.object({
-  vehicleNumber: z
-    .string()
-    .min(1, "Required")
-    .regex(
-      indianVehicleNumberRegex,
-      "Invalid vehicle number format (e.g., MH 12 AB 1234)"
-    ),
-
-  manufacturer: z.string().optional(),
-  model: z.string().optional(),
-  yearOfManufacture: z.string().optional(),
-  fuelType: z.enum(["DIESEL", "PETROL", "CNG", "ELECTRIC"], {
-    error: "Fuel type is required",
-  }),
-
-  engineNumber: z.string().optional(),
-  chassisNumber: z.string().optional(),
-
-  capacityInTons: z.string().optional(),
-  bodyType: z.string().optional(),
-
-  rcValidity: z.string().optional(),
-  insuranceExpiry: z.string().optional(),
-  fitnessExpiry: z.string().optional(),
-  pollutionExpiry: z.string().optional(),
-  permitExpiry: z.string().optional(),
-  roadTaxExpiry: z.string().optional(),
-
-  assignedDriverId: z.string().optional(),
-  remarks: z.string().optional(),
-});
-
-type OwnFormType = z.infer<typeof ownSchema>;
+import { OwnFormType, ownSchema, useAvalibleDrivers } from "./types";
 
 export function OwnVehicleForm({ onSuccess }: { onSuccess: () => void }) {
   const {
@@ -69,17 +32,7 @@ export function OwnVehicleForm({ onSuccess }: { onSuccess: () => void }) {
   const [selected, setSelected] = useState("");
   const queryClient = useQueryClient();
 
-  const {
-    data: drivers,
-    isLoading,
-    isError,
-  } = useQuery({
-    queryKey: ["available-drivers"],
-    queryFn: async () => {
-      const { data: res } = await axios.get("/api/driver/available");
-      return res.data;
-    },
-  });
+  const { data: drivers, isLoading, isError } = useAvalibleDrivers();
 
   const addMutation = useMutation({
     mutationFn: async (payload: OwnFormType & { ownership: string }) => {

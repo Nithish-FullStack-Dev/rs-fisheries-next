@@ -1,3 +1,4 @@
+// components\helpers\DeleteDialog.tsx
 "use client";
 
 import {
@@ -18,7 +19,7 @@ interface Props {
 export default function DeleteDialog({ open, onClose, onConfirm }: Props) {
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent>
+      <DialogContent aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>Delete User</DialogTitle>
         </DialogHeader>

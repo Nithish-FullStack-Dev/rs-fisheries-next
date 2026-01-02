@@ -41,31 +41,65 @@ export function PackingAmount() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
-  useEffect(() => {
-    async function loadBills() {
-      setIsLoading(true);
-      try {
-        let data: Bill[] = [];
-        if (mode === "loading") {
-          const res = await fetch("/api/client-loading");
-          const json = await res.json();
-          data = json.data || [];
-        } else {
-          const [formerRes, agentRes] = await Promise.all([
-            fetch("/api/former-loading"),
-            fetch("/api/agent-loading"),
-          ]);
-          const f = await formerRes.json();
-          const a = await agentRes.json();
-          data = [...(f.data || []), ...(a.data || [])];
-        }
-        setBills(data);
-      } catch {
-        toast.error("Failed to load bills");
-      } finally {
-        setIsLoading(false);
+  // Separate reusable function to load and filter available bills
+  const loadBills = async () => {
+    setIsLoading(true);
+
+    try {
+      let allBills: Bill[] = [];
+      let usedPackingBillIds = new Set<string>();
+
+      // 1️⃣ Fetch packing amounts first
+      const packingRes = await fetch("/api/payments/packing-amount");
+      if (packingRes.ok) {
+        const packingJson = await packingRes.json();
+        const packings = packingJson.data || [];
+
+        packings.forEach((p: any) => {
+          if (p.clientLoadingId) usedPackingBillIds.add(p.clientLoadingId);
+          if (p.formerLoadingId) usedPackingBillIds.add(p.formerLoadingId);
+          if (p.agentLoadingId) usedPackingBillIds.add(p.agentLoadingId);
+        });
       }
+
+      // 2️⃣ Fetch ONLY existing loadings
+      if (mode === "loading") {
+        // CLIENT LOADINGS
+        const res = await fetch("/api/client-loading");
+        const json = await res.json();
+        allBills = json.data || [];
+      } else {
+        // UNLOADING = FARMER + AGENT
+        const [formerRes, agentRes] = await Promise.all([
+          fetch("/api/former-loading"),
+          fetch("/api/agent-loading"),
+        ]);
+
+        const formerJson = await formerRes.json();
+        const agentJson = await agentRes.json();
+
+        allBills = [...(formerJson.data || []), ...(agentJson.data || [])];
+      }
+
+      // 3️⃣ Filter out:
+      // ❌ bills already used in packing
+      // ❌ bills that were deleted (not returned by API)
+      const availableBills = allBills.filter(
+        (bill) => bill?.id && !usedPackingBillIds.has(bill.id)
+      );
+
+      setBills(availableBills);
+    } catch (err) {
+      console.error("Error loading bills:", err);
+      toast.error("Failed to load bills");
+      setBills([]);
+    } finally {
+      setIsLoading(false);
     }
+  };
+
+  // Load bills on mount and whenever mode changes
+  useEffect(() => {
     loadBills();
   }, [mode]);
 
@@ -74,7 +108,12 @@ export function PackingAmount() {
     const tempNum = parseFloat(temperature);
     const totalNum = parseFloat(total);
 
-    if (workersNum <= 0 || isNaN(tempNum) || totalNum <= 0) {
+    if (
+      isNaN(workersNum) ||
+      workersNum <= 0 ||
+      isNaN(tempNum) ||
+      totalNum <= 0
+    ) {
       toast.error("Please fill all required fields correctly");
       return;
     }
@@ -83,14 +122,34 @@ export function PackingAmount() {
       toast.error("Reference number is required for non-cash payments");
       return;
     }
+    if (selectedBillId && !bills.some((b) => b.id === selectedBillId)) {
+      toast.error("Selected bill no longer exists");
+      return;
+    }
 
     setIsSaving(true);
     try {
+      let sourceType: "FORMER" | "AGENT" | "CLIENT" | null = null;
+
+      if (selectedBillId) {
+        if (mode === "loading") {
+          sourceType = "CLIENT";
+        } else {
+          const selectedBill = bills.find((b) => b.id === selectedBillId);
+          if (selectedBill?.FarmerName) {
+            sourceType = "FORMER";
+          } else if (selectedBill?.agentName) {
+            sourceType = "AGENT";
+          }
+        }
+      }
+
       const res = await fetch("/api/payments/packing-amount", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode,
+          sourceType,
           sourceRecordId: selectedBillId || null,
           workers: workersNum,
           temperature: tempNum,
@@ -104,10 +163,11 @@ export function PackingAmount() {
         const err = await res.json();
         throw new Error(err.error || "Save failed");
       }
+      // Immediately refresh the bill list to remove the used one
+      await loadBills();
 
       toast.success("Packing amount saved successfully!");
-
-      // Reset
+      // Reset form
       setWorkers("");
       setTemperature("");
       setTotal("0");
@@ -197,7 +257,9 @@ export function PackingAmount() {
               <Input
                 type="number"
                 value={workers}
-                onChange={(e) => setWorkers(e.target.value)}
+                onChange={(e) =>
+                  setWorkers(Math.max(0, Number(e.target.value)).toString())
+                }
                 placeholder="e.g. 8"
                 min="1"
                 className="h-11 border-slate-200 bg-white shadow-sm focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
@@ -220,9 +282,11 @@ export function PackingAmount() {
             <Input
               type="number"
               value={total}
-              onChange={(e) => setTotal(e.target.value)}
+              onChange={(e) =>
+                setTotal(Math.max(0, Number(e.target.value)).toString())
+              }
               placeholder="Enter total amount"
-              min="0"
+              min={0}
               step="100"
               className="h-12 border-slate-200 bg-white shadow-sm text-2xl font-bold focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
             />

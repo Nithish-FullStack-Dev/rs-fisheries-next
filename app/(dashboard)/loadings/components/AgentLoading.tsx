@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import axios from "axios";
 import { toast } from "sonner";
-import { useQuery } from "@tanstack/react-query";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -16,6 +16,40 @@ import {
 } from "@/components/ui/select";
 import { PlusCircle, Save, Trash2 } from "lucide-react";
 import { Field, FieldLabel } from "@/components/ui/field";
+import { fi } from "date-fns/locale";
+
+const TRAY_WEIGHT = 35;
+const DEDUCTION_PERCENT = 5;
+
+const todayYMD = () => {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+// ✅ Text rules
+const AGENT_NAME_REGEX = /^[A-Za-z][A-Za-z .'-]*$/; // letters + space + . ' -
+const VILLAGE_REGEX = /^[A-Za-z][A-Za-z ]*$/; // letters + space
+
+const cleanAgentName = (v: string) =>
+  v
+    .replace(/[^A-Za-z .'-]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trimStart();
+
+const cleanVillage = (v: string) =>
+  v
+    .replace(/[^A-Za-z ]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trimStart();
+
+const safeNum = (v: unknown) => {
+  const n = typeof v === "number" ? v : Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return n;
+};
 
 interface ItemRow {
   id: string;
@@ -28,13 +62,22 @@ interface ItemRow {
 }
 
 export default function AgentLoading() {
+  const queryClient = useQueryClient();
+
   const [billNo, setBillNo] = useState("");
   const [agentName, setAgentName] = useState("");
   const [village, setVillage] = useState("");
-  const [date, setDate] = useState("");
-  const [vehicleNo, setVehicleNo] = useState("");
-  const [fishCode, setFishCode] = useState("");
-  // const [vehicleId, setVehicleId] = useState("");
+  const [date, setDate] = useState(todayYMD());
+  const [vehicleId, setVehicleId] = useState("");
+  const [otherVehicleNo, setOtherVehicleNo] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const isOtherVehicle = vehicleId === "__OTHER__";
+
+  // ✅ hide used vehicles without reload
+  const [usedVehicleIds, setUsedVehicleIds] = useState<Set<string>>(
+    () => new Set()
+  );
 
   const [items, setItems] = useState<ItemRow[]>([
     {
@@ -48,9 +91,6 @@ export default function AgentLoading() {
     },
   ]);
 
-  const [grandTotal, setGrandTotal] = useState(0);
-  // if (!vehicleNo) return toast.error("Select a vehicle");
-
   const { data: varieties = [] } = useQuery({
     queryKey: ["varieties"],
     queryFn: async () => {
@@ -58,18 +98,24 @@ export default function AgentLoading() {
       return res.data.data || [];
     },
   });
+
   const { data: vehicles = [] } = useQuery({
     queryKey: ["assigned-vehicles"],
     queryFn: async () => {
       const res = await axios.get("/api/vehicles/assign-driver");
-      return res.data.data;
+      return res.data.data || [];
     },
   });
-  // Helper to get fish name
-  const getVarietyName = (code: string) => {
-    return varieties.find((v: any) => v.code === code)?.name || "";
-  };
-  const { data: billData, refetch: refetchBillNo } = useQuery({
+
+  const getVarietyName = (code: string) =>
+    varieties.find((v: any) => v.code === code)?.name || "";
+
+  const {
+    data: billData,
+    isLoading: billLoading,
+    isError: billError,
+    refetch: refetchBillNo,
+  } = useQuery({
     queryKey: ["agent-bill-no"],
     queryFn: async () => {
       const res = await fetch("/api/agent-loading/next-bill-no");
@@ -82,20 +128,53 @@ export default function AgentLoading() {
     if (billData) setBillNo(billData);
   }, [billData]);
 
-  const updateRow = (id: string, field: string, value: any) => {
+  useEffect(() => {
+    if (billError) toast.error("Failed to load bill number");
+  }, [billError]);
+
+  // ✅ Vehicles filtered (hide used instantly; keep selected visible)
+  const availableVehicles = useMemo(() => {
+    return (vehicles ?? []).filter((v: any) => {
+      if (!v?.id) return false;
+      if (v.id === vehicleId) return true;
+      return !usedVehicleIds.has(v.id);
+    });
+  }, [vehicles, usedVehicleIds, vehicleId]);
+
+  // ✅ safer row update (no negatives, stable totals)
+  const updateRow = (id: string, field: keyof ItemRow, value: any) => {
     setItems((prev) =>
-      prev.map((row) =>
-        row.id === id
-          ? {
-              ...row,
-              [field]: value,
-              trayKgs: field === "noTrays" ? value * 35 : row.trayKgs,
-              totalKgs:
-                (field === "noTrays" ? value * 35 : row.trayKgs) +
-                (field === "loose" ? value : row.loose),
-            }
-          : row
-      )
+      prev.map((row) => {
+        if (row.id !== id) return row;
+
+        if (field === "varietyCode") {
+          const code = String(value ?? "");
+          return {
+            ...row,
+            varietyCode: code,
+            name: getVarietyName(code),
+            // reset quantities when variety changes (optional but cleaner)
+            noTrays: row.noTrays,
+            loose: row.loose,
+            trayKgs: safeNum(row.noTrays) * TRAY_WEIGHT,
+            totalKgs: safeNum(row.noTrays) * TRAY_WEIGHT + safeNum(row.loose),
+          };
+        }
+
+        if (field === "name") {
+          return { ...row, name: String(value ?? "") };
+        }
+
+        if (field === "noTrays" || field === "loose") {
+          const n = Math.max(0, safeNum(value)); // ✅ clamp no negative
+          const next = { ...row, [field]: n } as ItemRow;
+          const trayKgs = safeNum(next.noTrays) * TRAY_WEIGHT;
+          const totalKgs = trayKgs + safeNum(next.loose);
+          return { ...next, trayKgs, totalKgs };
+        }
+
+        return { ...row, [field]: value } as ItemRow;
+      })
     );
   };
 
@@ -115,21 +194,27 @@ export default function AgentLoading() {
   };
 
   const deleteRow = (id: string) => {
-    if (items.length === 1) return;
-    setItems((prev) => prev.filter((row) => row.id !== id));
+    setItems((prev) =>
+      prev.length === 1 ? prev : prev.filter((r) => r.id !== id)
+    );
   };
 
-  useEffect(() => {
-    const total = items.reduce((sum, r) => sum + r.totalKgs, 0);
-    setGrandTotal(total);
-  }, [items]);
+  const totalKgs = useMemo(
+    () => items.reduce((sum, r) => sum + safeNum(r.totalKgs), 0),
+    [items]
+  );
+
+  const grandTotal = useMemo(() => {
+    const after = totalKgs * (1 - DEDUCTION_PERCENT / 100);
+    return Math.round(after);
+  }, [totalKgs]);
 
   const resetForm = () => {
     setAgentName("");
     setVillage("");
-    setDate("");
-    setVehicleNo("");
-
+    setDate(todayYMD());
+    setVehicleId("");
+    setOtherVehicleNo("");
     setItems([
       {
         id: crypto.randomUUID(),
@@ -142,63 +227,132 @@ export default function AgentLoading() {
       },
     ]);
 
-    setGrandTotal(0);
-
-    // Reload bill number
     refetchBillNo();
+    queryClient.invalidateQueries({ queryKey: ["agent-bill-no"] });
+  };
+
+  // ✅ VALIDATION
+  const validateForm = () => {
+    if (billLoading || billError || !billNo) {
+      toast.error("Bill number not available");
+      return false;
+    }
+
+    const name = agentName.trim();
+    if (!name) return toast.error("Enter Agent Name"), false;
+    if (!AGENT_NAME_REGEX.test(name))
+      return (
+        toast.error("Agent Name should contain only letters and spaces"), false
+      );
+
+    const vil = village.trim();
+    if (vil && !VILLAGE_REGEX.test(vil))
+      return (
+        toast.error("Village should contain only letters and spaces"), false
+      );
+
+    if (!date.trim()) return toast.error("Select Date"), false;
+
+    if (!vehicleId.trim()) return toast.error("Select Vehicle"), false;
+    if (isOtherVehicle && !otherVehicleNo.trim())
+      return toast.error("Enter Vehicle Number"), false;
+
+    // active rows = any qty
+    const activeRows = items.filter(
+      (r) => safeNum(r.noTrays) > 0 || safeNum(r.loose) > 0
+    );
+
+    if (activeRows.length === 0) {
+      toast.error("Enter at least one item");
+      return false;
+    }
+
+    // validate each active row
+    for (let i = 0; i < activeRows.length; i++) {
+      const r = activeRows[i];
+      if (!r.varietyCode?.trim()) {
+        toast.error(`Select variety for row #${i + 1}`);
+        return false;
+      }
+      if (safeNum(r.noTrays) < 0 || safeNum(r.loose) < 0) {
+        toast.error(`Negative values not allowed (row #${i + 1})`);
+        return false;
+      }
+    }
+
+    return true;
   };
 
   const handleSave = async () => {
-    if (!billNo) return toast.error("Bill number missing");
-    if (!agentName.trim()) return toast.error("Enter Agent Name");
-    const firstVariety = items[0]?.varietyCode;
-    if (!firstVariety) return toast.error("Select at least one variety");
-    const fishCodeValue = firstVariety.toUpperCase();
+    if (!validateForm()) return;
+    setLoading(true);
+
+    const activeRows = items.filter(
+      (r) => safeNum(r.noTrays) > 0 || safeNum(r.loose) > 0
+    );
+
+    const fishCodeValue = activeRows[0].varietyCode.toUpperCase();
+
     const totals = {
-      totalTrays: items.reduce((a, b) => a + b.noTrays, 0),
-      totalLooseKgs: items.reduce((a, b) => a + b.loose, 0),
-      totalTrayKgs: items.reduce((a, b) => a + b.noTrays * 35, 0),
-      totalKgs:
-        items.reduce((a, b) => a + b.noTrays * 35, 0) +
-        items.reduce((a, b) => a + b.loose, 0),
+      totalTrays: items.reduce((a, b) => a + safeNum(b.noTrays), 0),
+      totalLooseKgs: items.reduce((a, b) => a + safeNum(b.loose), 0),
+      totalTrayKgs: items.reduce(
+        (a, b) => a + safeNum(b.noTrays) * TRAY_WEIGHT,
+        0
+      ),
+      totalKgs,
     };
 
     try {
       await axios.post("/api/agent-loading", {
-        agentName,
+        agentName: agentName.trim(),
         fishCode: fishCodeValue,
         billNo,
-        village,
+        village: village.trim(),
         date,
-        vehicleNo,
+
+        vehicleId: isOtherVehicle ? null : vehicleId,
+        vehicleNo: isOtherVehicle ? otherVehicleNo.trim() : null,
+
         ...totals,
         grandTotal,
 
-        items: items.map((r) => ({
+        items: activeRows.map((r) => ({
           varietyCode: r.varietyCode,
-          noTrays: r.noTrays,
-          trayKgs: r.noTrays * 35,
-          loose: r.loose,
-          totalKgs: r.totalKgs,
+          noTrays: safeNum(r.noTrays),
+          trayKgs: safeNum(r.noTrays) * TRAY_WEIGHT,
+          loose: safeNum(r.loose),
+          totalKgs: safeNum(r.totalKgs),
         })),
       });
 
       toast.success("Agent loading saved!");
+
+      queryClient.invalidateQueries({ queryKey: ["assigned-vehicles"] });
+
+      // ✅ hide vehicle instantly without refresh
+      if (!isOtherVehicle && vehicleId) {
+        setUsedVehicleIds((prev) => {
+          const next = new Set(prev);
+          next.add(vehicleId);
+          return next;
+        });
+      }
+
       resetForm();
-    } catch (err) {
-      toast.error("Failed to save agent loading");
+    } catch (err: any) {
+      toast.error(
+        err?.response?.data?.message || "Failed to save agent loading"
+      );
+    } finally {
+      setLoading(false);
     }
   };
+
   return (
-    <Card
-      className="
-    rounded-2xl p-6
-    border border-blue-100/70 bg-white
-    shadow-[0_18px_45px_-30px_rgba(37,99,235,0.35)]
-  "
-    >
+    <Card className="rounded-2xl p-4 sm:p-6 border border-[#139BC3]/15 bg-white shadow-[0_18px_45px_-30px_rgba(19,155,195,0.35)]">
       {/* HEADER */}
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div className="space-y-1">
           <h2 className="text-xl font-semibold text-slate-900">
             Agent Loading
@@ -210,40 +364,33 @@ export default function AgentLoading() {
 
         <Button
           onClick={handleSave}
-          className="
-        rounded-xl px-5
-        bg-blue-600 text-white
-        hover:bg-blue-700
-        shadow-[0_12px_24px_-14px_rgba(37,99,235,0.7)]
-      "
+          className="w-full sm:w-auto rounded-xl px-5 bg-[#139BC3] text-white hover:bg-[#1088AA] shadow-[0_12px_24px_-14px_rgba(19,155,195,0.7)]"
+          disabled={loading}
         >
           <Save className="h-4 w-4 mr-2" />
           Save
         </Button>
       </div>
 
-      <CardContent className="space-y-6 pt-6">
+      <CardContent className="space-y-6 pt-4 sm:pt-6">
         {/* INPUTS */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <Field>
             <FieldLabel>Agent Bill No</FieldLabel>
             <Input
               readOnly
               value={billNo}
-              className="
-            bg-slate-50 font-semibold
-            border-slate-200
-            focus-visible:ring-blue-300
-          "
+              className="bg-slate-50 font-semibold border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
             />
           </Field>
 
           <Field>
-            <FieldLabel>Agent Name</FieldLabel>
+            <FieldLabel>Agent Name *</FieldLabel>
             <Input
               value={agentName}
-              onChange={(e) => setAgentName(e.target.value)}
-              className="border-slate-200 focus-visible:ring-blue-300"
+              onChange={(e) => setAgentName(cleanAgentName(e.target.value))}
+              placeholder="Enter agent name"
+              className="border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
             />
           </Field>
 
@@ -251,49 +398,180 @@ export default function AgentLoading() {
             <FieldLabel>Village</FieldLabel>
             <Input
               value={village}
-              onChange={(e) => setVillage(e.target.value)}
-              className="border-slate-200 focus-visible:ring-blue-300"
+              onChange={(e) => setVillage(cleanVillage(e.target.value))}
+              placeholder="Enter village"
+              className="border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
             />
           </Field>
 
           <Field>
-            <FieldLabel>Date</FieldLabel>
+            <FieldLabel>Date *</FieldLabel>
             <Input
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="border-slate-200 focus-visible:ring-blue-300"
+              className="border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
             />
           </Field>
 
-          <Field>
-            <FieldLabel>Select Vehicle</FieldLabel>
-            <Select value={vehicleNo} onValueChange={setVehicleNo}>
-              <SelectTrigger className="border-slate-200 focus:ring-blue-300">
+          <Field className="sm:col-span-2 md:col-span-1">
+            <FieldLabel>Select Vehicle *</FieldLabel>
+            <Select
+              value={vehicleId}
+              onValueChange={(v) => {
+                setVehicleId(v);
+                if (v !== "__OTHER__") setOtherVehicleNo("");
+              }}
+            >
+              <SelectTrigger className="border-slate-200 focus:ring-2 focus:ring-[#139BC3]/30">
                 <SelectValue placeholder="Select Vehicle" />
               </SelectTrigger>
 
               <SelectContent>
-                {vehicles.map((v: any) => (
-                  <SelectItem key={v.id} value={v.vehicleNumber}>
+                {availableVehicles.map((v: any) => (
+                  <SelectItem key={v.id} value={v.id}>
                     {v.vehicleNumber} – {v.assignedDriver?.name || "No Driver"}
                   </SelectItem>
                 ))}
+                <SelectItem value="__OTHER__">Other</SelectItem>
               </SelectContent>
             </Select>
           </Field>
+
+          {isOtherVehicle && (
+            <Field className="sm:col-span-2 md:col-span-1">
+              <FieldLabel>Other Vehicle Number *</FieldLabel>
+              <Input
+                value={otherVehicleNo}
+                onChange={(e) =>
+                  setOtherVehicleNo(e.target.value.toUpperCase())
+                }
+                className="border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
+                placeholder="Enter vehicle number"
+              />
+            </Field>
+          )}
         </div>
 
-        {/* TABLE */}
-        <div className="mt-2 overflow-x-auto rounded-2xl border border-blue-100/70">
-          <table className="w-full text-sm">
+        {/* ✅ MOBILE CARDS */}
+        <div className="grid grid-cols-1 gap-3 md:hidden">
+          {items.map((row, index) => (
+            <div
+              key={row.id}
+              className="rounded-2xl border border-[#139BC3]/15 bg-white p-4 shadow-sm"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="text-sm font-semibold text-slate-700">
+                  Row #{index + 1}
+                </div>
+
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  disabled={items.length === 1}
+                  onClick={() => deleteRow(row.id)}
+                  className="rounded-xl hover:bg-red-50"
+                >
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </div>
+
+              <div className="mt-3 space-y-3">
+                <div>
+                  <div className="text-xs font-semibold text-slate-500 mb-1">
+                    Variety *
+                  </div>
+
+                  <Select
+                    value={row.varietyCode}
+                    onValueChange={(val) =>
+                      updateRow(row.id, "varietyCode", val)
+                    }
+                  >
+                    <SelectTrigger className="h-11 rounded-xl border-slate-200 focus:ring-2 focus:ring-[#139BC3]/30">
+                      <SelectValue placeholder="Select" />
+                    </SelectTrigger>
+
+                    <SelectContent>
+                      {varieties.map((v: any) => (
+                        <SelectItem key={v.code} value={v.code}>
+                          {v.code}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+
+                  <div className="mt-2 text-sm text-slate-700">
+                    {row.name || "—"}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-xs font-semibold text-slate-500 mb-1">
+                      Trays
+                    </div>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      min={0}
+                      value={row.noTrays}
+                      className="h-11 w-full rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
+                      onChange={(e) =>
+                        updateRow(row.id, "noTrays", e.target.value)
+                      }
+                      disabled={!row.varietyCode}
+                    />
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-semibold text-slate-500 mb-1">
+                      Loose
+                    </div>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      min={0}
+                      value={row.loose}
+                      className="h-11 w-full rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
+                      onChange={(e) =>
+                        updateRow(row.id, "loose", e.target.value)
+                      }
+                      disabled={!row.varietyCode}
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between">
+                  <div className="text-sm text-slate-600">Total</div>
+                  <div className="text-lg font-extrabold text-slate-900">
+                    {safeNum(row.totalKgs).toFixed(2)}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+
+          <Button
+            onClick={addRow}
+            variant="outline"
+            className="w-full rounded-xl border-[#139BC3]/30 text-[#139BC3] hover:text-[#1088AA] hover:bg-[#139BC3]/10 flex items-center justify-center gap-2"
+          >
+            <PlusCircle className="w-4 h-4" />
+            Add Row
+          </Button>
+        </div>
+
+        {/* ✅ DESKTOP TABLE */}
+        <div className="hidden md:block mt-2 overflow-x-auto rounded-2xl border border-[#139BC3]/15">
+          <table className="w-full text-sm min-w-[900px]">
             <thead>
-              <tr className="border-b bg-blue-50/60">
+              <tr className="border-b bg-[#139BC3]/10">
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">
                   S.No
                 </th>
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">
-                  Variety
+                  Variety *
                 </th>
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">
                   Name
@@ -317,20 +595,18 @@ export default function AgentLoading() {
               {items.map((row, index) => (
                 <tr
                   key={row.id}
-                  className="hover:bg-blue-50/40 transition-colors"
+                  className="hover:bg-[#139BC3]/5 transition-colors"
                 >
                   <td className="px-3 py-3 text-slate-800">{index + 1}</td>
 
-                  {/* Variety */}
                   <td className="px-3 py-3">
                     <Select
                       value={row.varietyCode}
-                      onValueChange={(val) => {
-                        updateRow(row.id, "varietyCode", val);
-                        updateRow(row.id, "name", getVarietyName(val));
-                      }}
+                      onValueChange={(val) =>
+                        updateRow(row.id, "varietyCode", val)
+                      }
                     >
-                      <SelectTrigger className="h-10 rounded-xl border-slate-200 focus:ring-blue-300">
+                      <SelectTrigger className="h-10 rounded-xl border-slate-200 focus:ring-2 focus:ring-[#139BC3]/30">
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
                       <SelectContent>
@@ -343,41 +619,42 @@ export default function AgentLoading() {
                     </Select>
                   </td>
 
-                  {/* Name */}
-                  <td className="px-3 py-3 text-slate-700">{row.name}</td>
+                  <td className="px-3 py-3 text-slate-700">
+                    {row.name || "—"}
+                  </td>
 
-                  {/* Trays */}
                   <td className="px-3 py-3">
                     <Input
                       type="number"
+                      inputMode="numeric"
+                      min={0}
                       value={row.noTrays}
-                      min={0}
-                      className="h-10 w-24 rounded-xl border-slate-200 focus-visible:ring-blue-300"
+                      className="h-10 w-24 rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
                       onChange={(e) =>
-                        updateRow(row.id, "noTrays", Number(e.target.value))
+                        updateRow(row.id, "noTrays", e.target.value)
                       }
+                      disabled={!row.varietyCode}
                     />
                   </td>
 
-                  {/* Loose */}
                   <td className="px-3 py-3">
                     <Input
                       type="number"
-                      value={row.loose}
+                      inputMode="decimal"
                       min={0}
-                      className="h-10 w-24 rounded-xl border-slate-200 focus-visible:ring-blue-300"
+                      value={row.loose}
+                      className="h-10 w-24 rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
                       onChange={(e) =>
-                        updateRow(row.id, "loose", Number(e.target.value))
+                        updateRow(row.id, "loose", e.target.value)
                       }
+                      disabled={!row.varietyCode}
                     />
                   </td>
 
-                  {/* Total */}
                   <td className="px-3 py-3 font-semibold text-slate-900">
-                    {row.totalKgs}
+                    {safeNum(row.totalKgs).toFixed(2)}
                   </td>
 
-                  {/* Delete */}
                   <td className="px-3 py-3">
                     <Button
                       size="icon"
@@ -398,12 +675,7 @@ export default function AgentLoading() {
             <Button
               onClick={addRow}
               variant="outline"
-              className="
-            rounded-xl border-blue-200
-            text-blue-700 hover:text-blue-800
-            hover:bg-blue-50
-            flex items-center gap-2
-          "
+              className="rounded-xl border-[#139BC3]/30 text-[#139BC3] hover:text-[#1088AA] hover:bg-[#139BC3]/10 flex items-center gap-2"
             >
               <PlusCircle className="w-4 h-4" />
               Add Row
@@ -414,7 +686,9 @@ export default function AgentLoading() {
         {/* GRAND TOTAL */}
         <div className="flex justify-end">
           <div className="text-right">
-            <p className="text-sm text-slate-500">Grand Total</p>
+            <p className="text-sm text-slate-500">
+              Grand Total (after 5% deduction)
+            </p>
             <p className="text-2xl font-bold text-slate-900">
               {grandTotal} <span className="text-slate-500">Kgs</span>
             </p>

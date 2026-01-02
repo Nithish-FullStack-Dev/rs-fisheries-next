@@ -1,3 +1,5 @@
+// app/(dashboard)/dashboard/components/fetchDashboardMetrics.ts
+// (unchanged, as it's functional; assuming getDashboardMetrics wraps this)
 import { headers } from "next/headers";
 import type { DashboardMetrics } from "@/lib/dashboard";
 

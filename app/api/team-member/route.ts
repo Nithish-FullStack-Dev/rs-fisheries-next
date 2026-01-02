@@ -7,27 +7,26 @@ import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
 
 export const POST = apiHandler(async (req: Request) => {
-  const { email, password, name, role } = await req.json();
+  const { employeeId, password, email } = await req.json();
 
-  if (!email || !name || !role || !password)
+  if (!employeeId || !password || !email)
     throw new ApiError(400, "Required Fields are missing");
 
   const existingUser = await prisma.user.findUnique({
-    where: { email },
+    where: { employeeId },
   });
 
   if (existingUser) {
-    throw new ApiError(409, "Email already exists");
+    throw new ApiError(409, "Employee already exists");
   }
 
   const hasedPassowrd = await bcrypt.hash(password, 10);
 
   const user = await prisma.user.create({
     data: {
-      email,
+      employeeId,
       password: hasedPassowrd,
-      role,
-      name,
+      email,
     },
   });
 
@@ -37,7 +36,17 @@ export const POST = apiHandler(async (req: Request) => {
 });
 
 export const GET = apiHandler(async () => {
-  const users = await prisma.user.findMany();
+  const users = await prisma.user.findMany({
+    include: {
+      employee: {
+        select: {
+          fullName: true,
+          email: true,
+          designation: true,
+        },
+      },
+    },
+  });
 
   return NextResponse.json(
     new ApiResponse(200, users, "User fetched Successfully")

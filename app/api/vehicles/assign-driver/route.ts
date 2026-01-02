@@ -58,6 +58,21 @@ export const GET = apiHandler(async () => {
       assignedDriverId: {
         not: null,
       },
+      farmerLoadings: {
+        none: {
+          tripStatus: "RUNNING",
+        },
+      },
+      agentLoadings: {
+        none: {
+          tripStatus: "RUNNING",
+        },
+      },
+      clientLoadings: {
+        none: {
+          tripStatus: "RUNNING",
+        },
+      },
     },
     select: {
       id: true,
@@ -71,6 +86,6 @@ export const GET = apiHandler(async () => {
   });
 
   return Response.json(
-    new ApiResponse(200, vehicles, "Assigned vehicles fetched successfully")
+    new ApiResponse(200, vehicles, "Available vehicles fetched successfully")
   );
 });
