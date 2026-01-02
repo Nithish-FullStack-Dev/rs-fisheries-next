@@ -211,21 +211,6 @@ const EmployeePage = () => {
             </SelectContent>
           </Select>
 
-          {/* Shift Filter */}
-          {/* <Select value={shiftFilter} onValueChange={setShiftFilter}>
-            <SelectTrigger className="w-[180px] bg-white">
-              <SelectValue placeholder="Filter by shift" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Shifts</SelectItem>
-              {uniqueShifts.map((shift) => (
-                <SelectItem key={shift} value={shift}>
-                  {shift}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select> */}
-
           {/* Designation Filter */}
           <Select
             value={designationFilter}

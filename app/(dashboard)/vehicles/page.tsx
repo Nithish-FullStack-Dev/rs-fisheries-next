@@ -47,36 +47,38 @@ export default function Vehicles() {
         onValueChange={(v) => setActiveTab(v as TabKey)}
         className="flex flex-col h-full"
       >
-        <TabsList className="inline-flex w-fit items-center gap-1 rounded-2xl border border-slate-200 bg-white/70 px-2 py-6 shadow-sm backdrop-blur">
-          <TabsTrigger
-            value="OWN"
-            className="rounded-2xl px-5 py-4 text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-[#139BC3] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-slate-200 text-slate-600 hover:bg-slate-50"
-          >
-            Own Vehicles
-          </TabsTrigger>
+        <div className="w-full overflow-x-auto">
+          <TabsList className="inline-flex w-fit items-center gap-1 rounded-2xl border border-slate-200 bg-white/70 px-2 py-6 shadow-sm backdrop-blur">
+            <TabsTrigger
+              value="OWN"
+              className="rounded-2xl px-5 py-4 text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-[#139BC3] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-slate-200 text-slate-600 hover:bg-slate-50"
+            >
+              Own Vehicles
+            </TabsTrigger>
 
-          <TabsTrigger
-            value="RENT"
-            className="rounded-2xl px-5 py-4 text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-[#139BC3] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-slate-200 text-slate-600 hover:bg-slate-50"
-          >
-            Rent Vehicles
-          </TabsTrigger>
+            <TabsTrigger
+              value="RENT"
+              className="rounded-2xl px-5 py-4 text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-[#139BC3] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-slate-200 text-slate-600 hover:bg-slate-50"
+            >
+              Rent Vehicles
+            </TabsTrigger>
 
-          {/* ✅ NEW TAB */}
-          <TabsTrigger
-            value="ACTIVE"
-            className="rounded-2xl px-5 py-4 text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-[#139BC3] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-slate-200 text-slate-600 hover:bg-slate-50"
-          >
-            Active Trips
-          </TabsTrigger>
+            {/* ✅ NEW TAB */}
+            <TabsTrigger
+              value="ACTIVE"
+              className="rounded-2xl px-5 py-4 text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-[#139BC3] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-slate-200 text-slate-600 hover:bg-slate-50"
+            >
+              Active Trips
+            </TabsTrigger>
 
-          <TabsTrigger
-            value="DRIVERS"
-            className="rounded-2xl px-5 py-4 text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-[#139BC3] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-slate-200 text-slate-600 hover:bg-slate-50"
-          >
-            Drivers
-          </TabsTrigger>
-        </TabsList>
+            <TabsTrigger
+              value="DRIVERS"
+              className="rounded-2xl px-5 py-4 text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-[#139BC3] data-[state=active]:shadow-sm data-[state=active]:border data-[state=active]:border-slate-200 text-slate-600 hover:bg-slate-50"
+            >
+              Drivers
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="OWN" className="mt-6">
           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-4 md:p-6">

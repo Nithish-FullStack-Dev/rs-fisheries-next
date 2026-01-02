@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import {
   Truck,
@@ -17,6 +17,7 @@ import {
   CreditCard,
   Weight,
   TrendingUp,
+  ArrowLeft,
 } from "lucide-react";
 import {
   Card,
@@ -46,7 +47,7 @@ import {
   PaginationPrevious,
 } from "@/components/ui/pagination";
 import { ApiResponse } from "./types";
-import axios from "axios";
+import axios, { AxiosError } from "axios";
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat("en-IN", {
@@ -139,8 +140,9 @@ const ExpiryRow = ({ label, date }: { label: string; date: string | null }) => {
 export default function VehicleDetailsPage() {
   const params = useParams();
   const id = params.id as string;
+  const router = useRouter();
 
-  const { data, isLoading, isError } = useQuery<ApiResponse>({
+  const { data, isLoading, isError, error } = useQuery<ApiResponse>({
     queryKey: ["vehicle", id],
     enabled: !!id,
     queryFn: async () => {
@@ -172,7 +174,9 @@ export default function VehicleDetailsPage() {
           <AlertCircle className="w-10 h-10 text-red-500 mx-auto mb-4" />
           <h2 className="text-lg font-semibold mb-2">Error Loading Data</h2>
           <p className="text-muted-foreground mb-4">
-            Could not find vehicle details or the server is unreachable.
+            {axios.isAxiosError(error)
+              ? error.response?.data.message
+              : "Could not find vehicle details or the server is unreachable."}
           </p>
           <Button onClick={() => window.location.reload()}>Try Again</Button>
         </Card>
@@ -199,6 +203,27 @@ export default function VehicleDetailsPage() {
   return (
     <div className="min-h-screen bg-gray-50/50 p-4 md:p-8">
       <div className="max-w-7xl mx-auto space-y-6">
+        <header className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => router.back()}
+              className="rounded-full"
+            >
+              <ArrowLeft className="h-5 w-5 text-muted-foreground" />
+            </Button>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight">
+                Vehicle Details
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Manage and view vehicle information
+              </p>
+            </div>
+          </div>
+        </header>
+
         <Card className="overflow-hidden border-none shadow-md">
           <div className="bg-white p-6 md:p-8">
             <div className="flex flex-col md:flex-row justify-between items-start gap-6">
@@ -538,7 +563,7 @@ export default function VehicleDetailsPage() {
                 ) : (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={8}
                       className="h-48 text-center text-muted-foreground"
                     >
                       <div className="flex flex-col items-center gap-2">
