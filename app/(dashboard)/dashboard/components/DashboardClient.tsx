@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { format, startOfDay, endOfDay, subDays } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import * as XLSX from "xlsx";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,7 @@ import {
   Activity,
   Fish,
   CalendarIcon,
+  Download,
 } from "lucide-react";
 
 import { AnimatePresence, motion } from "framer-motion";
@@ -247,9 +249,9 @@ function DateRangePicker({
         </Button>
       </PopoverTrigger>
 
-      <PopoverContent className="w-[760px] p-0" align="start">
-        <div className="grid grid-cols-[220px_1fr]">
-          <div className="border-r border-slate-200 p-3">
+      <PopoverContent className="w-auto p-0" align="start">
+        <div className="flex flex-col md:flex-row">
+          <div className="border-b md:border-r md:border-b-0 border-slate-200 p-3">
             <div className="text-xs font-semibold text-slate-500 px-2 py-2">
               Quick ranges
             </div>
@@ -344,10 +346,12 @@ export default function DashboardClient({
   data,
   initialFrom,
   initialTo,
+  initialAgg,
 }: {
   data: DashboardMetrics;
   initialFrom: string;
   initialTo: string;
+  initialAgg: "day" | "week" | "month";
 }) {
   const isMobile = useIsMobile();
   const router = useRouter();
@@ -363,6 +367,7 @@ export default function DashboardClient({
     ),
     to: endOfDay(Number.isNaN(safeTo.getTime()) ? new Date() : safeTo),
   }));
+  const [agg, setAgg] = useState<"day" | "week" | "month">(initialAgg);
 
   useEffect(() => {
     const f = new Date(initialFrom);
@@ -383,6 +388,91 @@ export default function DashboardClient({
     next.set("to", to.toISOString());
 
     router.push(`${pathname}?${next.toString()}`);
+  };
+
+  const applyAggToUrl = (newAgg: "day" | "week" | "month") => {
+    const next = new URLSearchParams(searchParams.toString());
+    next.set("agg", newAgg);
+    router.push(`${pathname}?${next.toString()}`);
+    setAgg(newAgg);
+  };
+
+  const handleExport = async () => {
+    const wb = XLSX.utils.book_new();
+
+    const [former, agent, client] = await Promise.all([
+      fetch("/api/former-loading").then((res) =>
+        res.json().then((j) => j.data || [])
+      ),
+      fetch("/api/agent-loading").then((res) =>
+        res.json().then((j) => j.data || [])
+      ),
+      fetch("/api/client-loading").then((res) =>
+        res.json().then((j) => j.data || [])
+      ),
+    ]);
+
+    const formerSheet = XLSX.utils.json_to_sheet(
+      former.flatMap((f: any) =>
+        (f.items || []).map((it: any) => ({
+          Type: "Former",
+          BillNo: f.billNo,
+          Date: f.date,
+          FarmerName: f.FarmerName || "",
+          Village: f.village,
+          VarietyCode: it.varietyCode,
+          NoTrays: it.noTrays,
+          TrayKgs: it.trayKgs,
+          Loose: it.loose,
+          TotalKgs: it.totalKgs,
+          PricePerKg: it.pricePerKg,
+          TotalPrice: it.totalPrice,
+        }))
+      )
+    );
+    XLSX.utils.book_append_sheet(wb, formerSheet, "Former Loadings");
+
+    const agentSheet = XLSX.utils.json_to_sheet(
+      agent.flatMap((a: any) =>
+        (a.items || []).map((it: any) => ({
+          Type: "Agent",
+          BillNo: a.billNo,
+          Date: a.date,
+          AgentName: a.agentName,
+          Village: a.village,
+          VarietyCode: it.varietyCode,
+          NoTrays: it.noTrays,
+          TrayKgs: it.trayKgs,
+          Loose: it.loose,
+          TotalKgs: it.totalKgs,
+          PricePerKg: it.pricePerKg,
+          TotalPrice: it.totalPrice,
+        }))
+      )
+    );
+    XLSX.utils.book_append_sheet(wb, agentSheet, "Agent Loadings");
+
+    const clientSheet = XLSX.utils.json_to_sheet(
+      client.flatMap((c: any) =>
+        (c.items || []).map((it: any) => ({
+          Type: "Client",
+          BillNo: c.billNo,
+          Date: c.date,
+          ClientName: c.clientName,
+          Village: c.village,
+          VarietyCode: it.varietyCode,
+          NoTrays: it.noTrays,
+          TrayKgs: it.trayKgs,
+          Loose: it.loose,
+          TotalKgs: it.totalKgs,
+          PricePerKg: it.pricePerKg,
+          TotalPrice: it.totalPrice,
+        }))
+      )
+    );
+    XLSX.utils.book_append_sheet(wb, clientSheet, "Client Loadings");
+
+    XLSX.writeFile(wb, "RS-Fisheries_All_Loadings.xlsx");
   };
 
   const weeklyData = useMemo(
@@ -409,17 +499,13 @@ export default function DashboardClient({
     () =>
       data.topVarieties.map((v) => ({
         name: v.code,
-        value: Math.round(v.kgs * 10) / 10,
+        value: v.kgs,
       })),
     [data.topVarieties]
   );
 
   const ageingData = useMemo(
-    () =>
-      data.outstandingAgeing.map((a) => ({
-        bucket: a.bucket,
-        amount: a.amount,
-      })),
+    () => data.outstandingAgeing,
     [data.outstandingAgeing]
   );
 
@@ -446,19 +532,60 @@ export default function DashboardClient({
               Quick view of sales, purchases, movement & outstanding
             </p>
           </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={agg === "day" ? "default" : "outline"}
+              size="sm"
+              onClick={() => applyAggToUrl("day")}
+            >
+              Daily
+            </Button>
+            <Button
+              variant={agg === "week" ? "default" : "outline"}
+              size="sm"
+              onClick={() => applyAggToUrl("week")}
+            >
+              Weekly
+            </Button>
+            <Button
+              variant={agg === "month" ? "default" : "outline"}
+              size="sm"
+              onClick={() => applyAggToUrl("month")}
+            >
+              Monthly
+            </Button>
+          </div>
 
           <DateRangePicker value={range} onApply={applyRangeToUrl} />
         </motion.div>
 
         {/* KPI grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5">
-          <KpiCard
-            title="Sales"
-            value={money(data.today.sales)}
-            tone="green"
-            icon={<TrendingUp className="text-green-600 w-6 h-6" />}
-            sub="Total sales value (selected range)"
-          />
+          {/* Dynamic tone for Sales card */}
+          {(() => {
+            const hasSales = data.today.sales > 0;
+            const purchaseExceedsDispatch =
+              data.today.purchase > data.today.outstanding;
+
+            const salesTone =
+              hasSales && !purchaseExceedsDispatch ? "green" : "red";
+
+            return (
+              <KpiCard
+                title="Sales"
+                value={money(data.today.sales)}
+                tone={salesTone}
+                icon={
+                  salesTone === "green" ? (
+                    <TrendingUp className="text-green-600 w-6 h-6" />
+                  ) : (
+                    <TrendingDown className="text-red-600 w-6 h-6" />
+                  )
+                }
+                sub="Total sales value (selected range)"
+              />
+            );
+          })()}
           <KpiCard
             title="Purchase"
             value={money(data.today.purchase)}
@@ -466,15 +593,17 @@ export default function DashboardClient({
             icon={<ShoppingCart style={{ color: THEME }} className="w-6 h-6" />}
             sub="Total purchase value (selected range)"
           />
+
           <KpiCard
             title="Shipments"
-            value={`${data.today.pendingShipments}`}
+            value={data.today.pendingShipments.toString()}
             tone="brand"
             icon={<Truck style={{ color: THEME }} className="w-6 h-6" />}
             sub="Count (selected range)"
           />
+
           <KpiCard
-            title="Outstanding"
+            title="Dispatch"
             value={money(data.today.outstanding)}
             tone="red"
             icon={<Wallet className="text-red-600 w-6 h-6" />}
@@ -482,9 +611,7 @@ export default function DashboardClient({
           />
         </div>
 
-        {/* ✅ Main grid (FIXED) */}
         <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-3 items-stretch">
-          {/* ✅ Apply col-span to motion.div (grid child), NOT Card */}
           <motion.div
             className="lg:col-span-2"
             initial={{ opacity: 0, x: -20 }}
@@ -501,7 +628,6 @@ export default function DashboardClient({
                     Sales vs Purchase (selected range)
                   </p>
                 </div>
-
                 <div
                   className="h-10 w-10 rounded-xl flex items-center justify-center"
                   style={{ backgroundColor: "rgba(19,155,195,.10)" }}
@@ -509,7 +635,6 @@ export default function DashboardClient({
                   <Activity style={{ color: THEME }} />
                 </div>
               </CardHeader>
-
               <CardContent className="px-2 sm:px-6 h-[230px] sm:h-[310px] lg:h-[330px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart
@@ -569,7 +694,6 @@ export default function DashboardClient({
                     By quantity (selected range)
                   </p>
                 </div>
-
                 <div
                   className="h-10 w-10 rounded-xl flex items-center justify-center"
                   style={{ backgroundColor: "rgba(19,155,195,.10)" }}
@@ -577,7 +701,6 @@ export default function DashboardClient({
                   <PieIcon style={{ color: THEME }} />
                 </div>
               </CardHeader>
-
               <CardContent className="px-2 sm:px-6 h-[230px] sm:h-[310px] lg:h-[330px] flex flex-col justify-center">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
@@ -622,7 +745,6 @@ export default function DashboardClient({
                     Trend comparison (selected range)
                   </p>
                 </div>
-
                 <div
                   className="h-10 w-10 rounded-xl flex items-center justify-center"
                   style={{ backgroundColor: "rgba(19,155,195,.10)" }}
@@ -630,7 +752,6 @@ export default function DashboardClient({
                   <IndianRupee style={{ color: THEME }} />
                 </div>
               </CardHeader>
-
               <CardContent className="px-2 sm:px-6 h-[230px] sm:h-[310px] lg:h-[330px]">
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart
@@ -723,7 +844,7 @@ export default function DashboardClient({
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, delay: 0.15 }}
           >
-            <Card className="h-full w-full rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-shadow overflow-hidden">
+            <Card className="h-full rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-shadow overflow-hidden">
               <CardHeader className="pb-3 px-5 sm:px-6 flex flex-row items-center justify-between">
                 <div>
                   <CardTitle className="text-slate-900 text-base sm:text-lg">

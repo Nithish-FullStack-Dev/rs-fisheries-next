@@ -1,3 +1,4 @@
+// app\api\payments\client\route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { PaymentMode } from "@prisma/client";
