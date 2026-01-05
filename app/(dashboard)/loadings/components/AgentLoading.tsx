@@ -1,3 +1,4 @@
+// app\(dashboard)\loadings\components\AgentLoading.tsx
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -68,6 +69,7 @@ export default function AgentLoading() {
   const [vehicleId, setVehicleId] = useState("");
   const [otherVehicleNo, setOtherVehicleNo] = useState("");
   const [loading, setLoading] = useState(false);
+  const [useVehicle, setUseVehicle] = useState(false);
 
   const isOtherVehicle = vehicleId === "__OTHER__";
 
@@ -128,6 +130,12 @@ export default function AgentLoading() {
   useEffect(() => {
     if (billError) toast.error("Failed to load bill number");
   }, [billError]);
+  useEffect(() => {
+    if (!useVehicle) {
+      setVehicleId("");
+      setOtherVehicleNo("");
+    }
+  }, [useVehicle]);
 
   // ✅ Vehicles filtered (hide used instantly; keep selected visible)
   const availableVehicles = useMemo(() => {
@@ -211,9 +219,9 @@ export default function AgentLoading() {
   );
 
   const grandTotal = useMemo(() => {
-    const after = totalKgs * (1 - DEDUCTION_PERCENT / 100);
-    return Math.round(after);
-  }, [totalKgs]);
+    if (useVehicle) return Math.round(totalKgs);
+    return Math.round(totalKgs * (1 - DEDUCTION_PERCENT / 100));
+  }, [totalKgs, useVehicle]);
 
   const resetForm = () => {
     setAgentName("");
@@ -317,18 +325,15 @@ export default function AgentLoading() {
         village: village.trim(),
         date,
 
-        vehicleId: isOtherVehicle ? null : vehicleId,
-        vehicleNo: isOtherVehicle ? otherVehicleNo.trim() : null,
+        useVehicle,
 
-        ...totals,
-        grandTotal,
+        vehicleId: useVehicle && !isOtherVehicle ? vehicleId : null,
+        vehicleNo: useVehicle && isOtherVehicle ? otherVehicleNo.trim() : null,
 
         items: activeRows.map((r) => ({
           varietyCode: r.varietyCode,
           noTrays: safeNum(r.noTrays),
-          trayKgs: safeNum(r.noTrays) * TRAY_WEIGHT,
           loose: safeNum(r.loose),
-          totalKgs: safeNum(r.totalKgs),
         })),
       });
 
@@ -419,32 +424,44 @@ export default function AgentLoading() {
               className="border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
             />
           </Field>
-
-          <Field className="sm:col-span-2 md:col-span-1">
-            <FieldLabel>Select Vehicle</FieldLabel>
-            <Select
-              value={vehicleId}
-              onValueChange={(v) => {
-                setVehicleId(v);
-                if (v !== "__OTHER__") setOtherVehicleNo("");
-              }}
-            >
-              <SelectTrigger className="border-slate-200 focus:ring-2 focus:ring-[#139BC3]/30">
-                <SelectValue placeholder="Select Vehicle" />
-              </SelectTrigger>
-
-              <SelectContent>
-                {availableVehicles.map((v: any) => (
-                  <SelectItem key={v.id} value={v.id}>
-                    {v.vehicleNumber} – {v.assignedDriver?.name || "No Driver"}
-                  </SelectItem>
-                ))}
-                <SelectItem value="__OTHER__">Other</SelectItem>
-              </SelectContent>
-            </Select>
+          <Field>
+            <FieldLabel>Vehicle</FieldLabel>
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={useVehicle}
+                onChange={(e) => setUseVehicle(e.target.checked)}
+              />
+              Add vehicle (no 5% deduction)
+            </label>
           </Field>
+          {useVehicle && (
+            <Field className="sm:col-span-2 md:col-span-1">
+              <FieldLabel>Select Vehicle</FieldLabel>
+              <Select
+                value={vehicleId}
+                onValueChange={(v) => {
+                  setVehicleId(v);
+                  if (v !== "__OTHER__") setOtherVehicleNo("");
+                }}
+              >
+                <SelectTrigger className="border-slate-200 focus:ring-2 focus:ring-[#139BC3]/30">
+                  <SelectValue placeholder="Select Vehicle" />
+                </SelectTrigger>
 
-          {isOtherVehicle && (
+                <SelectContent>
+                  {availableVehicles.map((v: any) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.vehicleNumber} –{" "}
+                      {v.assignedDriver?.name || "No Driver"}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="__OTHER__">Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+          )}
+          {useVehicle && isOtherVehicle && (
             <Field className="sm:col-span-2 md:col-span-1">
               <FieldLabel>Other Vehicle Number *</FieldLabel>
               <Input

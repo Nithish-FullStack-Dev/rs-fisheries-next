@@ -1,15 +1,13 @@
-// app/api/agent-loading/route.ts
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
 const TRAY_KG = 35;
-const MONEY_DEDUCTION_PERCENT = 5;
+const DEDUCTION_PERCENT = 5;
 
 type AgentItemInput = {
   varietyCode: string;
   noTrays: number | string;
   loose: number | string;
-  pricePerKg: number | string;
 };
 
 type AgentLoadingBody = {
@@ -18,12 +16,14 @@ type AgentLoadingBody = {
   billNo: string;
   village?: string;
   date?: string;
-  vehicleId?: string;
-  vehicleNo?: string;
+  useVehicle?: boolean;
+  vehicleId?: string | null;
+  vehicleNo?: string | null;
   items: AgentItemInput[];
 };
 
-const asTrim = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+const asTrim = (v: unknown): string =>
+  typeof v === "string" ? v.trim() : "";
 
 const toNum = (v: unknown): number => {
   const n = typeof v === "string" ? Number(v.trim()) : Number(v);
@@ -33,7 +33,6 @@ const toNum = (v: unknown): number => {
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
 export async function POST(req: Request) {
-  // Your existing POST logic — completely unchanged
   try {
     const body = (await req.json()) as AgentLoadingBody;
 
@@ -69,27 +68,18 @@ export async function POST(req: Request) {
       );
     }
 
+    const useVehicle = Boolean(body.useVehicle);
     const vehicleId = asTrim(body.vehicleId) || null;
     const vehicleNo = asTrim(body.vehicleNo) || null;
 
-    // if (!vehicleId && !vehicleNo) {
-    //     return NextResponse.json(
-    //         { success: false, message: "Vehicle is required" },
-    //         { status: 400 }
-    //     );
-    // }
-
+    /* ---------- ITEMS ---------- */
     const items = body.items.map((it) => {
       const varietyCode = asTrim(it.varietyCode);
       const noTrays = Math.max(0, Math.floor(toNum(it.noTrays)));
       const loose = Math.max(0, toNum(it.loose));
-      const pricePerKg = Math.max(0, toNum(it.pricePerKg));
 
       const trayKgs = noTrays * TRAY_KG;
       const totalKgs = trayKgs + loose;
-
-      const gross = totalKgs * pricePerKg;
-      const totalPrice = round2(gross * (1 - MONEY_DEDUCTION_PERCENT / 100));
 
       return {
         varietyCode,
@@ -97,57 +87,73 @@ export async function POST(req: Request) {
         trayKgs,
         loose,
         totalKgs,
-        pricePerKg,
-        totalPrice,
+        pricePerKg: 0,
+        totalPrice: 0,
       };
     });
 
+    /* ---------- TOTALS ---------- */
     const totalTrays = items.reduce((s, i) => s + i.noTrays, 0);
     const totalLooseKgs = round2(items.reduce((s, i) => s + i.loose, 0));
     const totalTrayKgs = round2(items.reduce((s, i) => s + i.trayKgs, 0));
     const totalKgs = round2(items.reduce((s, i) => s + i.totalKgs, 0));
 
-    const totalPrice = round2(items.reduce((s, i) => s + i.totalPrice, 0));
+    // ✅ WEIGHT-BASED GRAND TOTAL
+    const grandTotal = useVehicle
+      ? Math.round(totalKgs)
+      : Math.round(totalKgs * (1 - DEDUCTION_PERCENT / 100));
 
+    /* ---------- CREATE DATA ---------- */
     const createData: Parameters<typeof prisma.agentLoading.create>[0]["data"] =
-      {
-        fishCode: asTrim(body.fishCode) || "NA",
-        agentName,
-        billNo,
-        village: asTrim(body.village) || "",
-        date: loadingDate,
+    {
+      fishCode: asTrim(body.fishCode) || "NA",
+      agentName,
+      billNo,
+      village: asTrim(body.village) || "",
+      date: loadingDate,
 
-        totalTrays,
-        totalLooseKgs,
-        totalTrayKgs,
-        totalKgs,
+      totalTrays,
+      totalLooseKgs,
+      totalTrayKgs,
+      totalKgs,
 
-        totalPrice,
-        dispatchChargesTotal: 0,
-        packingAmountTotal: 0,
-        grandTotal: totalPrice,
+      totalPrice: 0,
+      dispatchChargesTotal: 0,
+      packingAmountTotal: 0,
+      grandTotal,
 
-        items: { create: items },
-      };
+      items: { create: items },
+    };
 
-    if (vehicleId) {
+    // ✅ VEHICLE HANDLING (SAFE)
+    if (useVehicle && vehicleId) {
       createData.vehicle = { connect: { id: vehicleId } };
       createData.vehicleNo = null;
-    } else {
+    } else if (useVehicle && vehicleNo) {
       createData.vehicleNo = vehicleNo;
+    } else {
+      createData.vehicleNo = null;
     }
 
     const saved = await prisma.agentLoading.create({
       data: createData,
-      include: { items: true, vehicle: { select: { vehicleNumber: true } } },
+      include: {
+        items: true,
+        vehicle: { select: { vehicleNumber: true } },
+      },
     });
 
     return NextResponse.json({ success: true, data: saved }, { status: 201 });
-  } catch (err: unknown) {
+  } catch (err: any) {
     console.error("AgentLoading POST error:", err);
-    const message =
-      err instanceof Error ? err.message : "Failed to save agent loading";
-    return NextResponse.json({ success: false, message }, { status: 500 });
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Failed to save agent loading",
+        prisma: { code: err?.code, meta: err?.meta },
+      },
+      { status: 500 }
+    );
   }
 }
 
@@ -157,13 +163,8 @@ export async function GET() {
       include: {
         items: true,
         vehicle: { select: { vehicleNumber: true } },
-        // ✅ Include dispatch charges for breakdown
         dispatchCharges: {
-          select: {
-            type: true,
-            label: true,
-            amount: true,
-          },
+          select: { type: true, label: true, amount: true },
           orderBy: { createdAt: "desc" },
         },
       },
@@ -171,13 +172,6 @@ export async function GET() {
     });
 
     const data = rows.map((l) => {
-      const itemsTotalPrice = round2(
-        l.items.reduce((s, it) => s + toNum(it.totalPrice), 0)
-      );
-
-      const totalPrice = itemsTotalPrice;
-
-      // ✅ Calculate real dispatch breakdown
       const breakdown = {
         iceCooling: 0,
         transportCharges: 0,
@@ -189,36 +183,28 @@ export async function GET() {
         const amt = Number(c.amount);
         breakdown.dispatchChargesTotal += amt;
 
-        if (c.type === "ICE_COOLING") {
-          breakdown.iceCooling += amt;
-        } else if (c.type === "TRANSPORT") {
-          breakdown.transportCharges += amt;
-        } else if (c.type === "OTHER" && c.label) {
-          breakdown.otherCharges.push({
-            label: c.label,
-            amount: amt,
-          });
-        }
+        if (c.type === "ICE_COOLING") breakdown.iceCooling += amt;
+        else if (c.type === "TRANSPORT") breakdown.transportCharges += amt;
+        else if (c.type === "OTHER" && c.label)
+          breakdown.otherCharges.push({ label: c.label, amount: amt });
       });
 
-      const packingTotal = toNum(l.packingAmountTotal);
-
       const grandTotal = round2(
-        totalPrice + breakdown.dispatchChargesTotal + packingTotal
+        l.grandTotal +
+        breakdown.dispatchChargesTotal +
+        toNum(l.packingAmountTotal)
       );
 
       return {
         ...l,
-        totalPrice,
-        grandTotal,
         vehicleNo: l.vehicle?.vehicleNumber ?? l.vehicleNo ?? "",
-        // ✅ Return the breakdown
+        grandTotal,
         dispatchBreakdown: breakdown,
       };
     });
 
     return NextResponse.json({ success: true, data }, { status: 200 });
-  } catch (err: unknown) {
+  } catch (err) {
     console.error("AgentLoading GET error:", err);
     return NextResponse.json(
       { success: false, message: "Failed to fetch agent loadings" },

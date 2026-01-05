@@ -1,4 +1,3 @@
-// app/(dashboard)/client-bills/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState, useCallback } from "react";
@@ -13,10 +12,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Edit, Check, X, Trash2, Download } from "lucide-react";
+import { Edit, Check, X, Trash2, Download, PlusCircle } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
 import LoadingDeleteDialog from "@/components/helpers/LoadingDeleteDialog";
+
+type AvailableVariety = {
+  code: string;
+  name?: string;
+  netKgs: number;
+  netTrays: number;
+};
 
 interface ClientItem {
   id: string;
@@ -42,6 +48,7 @@ interface ClientRecord {
   date?: string;
   clientName?: string;
   vehicleNo?: string;
+  vehicleId?: string | null;
   village?: string;
   items: ClientItem[];
   createdAt?: string;
@@ -55,7 +62,7 @@ type UIItem = ClientItem & {
   recordTotalKgs: number;
   recordGrandTotal: number;
   netKgsForThisItem: number;
-  loose?: number;
+  hasVehicle: boolean; // ✅ NEW
 };
 
 const fetchClientLoadings = async (): Promise<ClientRecord[]> => {
@@ -63,17 +70,20 @@ const fetchClientLoadings = async (): Promise<ClientRecord[]> => {
   return (res.data?.data ?? []) as ClientRecord[];
 };
 
-const patchItemPrice = async (itemId: string, body: Partial<ClientItem>) => {
-  const res = await axios.patch(`/api/client-bills/item/${itemId}`, body);
-  return res.data;
-};
-
 export default function ClientBillsPage() {
   const [loading, setLoading] = useState(true);
   const [records, setRecords] = useState<ClientRecord[]>([]);
-  const [editing, setEditing] = useState<Record<string, Partial<ClientItem>>>(
-    {}
-  );
+  const [editing, setEditing] = useState<
+    Record<
+      string,
+      {
+        noTrays?: number;
+        loose?: number;
+        pricePerKg?: number;
+        totalPrice?: number;
+      }
+    >
+  >({});
   const [savingIds, setSavingIds] = useState<Record<string, boolean>>({});
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -83,7 +93,7 @@ export default function ClientBillsPage() {
 
   const [newCount, setNewCount] = useState(0);
 
-  // Delete item dialog (same as vendor-bills)
+  // Delete item dialog
   const [deleteItemOpen, setDeleteItemOpen] = useState(false);
   const [deleteItemTarget, setDeleteItemTarget] = useState<UIItem | null>(null);
   const [deletingItem, setDeletingItem] = useState(false);
@@ -92,10 +102,30 @@ export default function ClientBillsPage() {
   const PAGE_SIZE = 15;
   const [page, setPage] = useState(1);
 
+  // ✅ Add new item to existing bill
+  const [showAddItem, setShowAddItem] = useState(false);
+  const [addLoadingId, setAddLoadingId] = useState("");
+  const [addVarietyCode, setAddVarietyCode] = useState("");
+  const [addTrays, setAddTrays] = useState<number>(0);
+  const [addLoose, setAddLoose] = useState<number>(0);
+  const [addingItem, setAddingItem] = useState(false);
+
   const refreshRecords = useCallback(async () => {
     const data = await fetchClientLoadings();
     setRecords(data);
   }, []);
+
+  // ✅ Available varieties list (for add item dropdown)
+  const { data: availableVarieties = [] } = (function useAvailableVarieties() {
+    const [data, setData] = useState<AvailableVariety[]>([]);
+    useEffect(() => {
+      axios
+        .get("/api/stocks/available-varieties")
+        .then((r) => setData(r.data?.data ?? []))
+        .catch(() => setData([]));
+    }, []);
+    return { data };
+  })();
 
   useEffect(() => {
     let mounted = true;
@@ -119,24 +149,26 @@ export default function ClientBillsPage() {
     setNewCount(Math.max(0, current - last));
   }, [records]);
 
-  const handlePageVisit = useCallback(() => {
+  useEffect(() => {
     if (typeof window === "undefined") return;
     localStorage.setItem("clientBillsLastSeen", records.length.toString());
     setNewCount(0);
   }, [records.length]);
-
-  useEffect(() => {
-    handlePageVisit();
-  }, [records.length, handlePageVisit]);
 
   const items: UIItem[] = useMemo(() => {
     let result: UIItem[] = records.flatMap((rec) => {
       const recordTotalKgs = Number(rec.totalKgs || 0);
       const recordGrandTotal = Number(rec.grandTotal || 0);
 
+      // ✅ RULE: if vehicle exists => no 5% deduction
+      // we can infer from vehicleId or vehicleNo
+      const hasVehicle =
+        Boolean(rec.vehicleId) || Boolean((rec.vehicleNo || "").trim());
+
       return rec.items.map((it) => {
         const itemTotalKgs = Number(it.totalKgs || 0);
 
+        // ✅ proportional share of grandTotal
         const netKgsForThisItem =
           recordTotalKgs > 0 && recordGrandTotal > 0
             ? Number(
@@ -153,7 +185,7 @@ export default function ClientBillsPage() {
           recordTotalKgs,
           recordGrandTotal,
           netKgsForThisItem,
-          loose: it.loose,
+          hasVehicle,
         };
       });
     });
@@ -180,18 +212,15 @@ export default function ClientBillsPage() {
     return result;
   }, [records, searchTerm, sortOrder, fromDate, toDate]);
 
-  // Reset page when filters/sort changes
   useEffect(() => {
     setPage(1);
   }, [searchTerm, sortOrder, fromDate, toDate]);
 
-  // Safe total pages
   const totalPages = useMemo(() => {
     if (items.length === 0) return 1;
     return Math.max(1, Math.ceil(items.length / PAGE_SIZE));
   }, [items.length]);
 
-  // Clamp page
   useEffect(() => {
     if (page > totalPages) setPage(totalPages);
   }, [page, totalPages]);
@@ -201,10 +230,15 @@ export default function ClientBillsPage() {
     return items.slice(start, start + PAGE_SIZE);
   }, [items, page]);
 
-  const startEdit = useCallback((item: ClientItem) => {
+  const startEdit = useCallback((item: UIItem) => {
     setEditing((prev) => ({
       ...prev,
-      [item.id]: { pricePerKg: item.pricePerKg, totalPrice: item.totalPrice },
+      [item.id]: {
+        noTrays: item.noTrays ?? 0,
+        loose: item.loose ?? 0,
+        pricePerKg: item.pricePerKg ?? 0,
+        totalPrice: item.totalPrice ?? 0,
+      },
     }));
   }, []);
 
@@ -216,50 +250,61 @@ export default function ClientBillsPage() {
     });
   }, []);
 
-  const onPriceChange = useCallback(
-    (id: string, value: string) => {
-      setEditing((prev) => {
-        const current = prev[id] || {};
-        const num = value === "" ? undefined : Number(value);
+  // ✅ live compute totalPrice preview (approx using current netKgsForThisItem)
+  const recomputePreviewPrice = useCallback(
+    (
+      id: string,
+      next: { noTrays?: number; loose?: number; pricePerKg?: number }
+    ) => {
+      const item = items.find((i) => i.id === id);
+      if (!item) return;
 
-        const item = items.find((i) => i.id === id);
-        if (!item) return prev;
+      const price = Number(next.pricePerKg ?? 0);
+      const netKgs = Number(item.netKgsForThisItem || 0);
 
-        const updates: Partial<ClientItem> = { ...current, pricePerKg: num };
+      const totalPrice = Number((netKgs * price).toFixed(2));
 
-        if (num !== undefined && Number.isFinite(num)) {
-          const netKgs = Number(item.netKgsForThisItem || 0);
-          updates.totalPrice = Number((netKgs * num).toFixed(2));
-        } else {
-          updates.totalPrice = undefined;
-        }
-
-        return { ...prev, [id]: updates };
-      });
+      setEditing((prev) => ({
+        ...prev,
+        [id]: {
+          ...(prev[id] || {}),
+          ...next,
+          totalPrice,
+        },
+      }));
     },
     [items]
   );
 
-  const saveRow = async (item: ClientItem) => {
+  const onNumberChange = useCallback(
+    (id: string, field: "noTrays" | "loose" | "pricePerKg", value: string) => {
+      const num = value === "" ? 0 : Math.max(0, Number(value) || 0);
+      recomputePreviewPrice(id, { [field]: num } as any);
+    },
+    [recomputePreviewPrice]
+  );
+
+  const saveRow = async (item: UIItem) => {
     const edits = editing[item.id];
     if (!edits || savingIds[item.id]) return;
 
     setSavingIds((prev) => ({ ...prev, [item.id]: true }));
 
-    const payload: Partial<ClientItem> = {};
-    if (edits.pricePerKg !== undefined) payload.pricePerKg = edits.pricePerKg;
-    if (edits.totalPrice !== undefined) payload.totalPrice = edits.totalPrice;
-
     try {
-      await patchItemPrice(item.id, payload);
+      // ✅ PATCH item (server will recompute everything)
+      await axios.patch(`/api/client-bills/item/${item.id}`, {
+        noTrays: edits.noTrays ?? 0,
+        loose: edits.loose ?? 0,
+        pricePerKg: edits.pricePerKg ?? 0,
+      });
 
-      // Update totals for the bill
+      // ✅ Recompute totals + deduction rule + redistribute prices
       await axios.post("/api/client-bills/update-total", {
         loadingId: item.loadingId,
       });
 
       await refreshRecords();
-      toast.success("Price updated!");
+      toast.success("Updated ✅");
       cancelEdit(item.id);
     } catch (e: any) {
       console.error(e);
@@ -273,7 +318,7 @@ export default function ClientBillsPage() {
     }
   };
 
-  // ✅ ITEM DELETE (not bill delete)
+  // ✅ ITEM DELETE
   const openDeleteItemDialog = (row: UIItem) => {
     setDeleteItemTarget(row);
     setDeleteItemOpen(true);
@@ -286,7 +331,7 @@ export default function ClientBillsPage() {
   };
 
   const confirmDeleteItem = async () => {
-    if (deletingItem) return; // prevent double calls
+    if (deletingItem) return;
     if (!deleteItemTarget?.id) return;
 
     try {
@@ -296,7 +341,6 @@ export default function ClientBillsPage() {
         `/api/client-bills/item/${deleteItemTarget.id}`
       );
 
-      // refresh list
       await refreshRecords();
 
       if (res.data?.deletedBill) {
@@ -314,21 +358,6 @@ export default function ClientBillsPage() {
     }
   };
 
-  // Optional: full bill delete (kept, but NOT used on row trash)
-  const deleteBill = async (loadingId?: string) => {
-    if (!loadingId) return toast.error("Loading ID missing");
-    if (!confirm("Delete this bill and all items?")) return;
-
-    try {
-      await axios.delete(`/api/client-loading/${loadingId}`);
-      await refreshRecords();
-      toast.success("Bill deleted");
-    } catch (e: any) {
-      console.error(e);
-      toast.error(e?.response?.data?.message || "Delete failed");
-    }
-  };
-
   const exportToExcel = () => {
     const data = records.flatMap((rec) =>
       rec.items.map((it) => ({
@@ -339,8 +368,12 @@ export default function ClientBillsPage() {
         Village: rec.village || "",
         Variety: it.varietyCode || "",
         Trays: it.noTrays ?? 0,
+        Loose: it.loose ?? 0,
         "Price/Kg": it.pricePerKg ?? 0,
         "Total Price": it.totalPrice ?? 0,
+        "Total Kgs": it.totalKgs ?? 0,
+        "Bill Total Kgs": rec.totalKgs ?? 0,
+        "Bill Grand Total": rec.grandTotal ?? 0,
       }))
     );
 
@@ -357,9 +390,8 @@ export default function ClientBillsPage() {
     const trays = item.noTrays ?? 0;
     const looseKgs = Number(item.loose ?? 0);
 
-    if (trays > 0) {
+    if (trays > 0)
       return <span className="font-semibold text-gray-900">{trays}</span>;
-    }
 
     if (looseKgs > 0) {
       return (
@@ -370,6 +402,41 @@ export default function ClientBillsPage() {
     }
 
     return <span className="text-gray-400">-</span>;
+  };
+
+  const addItemToBill = async () => {
+    if (!addLoadingId) return toast.error("Select Bill");
+    if (!addVarietyCode) return toast.error("Select Variety");
+    if ((addTrays ?? 0) <= 0 && (addLoose ?? 0) <= 0) {
+      return toast.error("Enter trays or loose");
+    }
+
+    try {
+      setAddingItem(true);
+
+      await axios.post("/api/client-bills/item", {
+        loadingId: addLoadingId,
+        varietyCode: addVarietyCode,
+        noTrays: Math.max(0, Number(addTrays) || 0),
+        loose: Math.max(0, Number(addLoose) || 0),
+      });
+
+      await axios.post("/api/client-bills/update-total", {
+        loadingId: addLoadingId,
+      });
+
+      toast.success("Variety added to bill ✅");
+      setAddVarietyCode("");
+      setAddTrays(0);
+      setAddLoose(0);
+
+      await refreshRecords();
+    } catch (e: any) {
+      console.error(e);
+      toast.error(e?.response?.data?.message || "Failed to add item");
+    } finally {
+      setAddingItem(false);
+    }
   };
 
   return (
@@ -387,16 +454,130 @@ export default function ClientBillsPage() {
                 )}
               </h2>
 
-              <Button
-                onClick={exportToExcel}
-                className="w-full lg:w-auto border-green-600 text-green-700 hover:bg-green-50"
-                variant="outline"
-              >
-                <Download className="w-4 h-4 mr-2" />
-                Export to Excel
-              </Button>
+              <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
+                <Button
+                  onClick={() => setShowAddItem((s) => !s)}
+                  className="w-full lg:w-auto"
+                  variant="outline"
+                >
+                  <PlusCircle className="w-4 h-4 mr-2" />
+                  Add Variety to Bill
+                </Button>
+
+                <Button
+                  onClick={exportToExcel}
+                  className="w-full lg:w-auto border-green-600 text-green-700 hover:bg-green-50"
+                  variant="outline"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Export to Excel
+                </Button>
+              </div>
             </div>
 
+            {/* ✅ ADD ITEM PANEL */}
+            {showAddItem && (
+              <div className="rounded-2xl border bg-white p-4 sm:p-5">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                  <div className="md:col-span-2">
+                    <div className="text-xs font-semibold text-gray-500 mb-1">
+                      Bill
+                    </div>
+                    <Select
+                      value={addLoadingId}
+                      onValueChange={setAddLoadingId}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select Bill No / Client" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {records.map((r) => (
+                          <SelectItem key={r.id} value={r.id}>
+                            {r.billNo} — {r.clientName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <div className="text-xs font-semibold text-gray-500 mb-1">
+                      Variety
+                    </div>
+                    <Select
+                      value={addVarietyCode}
+                      onValueChange={setAddVarietyCode}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select Variety" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableVarieties.map((v) => (
+                          <SelectItem key={v.code} value={v.code}>
+                            {v.code} ({v.netTrays} trays)
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-semibold text-gray-500 mb-1">
+                      Trays
+                    </div>
+                    <Input
+                      type="number"
+                      min={0}
+                      value={addTrays}
+                      onChange={(e) =>
+                        setAddTrays(Math.max(0, Number(e.target.value) || 0))
+                      }
+                    />
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-semibold text-gray-500 mb-1">
+                      Loose (Kgs)
+                    </div>
+                    <Input
+                      type="number"
+                      min={0}
+                      step="0.1"
+                      value={addLoose}
+                      onChange={(e) =>
+                        setAddLoose(Math.max(0, Number(e.target.value) || 0))
+                      }
+                    />
+                  </div>
+
+                  <div className="md:col-span-4 flex gap-2 justify-end">
+                    <Button
+                      variant="outline"
+                      onClick={() => {
+                        setShowAddItem(false);
+                        setAddLoadingId("");
+                        setAddVarietyCode("");
+                        setAddTrays(0);
+                        setAddLoose(0);
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button onClick={addItemToBill} disabled={addingItem}>
+                      {addingItem ? "Adding..." : "Add to Bill"}
+                    </Button>
+                  </div>
+
+                  <div className="md:col-span-4 text-xs text-gray-500">
+                    Note: After adding/editing, totals and 5% deduction are
+                    recalculated automatically:
+                    <b> if vehicle exists → NO deduction</b>, else 5% applies.
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* FILTERS */}
             <div className="flex flex-col gap-4 p-4 sm:p-5 rounded-xl border border-blue-100 bg-white/40">
               <div className="flex flex-col lg:flex-row lg:items-center gap-3">
                 <div className="relative w-full lg:w-[420px]">
@@ -439,15 +620,12 @@ export default function ClientBillsPage() {
                     type="date"
                     value={fromDate}
                     onChange={(e) => setFromDate(e.target.value)}
-                    className="w-full"
                   />
                   <Input
                     type="date"
                     value={toDate}
                     onChange={(e) => setToDate(e.target.value)}
-                    className="w-full"
                   />
-
                   <Button
                     type="button"
                     variant="outline"
@@ -478,155 +656,15 @@ export default function ClientBillsPage() {
             </div>
           ) : (
             <>
-              {/* Mobile Cards */}
-              <div className="mt-5 grid grid-cols-1 gap-3 md:hidden">
-                {paginatedItems.map((it) => {
-                  const edit = editing[it.id];
-                  const isEditing = !!edit;
-                  const isSaving = !!savingIds[it.id];
-
-                  return (
-                    <Card
-                      key={it.id}
-                      className="rounded-2xl border border-gray-200 p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="font-semibold text-gray-900">
-                            {it.billNo}
-                          </div>
-                          <div className="text-xs text-gray-600 truncate">
-                            {it.clientName}
-                          </div>
-                          <div className="mt-2 inline-flex items-center rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
-                            Variety: {it.varietyCode || "-"}
-                          </div>
-
-                          <div className="mt-2 text-xs text-gray-500">
-                            <span className="font-medium">Quantity:</span>{" "}
-                            <TraysDisplay item={it} />
-                          </div>
-                        </div>
-
-                        {!isEditing ? (
-                          <div className="flex gap-2 shrink-0">
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => startEdit(it)}
-                            >
-                              <Edit className="w-4 h-4" />
-                            </Button>
-
-                            {/* ✅ Delete ITEM (not bill) */}
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="text-red-600 hover:bg-red-50"
-                              onClick={() => openDeleteItemDialog(it)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        ) : (
-                          <div className="flex gap-2 shrink-0">
-                            <Button
-                              size="sm"
-                              onClick={() => saveRow(it)}
-                              disabled={isSaving}
-                              className="bg-green-600 hover:bg-green-700 text-white"
-                            >
-                              {isSaving ? "..." : <Check className="w-4 h-4" />}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => cancelEdit(it.id)}
-                            >
-                              <X className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                        <div className="rounded-xl border bg-gray-50 p-3 col-span-2">
-                          <div className="text-xs text-gray-500">Trays</div>
-                          <div className="mt-1">
-                            <TraysDisplay item={it} />
-                          </div>
-                        </div>
-
-                        <div className="rounded-xl border bg-gray-50 p-3 col-span-2">
-                          <div className="text-xs text-gray-500">Price/Kg</div>
-                          {isEditing ? (
-                            <Input
-                              value={edit.pricePerKg ?? ""}
-                              onChange={(e) =>
-                                onPriceChange(
-                                  it.id,
-                                  Math.max(0, Number(e.target.value)).toString()
-                                )
-                              }
-                              onKeyDown={(e) => {
-                                if (
-                                  e.key === "-" ||
-                                  e.key === "e" ||
-                                  e.key === "E"
-                                )
-                                  e.preventDefault();
-                              }}
-                              className="mt-2 w-full text-right"
-                              type="number"
-                              step="0.01"
-                              min={0}
-                            />
-                          ) : (
-                            <div className="font-semibold text-gray-900">
-                              {(it.pricePerKg ?? 0).toFixed(2)}
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="rounded-xl border bg-green-50 p-3 col-span-2">
-                          <div className="text-xs text-gray-500">
-                            Total Price
-                          </div>
-                          {isEditing ? (
-                            <Input
-                              value={edit.totalPrice ?? ""}
-                              readOnly
-                              className="mt-2 w-full text-right bg-green-50 font-bold"
-                            />
-                          ) : (
-                            <div className="font-bold text-green-700">
-                              {(it.totalPrice ?? 0).toFixed(2)}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Optional: full bill delete button (separate) */}
-                        {/* <Button
-                          variant="outline"
-                          className="col-span-2 text-red-600 border-red-200 hover:bg-red-50"
-                          onClick={() => deleteBill(it.loadingId)}
-                        >
-                          Delete Full Bill
-                        </Button> */}
-                      </div>
-                    </Card>
-                  );
-                })}
-              </div>
-
               {/* Desktop Table */}
               <div className="mt-6 hidden md:block overflow-x-auto">
-                <table className="w-full min-w-[900px] table-auto">
+                <table className="w-full min-w-[1050px] table-auto">
                   <thead className="bg-gray-100 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                     <tr>
                       <th className="p-4">Bill No / Client</th>
                       <th className="p-4">Variety</th>
                       <th className="p-4 text-right">Trays</th>
+                      <th className="p-4 text-right">Loose</th>
                       <th className="p-4 text-right">Price/Kg</th>
                       <th className="p-4 text-right">Total Price</th>
                       <th className="p-4 text-center">Actions</th>
@@ -648,25 +686,90 @@ export default function ClientBillsPage() {
                             <div className="text-xs text-gray-600">
                               {it.clientName}
                             </div>
+                            <div className="text-[11px] text-gray-500 mt-1">
+                              Deduction:{" "}
+                              <span
+                                className={
+                                  it.hasVehicle
+                                    ? "text-green-700 font-semibold"
+                                    : "text-orange-700 font-semibold"
+                                }
+                              >
+                                {it.hasVehicle
+                                  ? "0% (Vehicle)"
+                                  : "5% (No Vehicle)"}
+                              </span>
+                            </div>
                           </td>
 
                           <td className="p-4">{it.varietyCode || "-"}</td>
 
                           <td className="p-4 text-right">
-                            <TraysDisplay item={it} />
+                            {isEditing ? (
+                              <Input
+                                value={edit.noTrays ?? 0}
+                                onChange={(e) =>
+                                  onNumberChange(
+                                    it.id,
+                                    "noTrays",
+                                    e.target.value
+                                  )
+                                }
+                                onKeyDown={(e) => {
+                                  if (
+                                    e.key === "-" ||
+                                    e.key === "e" ||
+                                    e.key === "E"
+                                  )
+                                    e.preventDefault();
+                                }}
+                                className="w-24 text-right"
+                                type="number"
+                                min={0}
+                              />
+                            ) : (
+                              <span className="font-medium">
+                                {it.noTrays ?? 0}
+                              </span>
+                            )}
                           </td>
 
                           <td className="p-4 text-right">
                             {isEditing ? (
                               <Input
-                                value={edit.pricePerKg ?? ""}
+                                value={edit.loose ?? 0}
                                 onChange={(e) =>
-                                  onPriceChange(
+                                  onNumberChange(it.id, "loose", e.target.value)
+                                }
+                                onKeyDown={(e) => {
+                                  if (
+                                    e.key === "-" ||
+                                    e.key === "e" ||
+                                    e.key === "E"
+                                  )
+                                    e.preventDefault();
+                                }}
+                                className="w-24 text-right"
+                                type="number"
+                                min={0}
+                                step="0.1"
+                              />
+                            ) : (
+                              <span className="font-medium">
+                                {Number(it.loose ?? 0).toFixed(1)}
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="p-4 text-right">
+                            {isEditing ? (
+                              <Input
+                                value={edit.pricePerKg ?? 0}
+                                onChange={(e) =>
+                                  onNumberChange(
                                     it.id,
-                                    Math.max(
-                                      0,
-                                      Number(e.target.value)
-                                    ).toString()
+                                    "pricePerKg",
+                                    e.target.value
                                   )
                                 }
                                 onKeyDown={(e) => {
@@ -684,7 +787,7 @@ export default function ClientBillsPage() {
                               />
                             ) : (
                               <span className="font-medium">
-                                {(it.pricePerKg ?? 0).toFixed(2)}
+                                {Number(it.pricePerKg ?? 0).toFixed(2)}
                               </span>
                             )}
                           </td>
@@ -692,12 +795,12 @@ export default function ClientBillsPage() {
                           <td className="p-4 text-right font-bold text-green-600">
                             {isEditing ? (
                               <Input
-                                value={edit.totalPrice ?? ""}
+                                value={edit.totalPrice ?? 0}
                                 readOnly
                                 className="w-32 text-right bg-green-50 font-bold"
                               />
                             ) : (
-                              (it.totalPrice ?? 0).toFixed(2)
+                              Number(it.totalPrice ?? 0).toFixed(2)
                             )}
                           </td>
 
@@ -711,8 +814,6 @@ export default function ClientBillsPage() {
                                 >
                                   <Edit className="w-4 h-4" />
                                 </Button>
-
-                                {/* ✅ Delete ITEM (not bill) */}
                                 <Button
                                   size="sm"
                                   variant="ghost"
@@ -721,16 +822,6 @@ export default function ClientBillsPage() {
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </Button>
-
-                                {/* Optional: full bill delete (separate control) */}
-                                {/* <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="text-red-700 hover:bg-red-50"
-                                  onClick={() => deleteBill(it.loadingId)}
-                                >
-                                  Delete Bill
-                                </Button> */}
                               </div>
                             ) : (
                               <div className="flex justify-center gap-2">
@@ -826,7 +917,6 @@ export default function ClientBillsPage() {
         </Card>
       </div>
 
-      {/* ✅ Delete Item Dialog (now wired correctly) */}
       <LoadingDeleteDialog
         open={deleteItemOpen}
         onClose={closeDeleteItemDialog}

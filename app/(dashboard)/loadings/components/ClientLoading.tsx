@@ -24,8 +24,8 @@ const DEDUCTION_PERCENT = 5;
 const OTHER_VEHICLE_VALUE = "__OTHER__";
 
 // ✅ Text validation + sanitization
-const CLIENT_NAME_REGEX = /^[A-Za-z][A-Za-z .'-]*$/; // letters + space + . ' -
-const VILLAGE_REGEX = /^[A-Za-z][A-Za-z ]*$/; // letters + space
+const CLIENT_NAME_REGEX = /^[A-Za-z][A-Za-z .'-]*$/;
+const VILLAGE_REGEX = /^[A-Za-z][A-Za-z ]*$/;
 
 const cleanClientName = (v: string) =>
   v
@@ -62,6 +62,12 @@ interface ItemRow {
   totalKgs: number;
 }
 
+type VehicleRow = {
+  id: string;
+  vehicleNumber: string;
+  assignedDriver?: { name?: string | null } | null;
+};
+
 const todayYMD = () => {
   const d = new Date();
   const yyyy = d.getFullYear();
@@ -74,19 +80,22 @@ export default function ClientLoadingForm() {
   const queryClient = useQueryClient();
 
   const [village, setVillage] = useState("");
-  const [date, setDate] = useState(""); // default today in useEffect
+  const [date, setDate] = useState("");
+  const [billNo, setBillNo] = useState("");
+  const [clientName, setClientName] = useState("");
+
+  // ✅ NEW: vehicle toggle checkbox
+  const [useVehicle, setUseVehicle] = useState(false);
+
   const [vehicleId, setVehicleId] = useState("");
   const [otherVehicleNo, setOtherVehicleNo] = useState("");
 
-  const [billNo, setBillNo] = useState("");
-  const [clientName, setClientName] = useState("");
   const [grandTotal, setGrandTotal] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  // ✅ hide used vehicles without reload
   const isOtherVehicle = vehicleId === OTHER_VEHICLE_VALUE;
 
-  // ✅ Hide used vehicles immediately (no reload)
+  // ✅ hide used vehicles without reload
   const [usedVehicleIds, setUsedVehicleIds] = useState<Set<string>>(
     () => new Set()
   );
@@ -103,13 +112,12 @@ export default function ClientLoadingForm() {
     },
   ]);
 
-  // ✅ default today's date (editable)
   useEffect(() => {
     if (!date) setDate(todayYMD());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ Available varieties (net stock)
+  // ✅ Available varieties
   const { data: availableVarieties = [] } = useQuery<AvailableVariety[]>({
     queryKey: ["available-varieties"],
     queryFn: async () => {
@@ -118,8 +126,8 @@ export default function ClientLoadingForm() {
     },
   });
 
-  // Vehicles
-  const { data: vehicles = [] } = useQuery({
+  // ✅ Vehicles
+  const { data: vehicles = [] } = useQuery<VehicleRow[]>({
     queryKey: ["assigned-vehicles"],
     queryFn: async () => {
       const res = await axios.get("/api/vehicles/assign-driver");
@@ -127,16 +135,15 @@ export default function ClientLoadingForm() {
     },
   });
 
-  // ✅ Filter vehicles: hide used instantly; keep current selection visible
   const availableVehicles = useMemo(() => {
-    return (vehicles ?? []).filter((v: any) => {
+    return (vehicles ?? []).filter((v) => {
       if (!v?.id) return false;
       if (v.id === vehicleId) return true;
       return !usedVehicleIds.has(v.id);
     });
   }, [vehicles, usedVehicleIds, vehicleId]);
 
-  // Bill No
+  // ✅ Bill No
   const {
     data: billData,
     isLoading: billLoading,
@@ -147,7 +154,7 @@ export default function ClientLoadingForm() {
     queryFn: async () => {
       const res = await fetch("/api/client-loading/next-bill-no");
       const data = await res.json();
-      return data.billNo;
+      return data.billNo as string;
     },
   });
 
@@ -177,13 +184,11 @@ export default function ClientLoadingForm() {
   const getVarietyName = (code: string) =>
     availableVarieties.find((v) => v.code === code)?.name || "";
 
-  // ✅ Update row: clamps to >= 0 and recalculates totals safely
   const updateRow = (id: string, field: keyof ItemRow, value: any) => {
     setItems((prev) =>
       prev.map((row) => {
         if (row.id !== id) return row;
 
-        // handle variety
         if (field === "varietyCode") {
           const code = String(value ?? "");
           const nextNoTrays = safeNum(row.noTrays);
@@ -200,14 +205,10 @@ export default function ClientLoadingForm() {
           };
         }
 
-        // handle name
-        if (field === "name") {
-          return { ...row, name: String(value ?? "") };
-        }
+        if (field === "name") return { ...row, name: String(value ?? "") };
 
-        // handle numeric fields
         if (field === "noTrays" || field === "loose") {
-          const n = Math.max(0, safeNum(value)); // ✅ clamp
+          const n = Math.max(0, safeNum(value));
           const next = { ...row, [field]: n } as ItemRow;
           const trayKgs = safeNum(next.noTrays) * TRAY_KG;
           const totalKgs = trayKgs + safeNum(next.loose);
@@ -247,12 +248,26 @@ export default function ClientLoadingForm() {
     return { trays, loose };
   };
 
-  // ✅ Grand total with 5% deduction
+  // ✅ Grand total:
+  // If useVehicle checked => NO 5% cut
+  // Else => apply 5% deduction
   useEffect(() => {
     const total = items.reduce((a, b) => a + safeNum(b.totalKgs), 0);
-    const after = total * (1 - DEDUCTION_PERCENT / 100);
-    setGrandTotal(Math.round(after));
-  }, [items]);
+    if (useVehicle) {
+      setGrandTotal(Math.round(total));
+    } else {
+      const after = total * (1 - DEDUCTION_PERCENT / 100);
+      setGrandTotal(Math.round(after));
+    }
+  }, [items, useVehicle]);
+
+  // ✅ if user unticks checkbox, clear vehicle fields immediately
+  useEffect(() => {
+    if (!useVehicle) {
+      setVehicleId("");
+      setOtherVehicleNo("");
+    }
+  }, [useVehicle]);
 
   const addRow = () => {
     setItems((prev) => [
@@ -279,6 +294,8 @@ export default function ClientLoadingForm() {
     setClientName("");
     setVillage("");
     setDate(todayYMD());
+
+    setUseVehicle(false);
     setVehicleId("");
     setOtherVehicleNo("");
 
@@ -298,7 +315,6 @@ export default function ClientLoadingForm() {
     refetchBillNo();
   };
 
-  // ✅ VALIDATION
   const validateForm = () => {
     if (billLoading || billError || !billNo) {
       toast.error("Bill number not available");
@@ -320,9 +336,18 @@ export default function ClientLoadingForm() {
 
     if (!date.trim()) return toast.error("Select Date"), false;
 
-    // if (!vehicleId.trim()) return toast.error("Select Vehicle"), false;
-    if (isOtherVehicle && !otherVehicleNo.trim())
-      return toast.error("Enter Vehicle Number"), false;
+    // ✅ vehicle validation only if checkbox is checked
+    if (useVehicle) {
+      if (isOtherVehicle && !otherVehicleNo.trim()) {
+        toast.error("Enter Vehicle Number");
+        return false;
+      }
+      // If not other, vehicleId should exist
+      if (!isOtherVehicle && !vehicleId.trim()) {
+        toast.error("Select Vehicle");
+        return false;
+      }
+    }
 
     const activeRows = items.filter(
       (r) => safeNum(r.noTrays) > 0 || safeNum(r.loose) > 0
@@ -354,7 +379,11 @@ export default function ClientLoadingForm() {
     setLoading(true);
 
     const firstCode = items.find((r) => r.varietyCode)?.varietyCode;
-    if (!firstCode) return toast.error("Select at least one variety");
+    if (!firstCode) {
+      toast.error("Select at least one variety");
+      setLoading(false);
+      return;
+    }
 
     const activeRows = items.filter(
       (r) => safeNum(r.noTrays) > 0 || safeNum(r.loose) > 0
@@ -367,8 +396,12 @@ export default function ClientLoadingForm() {
         village: village.trim(),
         date,
 
-        vehicleId: isOtherVehicle ? null : vehicleId,
-        vehicleNo: isOtherVehicle ? otherVehicleNo.trim() : null,
+        // ✅ NEW: send useVehicle flag
+        useVehicle,
+
+        // send vehicle only if checkbox enabled
+        vehicleId: useVehicle && !isOtherVehicle ? vehicleId : null,
+        vehicleNo: useVehicle && isOtherVehicle ? otherVehicleNo.trim() : null,
 
         fishCode: firstCode,
 
@@ -381,11 +414,10 @@ export default function ClientLoadingForm() {
 
       toast.success("Client loading saved!");
 
-      // optional: keep this if your backend changes vehicle assignment
       queryClient.invalidateQueries({ queryKey: ["assigned-vehicles"] });
 
-      // ✅ hide vehicle instantly without reload
-      if (!isOtherVehicle && vehicleId) {
+      // hide vehicle instantly without reload (only when using a selected vehicleId)
+      if (useVehicle && !isOtherVehicle && vehicleId) {
         setUsedVehicleIds((prev) => {
           const next = new Set(prev);
           next.add(vehicleId);
@@ -473,30 +505,48 @@ export default function ClientLoadingForm() {
             />
           </Field>
 
+          {/* ✅ NEW: Checkbox */}
           <Field className="sm:col-span-2 md:col-span-1">
-            <FieldLabel>Select Vehicle *</FieldLabel>
-            <Select
-              value={vehicleId}
-              onValueChange={(v) => {
-                setVehicleId(v);
-                if (v !== OTHER_VEHICLE_VALUE) setOtherVehicleNo("");
-              }}
-            >
-              <SelectTrigger className="border-slate-200 focus:ring-2 focus:ring-[#139BC3]/30">
-                <SelectValue placeholder="Select Vehicle" />
-              </SelectTrigger>
-              <SelectContent>
-                {availableVehicles.map((v: any) => (
-                  <SelectItem key={v.id} value={v.id}>
-                    {v.vehicleNumber} – {v.assignedDriver?.name || "No Driver"}
-                  </SelectItem>
-                ))}
-                <SelectItem value={OTHER_VEHICLE_VALUE}>Other</SelectItem>
-              </SelectContent>
-            </Select>
+            <FieldLabel>Vehicle</FieldLabel>
+            <label className="flex items-center gap-2 text-sm text-slate-700 select-none">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-[#139BC3]"
+                checked={useVehicle}
+                onChange={(e) => setUseVehicle(e.target.checked)}
+              />
+              Add Vehicle? (If checked: No 5% deduction)
+            </label>
           </Field>
 
-          {isOtherVehicle && (
+          {/* ✅ Vehicle fields only when checkbox checked */}
+          {useVehicle && (
+            <Field className="sm:col-span-2 md:col-span-1">
+              <FieldLabel>Select Vehicle</FieldLabel>
+              <Select
+                value={vehicleId}
+                onValueChange={(v) => {
+                  setVehicleId(v);
+                  if (v !== OTHER_VEHICLE_VALUE) setOtherVehicleNo("");
+                }}
+              >
+                <SelectTrigger className="border-slate-200 focus:ring-2 focus:ring-[#139BC3]/30">
+                  <SelectValue placeholder="Select Vehicle" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableVehicles.map((v) => (
+                    <SelectItem key={v.id} value={v.id}>
+                      {v.vehicleNumber} –{" "}
+                      {v.assignedDriver?.name || "No Driver"}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value={OTHER_VEHICLE_VALUE}>Other</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+          )}
+
+          {useVehicle && isOtherVehicle && (
             <Field className="sm:col-span-2 md:col-span-1">
               <FieldLabel>Other Vehicle Number *</FieldLabel>
               <Input
@@ -535,7 +585,6 @@ export default function ClientLoadingForm() {
               </div>
 
               <div className="mt-3 space-y-3">
-                {/* Variety */}
                 <div>
                   <div className="text-xs font-semibold text-slate-500 mb-1">
                     Variety *
@@ -567,7 +616,6 @@ export default function ClientLoadingForm() {
                   </div>
                 </div>
 
-                {/* Qty */}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <div className="text-xs font-semibold text-slate-500 mb-1">
@@ -610,7 +658,6 @@ export default function ClientLoadingForm() {
                   </div>
                 </div>
 
-                {/* Total */}
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between">
                   <div className="text-sm text-slate-600">Total</div>
                   <div className="text-lg font-extrabold text-slate-900">
@@ -642,9 +689,6 @@ export default function ClientLoadingForm() {
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">
                   Variety *
                 </th>
-                {/* <th className="px-3 py-3 text-left font-semibold text-slate-700">
-                  Name
-                </th> */}
                 <th className="px-3 py-3 text-left font-semibold text-slate-700">
                   Trays
                 </th>
@@ -690,10 +734,6 @@ export default function ClientLoadingForm() {
                       </SelectContent>
                     </Select>
                   </td>
-
-                  {/* <td className="px-3 py-3 text-slate-700">
-                    {row.name || "—"}
-                  </td> */}
 
                   <td className="px-3 py-3">
                     <Input
@@ -771,8 +811,11 @@ export default function ClientLoadingForm() {
                 <span className="text-lg text-slate-500 ml-1">Trays</span>
               </span>
             </div>
+
             <div className="flex justify-end items-center gap-4">
-              <span className="text-slate-500">Grand Total:</span>
+              <span className="text-slate-500">
+                Grand Total {useVehicle ? "(No deduction)" : "(5% deduction)"}:
+              </span>
               <span className="text-2xl font-bold">
                 {grandTotal}
                 <span className="text-lg text-slate-500 ml-1">Kgs</span>
