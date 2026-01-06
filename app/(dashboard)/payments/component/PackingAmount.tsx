@@ -1,7 +1,6 @@
-// app/(dashboard)/payments/component/PackingAmount.tsx
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { CardCustom } from "@/components/ui/card-custom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,146 +13,89 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Field } from "@/components/helpers/Field";
 import { Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-type Mode = "loading" | "unloading";
 type PaymentMode = "CASH" | "AC" | "UPI" | "CHEQUE";
 
-interface Bill {
+interface ClientBill {
   id: string;
   billNo: string;
   clientName?: string;
-  FarmerName?: string;
-  agentName?: string;
 }
 
-export function PackingAmount() {
-  const [mode, setMode] = useState<Mode>("loading");
-  const [bills, setBills] = useState<Bill[]>([]);
+const DEFAULT_ICE_PRICE = 200;
+
+export default function PackingAmount() {
+  const [bills, setBills] = useState<ClientBill[]>([]);
+  const [loadingBills, setLoadingBills] = useState(true);
+
   const [selectedBillId, setSelectedBillId] = useState<string>("");
-  const [workers, setWorkers] = useState<string>("");
-  const [temperature, setTemperature] = useState<string>("");
-  const [total, setTotal] = useState<string>("0");
+
+  const [iceBlocks, setIceBlocks] = useState<number>(0);
+  const [icePrice, setIcePrice] = useState<number>(DEFAULT_ICE_PRICE);
+
   const [paymentMode, setPaymentMode] = useState<PaymentMode>("CASH");
   const [reference, setReference] = useState<string>("");
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
 
-  // Separate reusable function to load and filter available bills
-  const loadBills = async () => {
-    setIsLoading(true);
+  const [saving, setSaving] = useState(false);
 
-    try {
-      let allBills: Bill[] = [];
-      let usedPackingBillIds = new Set<string>();
-
-      // 1️⃣ Fetch packing amounts first
-      const packingRes = await fetch("/api/payments/packing-amount");
-      if (packingRes.ok) {
-        const packingJson = await packingRes.json();
-        const packings = packingJson.data || [];
-
-        packings.forEach((p: any) => {
-          if (p.clientLoadingId) usedPackingBillIds.add(p.clientLoadingId);
-          if (p.formerLoadingId) usedPackingBillIds.add(p.formerLoadingId);
-          if (p.agentLoadingId) usedPackingBillIds.add(p.agentLoadingId);
-        });
-      }
-
-      // 2️⃣ Fetch ONLY existing loadings
-      if (mode === "loading") {
-        // CLIENT LOADINGS
-        const res = await fetch("/api/client-loading");
-        const json = await res.json();
-        allBills = json.data || [];
-      } else {
-        // UNLOADING = FARMER + AGENT
-        const [formerRes, agentRes] = await Promise.all([
-          fetch("/api/former-loading"),
-          fetch("/api/agent-loading"),
-        ]);
-
-        const formerJson = await formerRes.json();
-        const agentJson = await agentRes.json();
-
-        allBills = [...(formerJson.data || []), ...(agentJson.data || [])];
-      }
-
-      // 3️⃣ Filter out:
-      // ❌ bills already used in packing
-      // ❌ bills that were deleted (not returned by API)
-      const availableBills = allBills.filter(
-        (bill) => bill?.id && !usedPackingBillIds.has(bill.id)
-      );
-
-      setBills(availableBills);
-    } catch (err) {
-      console.error("Error loading bills:", err);
-      toast.error("Failed to load bills");
-      setBills([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Load bills on mount and whenever mode changes
+  /* ---------------------- FETCH CLIENT LOADINGS ---------------------- */
   useEffect(() => {
-    loadBills();
-  }, [mode]);
+    const loadBills = async () => {
+      try {
+        setLoadingBills(true);
+        const res = await fetch("/api/client-loading?stage=PACKING_PENDING");
 
-  const handleSave = async () => {
-    const workersNum = parseInt(workers);
-    const tempNum = parseFloat(temperature);
-    const totalNum = parseFloat(total);
-
-    if (
-      isNaN(workersNum) ||
-      workersNum <= 0 ||
-      isNaN(tempNum) ||
-      totalNum <= 0
-    ) {
-      toast.error("Please fill all required fields correctly");
-      return;
-    }
-
-    if (paymentMode !== "CASH" && !reference.trim()) {
-      toast.error("Reference number is required for non-cash payments");
-      return;
-    }
-    if (selectedBillId && !bills.some((b) => b.id === selectedBillId)) {
-      toast.error("Selected bill no longer exists");
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      let sourceType: "FORMER" | "AGENT" | "CLIENT" | null = null;
-
-      if (selectedBillId) {
-        if (mode === "loading") {
-          sourceType = "CLIENT";
-        } else {
-          const selectedBill = bills.find((b) => b.id === selectedBillId);
-          if (selectedBill?.FarmerName) {
-            sourceType = "FORMER";
-          } else if (selectedBill?.agentName) {
-            sourceType = "AGENT";
-          }
-        }
+        const json = await res.json();
+        setBills(json.data || []);
+      } catch (e) {
+        toast.error("Failed to load client bills");
+        setBills([]);
+      } finally {
+        setLoadingBills(false);
       }
+    };
+    loadBills();
+  }, []);
 
+  /* ---------------------- AUTO TOTAL CALC ---------------------- */
+  const totalAmount = useMemo(() => {
+    if (iceBlocks <= 0 || icePrice <= 0) return 0;
+    return iceBlocks * icePrice;
+  }, [iceBlocks, icePrice]);
+
+  /* ---------------------- SAVE ---------------------- */
+  const handleSave = async () => {
+    if (iceBlocks <= 0) {
+      toast.error("Enter number of ice blocks");
+      return;
+    }
+    if (icePrice <= 0) {
+      toast.error("Ice block price must be greater than 0");
+      return;
+    }
+    if (paymentMode !== "CASH" && !reference.trim()) {
+      toast.error("Reference is required for non-cash payments");
+      return;
+    }
+    if (!selectedBillId) {
+      toast.error("Please select a client bill");
+      return;
+    }
+
+    setSaving(true);
+    try {
       const res = await fetch("/api/payments/packing-amount", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mode,
-          sourceType,
+          mode: "loading",
+          sourceType: selectedBillId ? "CLIENT" : null,
           sourceRecordId: selectedBillId || null,
-          workers: workersNum,
-          temperature: tempNum,
-          totalAmount: totalNum,
+          workers: iceBlocks, // reuse existing column safely
+          temperature: icePrice, // store price per block
+          totalAmount,
           paymentMode,
           reference: reference.trim() || null,
         }),
@@ -163,67 +105,42 @@ export function PackingAmount() {
         const err = await res.json();
         throw new Error(err.error || "Save failed");
       }
-      // Immediately refresh the bill list to remove the used one
-      await loadBills();
 
-      toast.success("Packing amount saved successfully!");
-      // Reset form
-      setWorkers("");
-      setTemperature("");
-      setTotal("0");
+      toast.success("Ice blocks amount saved");
+
+      // reset
       setSelectedBillId("");
+      setIceBlocks(0);
+      setIcePrice(DEFAULT_ICE_PRICE);
       setPaymentMode("CASH");
       setReference("");
-    } catch (err: any) {
-      toast.error(err.message || "Failed to save");
+    } catch (e: any) {
+      toast.error(e.message || "Failed to save");
     } finally {
-      setIsSaving(false);
+      setSaving(false);
     }
   };
 
-  const showReference = paymentMode !== "CASH";
-
+  /* ---------------------- UI ---------------------- */
   return (
-    <CardCustom title="Packing Amount">
+    <CardCustom title="Ice Blocks Amount">
       <div className="space-y-6">
-        {/* Mode Toggle */}
-        <div className="flex flex-wrap gap-3">
-          <Button
-            variant="outline"
-            onClick={() => setMode("loading")}
-            size="sm"
-            className={[
-              "h-9 px-4 rounded-full border transition shadow-sm",
-              mode === "loading"
-                ? "bg-[#139BC3] text-white border-[#139BC3] hover:bg-[#1088AA]"
-                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50",
-            ].join(" ")}
-          >
+        {/* MODE (ONLY LOADING) */}
+        <div>
+          <Badge className="bg-[#139BC3] text-white px-5 py-2 rounded-full">
             Loading
-          </Button>
-
-          <Button
-            variant="outline"
-            onClick={() => setMode("unloading")}
-            size="sm"
-            className={[
-              "h-9 px-4 rounded-full border transition shadow-sm",
-              mode === "unloading"
-                ? "bg-[#139BC3] text-white border-[#139BC3] hover:bg-[#1088AA]"
-                : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50",
-            ].join(" ")}
-          >
-            Unloading
-          </Button>
+          </Badge>
         </div>
 
-        {/* Main Form Card */}
+        {/* FORM */}
         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-6 space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <Field label={mode === "loading" ? "Client Bill" : "Vendor Bill"}>
-              {isLoading ? (
-                <div className="flex items-center gap-2 text-sm text-slate-600">
-                  <Loader2 className="animate-spin h-4 w-4" />
+            {/* BILL */}
+            <div>
+              <Label>Client Bill (optional)</Label>
+              {loadingBills ? (
+                <div className="flex items-center gap-2 text-sm text-slate-600 mt-2">
+                  <Loader2 className="h-4 w-4 animate-spin" />
                   Loading...
                 </div>
               ) : (
@@ -231,146 +148,122 @@ export function PackingAmount() {
                   value={selectedBillId}
                   onValueChange={setSelectedBillId}
                 >
-                  <SelectTrigger className="h-11 border-slate-200 bg-white shadow-sm focus:ring-2 focus:ring-[#139BC3]/30">
+                  <SelectTrigger className="h-11 mt-2">
                     <SelectValue placeholder="Select bill (optional)" />
                   </SelectTrigger>
-                  <SelectContent className="border-slate-200">
-                    {bills.map((bill) => (
-                      <SelectItem
-                        key={bill.id}
-                        value={bill.id}
-                        className="py-3"
-                      >
-                        {bill.billNo} —{" "}
-                        {bill.clientName ||
-                          bill.FarmerName ||
-                          bill.agentName ||
-                          "Unknown"}
+                  <SelectContent>
+                    {bills.map((b) => (
+                      <SelectItem key={b.id} value={b.id}>
+                        {b.billNo} — {b.clientName || "Client"}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
               )}
-            </Field>
+            </div>
 
-            <Field label="Number of Workers">
+            {/* ICE BLOCK COUNT */}
+            <div>
+              <Label>Number of Ice Blocks</Label>
               <Input
                 type="number"
-                value={workers}
+                min={0}
+                value={iceBlocks}
                 onChange={(e) =>
-                  setWorkers(Math.max(0, Number(e.target.value)).toString())
+                  setIceBlocks(Math.max(0, Number(e.target.value) || 0))
                 }
-                placeholder="e.g. 8"
-                min="1"
-                className="h-11 border-slate-200 bg-white shadow-sm focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
+                placeholder="e.g. 10"
+                className="h-11 mt-2"
               />
-            </Field>
+            </div>
 
-            <Field label="Temperature (°C)">
+            {/* PRICE PER BLOCK */}
+            <div>
+              <Label>Price per Ice Block (₹)</Label>
               <Input
                 type="number"
-                step="0.1"
-                value={temperature}
-                onChange={(e) => setTemperature(e.target.value)}
-                placeholder="e.g. 24.5"
-                className="h-11 border-slate-200 bg-white shadow-sm focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
+                min={0}
+                value={icePrice}
+                onChange={(e) =>
+                  setIcePrice(Math.max(0, Number(e.target.value) || 0))
+                }
+                placeholder="e.g. 200"
+                className="h-11 mt-2"
               />
-            </Field>
-          </div>
-
-          <Field label="Total Packing Amount (₹)">
-            <Input
-              type="number"
-              value={total}
-              onChange={(e) =>
-                setTotal(Math.max(0, Number(e.target.value)).toString())
-              }
-              placeholder="Enter total amount"
-              min={0}
-              step="100"
-              className="h-12 border-slate-200 bg-white shadow-sm text-2xl font-bold focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
-            />
-          </Field>
-
-          {/* Payment Mode */}
-          <div className="space-y-3">
-            <Label className="text-slate-700">Payment Mode</Label>
-            <div className="flex flex-wrap gap-2">
-              {(["CASH", "AC", "UPI", "CHEQUE"] as const).map((pm) => {
-                const selected = paymentMode === pm;
-                return (
-                  <Badge
-                    key={pm}
-                    onClick={() => {
-                      setPaymentMode(pm);
-                      if (pm === "CASH") setReference("");
-                    }}
-                    className={[
-                      "cursor-pointer select-none px-4 py-2 rounded-full border transition shadow-sm",
-                      selected
-                        ? "bg-[#139BC3] text-white border-[#139BC3] hover:bg-[#1088AA]"
-                        : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50",
-                    ].join(" ")}
-                  >
-                    {pm === "CASH" && "Cash"}
-                    {pm === "AC" && "A/C Transfer"}
-                    {pm === "UPI" && "UPI / PhonePe"}
-                    {pm === "CHEQUE" && "Cheque"}
-                  </Badge>
-                );
-              })}
             </div>
           </div>
 
-          {/* Reference Field */}
-          {showReference && (
-            <Field
-              label={
-                paymentMode === "AC"
-                  ? "Bank Reference / UTR No. *"
-                  : paymentMode === "UPI"
-                  ? "UPI Transaction ID *"
-                  : "Cheque Number *"
-              }
-            >
+          {/* TOTAL */}
+          <div>
+            <Label>Total Ice Amount (₹)</Label>
+            <Input
+              value={totalAmount}
+              readOnly
+              className="h-14 mt-2 text-2xl font-bold bg-slate-50"
+            />
+          </div>
+
+          {/* PAYMENT MODE */}
+          <div className="space-y-3">
+            <Label>Payment Mode</Label>
+            <div className="flex flex-wrap gap-2">
+              {(["CASH", "AC", "UPI", "CHEQUE"] as const).map((pm) => (
+                <Badge
+                  key={pm}
+                  onClick={() => {
+                    setPaymentMode(pm);
+                    if (pm === "CASH") setReference("");
+                  }}
+                  className={[
+                    "cursor-pointer px-4 py-2 rounded-full border transition",
+                    paymentMode === pm
+                      ? "bg-[#139BC3] text-white border-[#139BC3]"
+                      : "bg-white text-slate-700 border-slate-200",
+                  ].join(" ")}
+                >
+                  {pm === "CASH" && "Cash"}
+                  {pm === "AC" && "A/C Transfer"}
+                  {pm === "UPI" && "UPI / PhonePe"}
+                  {pm === "CHEQUE" && "Cheque"}
+                </Badge>
+              ))}
+            </div>
+          </div>
+
+          {/* REFERENCE */}
+          {paymentMode !== "CASH" && (
+            <div>
+              <Label>Reference *</Label>
               <Input
                 value={reference}
                 onChange={(e) => setReference(e.target.value)}
                 placeholder="Enter reference"
-                className="h-11 border-slate-200 bg-white shadow-sm focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
+                className="h-11 mt-2"
               />
-            </Field>
+            </div>
           )}
 
-          {/* Buttons */}
-          <div className="flex flex-wrap gap-3 pt-2">
+          {/* ACTIONS */}
+          <div className="flex gap-3 pt-2">
             <Button
               onClick={handleSave}
-              disabled={isSaving}
+              disabled={saving}
+              className="bg-[#139BC3] hover:bg-[#1088AA]"
               size="lg"
-              className="bg-[#139BC3] text-white hover:bg-[#1088AA] focus-visible:ring-2 focus-visible:ring-[#139BC3]/40 shadow-sm"
             >
-              {isSaving ? (
-                <>Saving...</>
-              ) : (
-                <>
-                  <Save className="mr-2 h-5 w-5" />
-                  Save Packing Amount
-                </>
-              )}
+              <Save className="h-5 w-5 mr-2" />
+              {saving ? "Saving..." : "Save Ice Amount"}
             </Button>
 
             <Button
               variant="outline"
               onClick={() => {
-                setWorkers("");
-                setTemperature("");
-                setTotal("0");
+                setIceBlocks(0);
+                setIcePrice(DEFAULT_ICE_PRICE);
                 setSelectedBillId("");
                 setPaymentMode("CASH");
                 setReference("");
               }}
-              className="border-slate-200 text-slate-700 hover:bg-slate-50 shadow-sm"
             >
               Reset
             </Button>

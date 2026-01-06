@@ -1,7 +1,6 @@
-// app/(dashboard)/payments/component/ClientPayments.tsx
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import axios from "axios";
 import { CardCustom } from "@/components/ui/card-custom";
@@ -22,32 +21,15 @@ import { toast } from "sonner";
 type PaymentMode = "cash" | "ac" | "upi" | "cheque";
 
 type ClientRow = {
-  id: string; // latest loading id
-  name: string; // clientName
-  billNos: string[];
-  loadingIds: string[];
-  latestLoadingId: string;
-  totalBilled: number; // sum of grandTotal (what client owes)
+  id: string; // Client.id (master)
+  name: string;
+  totalBilled: number;
+  totalPaid: number;
+  remaining: number;
   accountNumber?: string;
   ifsc?: string;
   bankName?: string;
   bankAddress?: string;
-};
-
-type ClientPayment = {
-  id: string;
-  clientId: string;
-  clientName: string;
-  date: string;
-  amount: number;
-  paymentMode: string;
-  referenceNo?: string | null;
-  paymentRef?: string | null;
-  accountNumber?: string | null;
-  ifsc?: string | null;
-  bankName?: string | null;
-  bankAddress?: string | null;
-  paymentdetails?: string | null;
 };
 
 const currency = (v: number) =>
@@ -60,7 +42,7 @@ const currency = (v: number) =>
 export function ClientPayments() {
   const queryClient = useQueryClient();
 
-  const [clientId, setClientId] = useState("");
+  const [clientDetailsId, setClientDetailsId] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [amount, setAmount] = useState("");
   const [paymentMode, setPaymentMode] = useState<PaymentMode>("cash");
@@ -68,36 +50,35 @@ export function ClientPayments() {
   const [referenceNo, setReferenceNo] = useState("");
   const [paymentRef, setPaymentRef] = useState("");
   const [isPartial, setIsPartial] = useState(false);
+  const [installments, setInstallments] = useState("");
+  const [installmentNumber, setInstallmentNumber] = useState("");
   const [accNo, setAccNo] = useState("");
   const [ifsc, setIfsc] = useState("");
   const [bankName, setBankName] = useState("");
   const [bankAddress, setBankAddress] = useState("");
 
-  // Fetch all client loadings to build client list with total billed
+  // Fetch clients with pending dues (ALL loadings, calculate remaining)
   const { data: clientData = [], isLoading: loadingClients } = useQuery<
     ClientRow[]
   >({
     queryKey: ["clients-for-payment"],
     queryFn: async () => {
-      // Fetch both loadings and payments in parallel
-      const [loadingRes, paymentRes] = await Promise.all([
-        axios.get("/api/client-loading"),
+      const [loadingsRes, paymentsRes] = await Promise.all([
+        axios.get("/api/client-loading"), // ← No stage filter
         axios.get("/api/payments/client"),
       ]);
 
-      const loadings = (loadingRes.data?.data || []) as any[];
-      const payments = (paymentRes.data?.data || []) as any[];
+      const loadings: any[] = loadingsRes.data?.data || [];
+      const payments: any[] = paymentsRes.data?.data || [];
 
-      // Build map of total billed per client
+      if (loadings.length === 0) return [];
+
+      // Group by master client (clientId = Client.id)
       const clientMap = new Map<
         string,
         {
           name: string;
-          billNos: string[];
-          loadingIds: string[];
-          latestLoadingId: string;
           totalBilled: number;
-          dispatchChargesTotal: number;
           accountNumber?: string;
           ifsc?: string;
           bankName?: string;
@@ -106,69 +87,52 @@ export function ClientPayments() {
       >();
 
       loadings.forEach((load: any) => {
+        const masterId = load.clientId;
         const name = (load.clientName || "").trim();
-        if (!name || !load.id) return;
+        if (!masterId || !name) return;
 
         const billed = Number(load.grandTotal || 0);
-        const dispatchCharges = Number(load.dispatchChargesTotal || 0);
-        const billNo = load.billNo || "";
-        const loadingId = load.id;
 
-        const key = name.toLowerCase();
-
-        if (!clientMap.has(key)) {
-          clientMap.set(key, {
+        if (!clientMap.has(masterId)) {
+          clientMap.set(masterId, {
             name,
-            billNos: billNo ? [billNo] : [],
-            loadingIds: [loadingId],
-            latestLoadingId: loadingId,
             totalBilled: billed,
-            dispatchChargesTotal: dispatchCharges,
             accountNumber: load.accountNumber || undefined,
             ifsc: load.ifsc || undefined,
             bankName: load.bankName || undefined,
             bankAddress: load.bankAddress || undefined,
           });
         } else {
-          const existing = clientMap.get(key)!;
+          const existing = clientMap.get(masterId)!;
           existing.totalBilled += billed;
-          existing.dispatchChargesTotal += dispatchCharges;
-          if (billNo) existing.billNos.push(billNo);
-          existing.loadingIds.push(loadingId);
-          existing.latestLoadingId = loadingId;
         }
       });
 
-      // Calculate total paid per loadingId
+      // Total paid per client
       const paidMap = new Map<string, number>();
       payments.forEach((p: any) => {
-        const clientId = p.clientId;
-        if (!clientId) return;
-        const amount = Number(p.amount || 0);
-        paidMap.set(clientId, (paidMap.get(clientId) || 0) + amount);
+        const masterId = p.clientDetailsId;
+        if (masterId) {
+          paidMap.set(
+            masterId,
+            (paidMap.get(masterId) || 0) + Number(p.amount || 0)
+          );
+        }
       });
 
-      // Build final list: only clients with dispatchChargesTotal > 0 and remaining > 0
+      // Only clients with remaining > 0
       const result: ClientRow[] = [];
-
-      for (const [key, client] of clientMap) {
-        if (client.dispatchChargesTotal <= 0) continue;
-
-        let totalPaid = 0;
-        for (const loadingId of client.loadingIds) {
-          totalPaid += paidMap.get(loadingId) || 0;
-        }
-
+      for (const [id, client] of clientMap) {
+        const totalPaid = paidMap.get(id) || 0;
         const remaining = client.totalBilled - totalPaid;
 
         if (remaining > 0) {
           result.push({
-            id: client.latestLoadingId,
+            id,
             name: client.name,
-            billNos: client.billNos,
-            loadingIds: client.loadingIds,
-            latestLoadingId: client.latestLoadingId,
             totalBilled: client.totalBilled,
+            totalPaid,
+            remaining,
             accountNumber: client.accountNumber,
             ifsc: client.ifsc,
             bankName: client.bankName,
@@ -179,29 +143,15 @@ export function ClientPayments() {
 
       return result.sort((a, b) => a.name.localeCompare(b.name));
     },
-    staleTime: 1000 * 30, // Optional: cache for 30 seconds
+    staleTime: 30_000,
   });
 
-  // Fetch all client payments
-  const { data: payments = [] } = useQuery<ClientPayment[]>({
-    queryKey: ["client-payments"],
-    queryFn: () =>
-      axios.get("/api/payments/client").then((res) => res.data?.data || []),
-  });
-
-  const selectedClient = clientData.find((c) => c.id === clientId);
-
-  const paidAmount = useMemo(() => {
-    if (!selectedClient) return 0;
-    return payments
-      .filter((p) => selectedClient.loadingIds.includes(p.clientId))
-      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
-  }, [payments, selectedClient]);
+  const selectedClient = clientData.find((c) => c.id === clientDetailsId);
 
   const totalBilled = selectedClient?.totalBilled || 0;
-  const remaining = Math.max(0, totalBilled - paidAmount);
+  const paidAmount = selectedClient?.totalPaid || 0;
+  const remaining = selectedClient?.remaining || 0;
 
-  // Auto-fill bank details when A/C selected
   useEffect(() => {
     if (paymentMode === "ac" && selectedClient) {
       setAccNo(selectedClient.accountNumber || "");
@@ -217,28 +167,10 @@ export function ClientPayments() {
   }, [paymentMode, selectedClient]);
 
   const validateForm = () => {
-    if (!clientId) return "Please select a client";
+    if (!clientDetailsId) return "Please select a client";
     if (!amount || Number(amount) <= 0) return "Enter a valid amount";
     if (Number(amount) > remaining)
       return `Amount exceeds remaining due ${currency(remaining)}`;
-
-    if (paymentMode !== "ac") {
-      if (!referenceNo.trim()) return "Reference No is required";
-      if (
-        (paymentMode === "upi" || paymentMode === "cheque") &&
-        !paymentRef.trim()
-      ) {
-        return paymentMode === "upi"
-          ? "UPI Transaction ID required"
-          : "Cheque Number required";
-      }
-    }
-
-    if (paymentMode === "ac") {
-      if (!accNo.trim()) return "Account number required for A/C transfer";
-      if (!ifsc.trim()) return "IFSC code required";
-      if (!bankName.trim()) return "Bank name required";
-    }
 
     return null;
   };
@@ -247,7 +179,6 @@ export function ClientPayments() {
     mutationFn: (payload: any) => axios.post("/api/payments/client", payload),
     onSuccess: () => {
       toast.success("Client payment recorded successfully!");
-      queryClient.invalidateQueries({ queryKey: ["client-payments"] });
       queryClient.invalidateQueries({ queryKey: ["clients-for-payment"] });
       resetForm();
     },
@@ -259,15 +190,10 @@ export function ClientPayments() {
   const handleSave = () => {
     const error = validateForm();
     if (error) return toast.error(error);
-    if (!selectedClient) return;
-
-    const latestBillNo =
-      selectedClient.billNos[selectedClient.billNos.length - 1] || "";
 
     const payload = {
-      clientId: selectedClient.id,
-      clientName: selectedClient.name,
-      billNo: latestBillNo,
+      clientDetailsId: selectedClient!.id,
+      clientName: selectedClient!.name,
       date,
       amount: Number(amount),
       paymentMode: paymentMode.toUpperCase(),
@@ -279,18 +205,22 @@ export function ClientPayments() {
       bankAddress: paymentMode === "ac" ? bankAddress.trim() || null : null,
       paymentdetails: paymentdetails || null,
       isInstallment: isPartial,
+      installments: isPartial ? Number(installments) || null : null,
+      installmentNumber: isPartial ? Number(installmentNumber) || null : null,
     };
 
     saveMutation.mutate(payload);
   };
 
   const resetForm = () => {
-    setClientId("");
+    setClientDetailsId("");
     setAmount("");
     setPaymentdetails("");
     setReferenceNo("");
     setPaymentRef("");
     setIsPartial(false);
+    setInstallments("");
+    setInstallmentNumber("");
     setAccNo("");
     setIfsc("");
     setBankName("");
@@ -316,7 +246,6 @@ export function ClientPayments() {
             <Save className="w-4 h-4 mr-2" />
             {saveMutation.isPending ? "Saving..." : "Save Payment"}
           </Button>
-
           <Button
             variant="outline"
             onClick={handleReset}
@@ -330,37 +259,42 @@ export function ClientPayments() {
     >
       <div className="py-4 sm:py-6">
         <div className="max-w-6xl mx-auto space-y-6 sm:space-y-8">
-          {/* Client Selection + Summary */}
+          {/* Client Selection */}
           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-4 sm:p-6">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 sm:gap-6 items-end">
               <div className="lg:col-span-6 space-y-2">
                 <Label className="text-slate-700">Client Name</Label>
                 <Select
-                  value={clientId}
-                  onValueChange={setClientId}
+                  value={clientDetailsId}
+                  onValueChange={setClientDetailsId}
                   disabled={loadingClients}
                 >
                   <SelectTrigger className="h-11 border-slate-200 bg-white shadow-sm">
                     <SelectValue
                       placeholder={
-                        loadingClients ? "Loading..." : "Select client"
+                        loadingClients
+                          ? "Loading clients..."
+                          : "Select a client with pending dues"
                       }
                     />
                   </SelectTrigger>
                   <SelectContent>
                     {clientData.length === 0 ? (
                       <div className="px-6 py-4 text-center text-slate-500">
-                        No clients with pending dues
+                        {loadingClients
+                          ? "Loading..."
+                          : "No clients with pending payments"}
                       </div>
                     ) : (
                       clientData.map((c) => (
                         <SelectItem key={c.id} value={c.id} className="py-3">
-                          <div className="flex justify-between items-center gap-3">
+                          <div className="flex flex-col">
                             <span className="font-medium text-slate-800">
                               {c.name}
                             </span>
-                            <span className="text-sm font-semibold text-[#139BC3]">
-                              {currency(c.totalBilled)}
+                            <span className="text-sm text-slate-500">
+                              Billed: {currency(c.totalBilled)} | Remaining:{" "}
+                              {currency(c.remaining)}
                             </span>
                           </div>
                         </SelectItem>
@@ -382,7 +316,7 @@ export function ClientPayments() {
               </div>
 
               <div className="lg:col-span-3">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-center">
+                <div className="rounded-xl border border-slate-200 bg-emerald-50 p-4 text-center">
                   <p className="text-xs font-medium text-slate-600">
                     Remaining Due
                   </p>
@@ -413,33 +347,23 @@ export function ClientPayments() {
                   type="text"
                   value={amount}
                   onChange={(e) => {
-                    const value = e.target.value;
-
-                    // Allow only valid number format (including empty or decimal)
-                    if (!/^\d*\.?\d*$/.test(value)) return;
-
-                    // If there's a selected client and remaining due, prevent exceeding it
-                    if (selectedClient && remaining > 0) {
-                      const numericValue = value === "" ? 0 : parseFloat(value);
-                      if (!isNaN(numericValue) && numericValue > remaining) {
-                        toast.error(
-                          `Amount cannot exceed remaining due of ${currency(
-                            remaining
-                          )}`
-                        );
-                        return;
-                      }
+                    const val = e.target.value;
+                    if (!/^\d*\.?\d*$/.test(val)) return;
+                    const num = val === "" ? 0 : parseFloat(val);
+                    if (num > remaining) {
+                      toast.error(
+                        `Cannot exceed remaining: ${currency(remaining)}`
+                      );
+                      return;
                     }
-
-                    setAmount(value);
+                    setAmount(val);
                   }}
                   placeholder="100000"
                   className="h-11 font-mono text-lg"
                 />
-                {/* Optional: Show helpful text below input */}
-                {selectedClient && remaining > 0 && (
+                {remaining > 0 && (
                   <p className="text-xs text-slate-500 mt-1">
-                    Maximum allowed: {currency(remaining)}
+                    Max allowed: {currency(remaining)}
                   </p>
                 )}
               </div>
@@ -447,26 +371,23 @@ export function ClientPayments() {
               <div className="space-y-2">
                 <Label>Payment Mode</Label>
                 <div className="flex flex-wrap gap-2">
-                  {(["cash", "ac", "upi", "cheque"] as const).map((m) => {
-                    const selected = paymentMode === m;
-                    return (
-                      <Badge
-                        key={m}
-                        onClick={() => setPaymentMode(m)}
-                        className={`cursor-pointer px-4 py-2 rounded-full border transition ${
-                          selected
-                            ? "bg-[#139BC3] text-white border-[#139BC3]"
-                            : "bg-white text-slate-700 border-slate-200"
-                        }`}
-                      >
-                        {m === "ac"
-                          ? "A/C Transfer"
-                          : m === "upi"
-                          ? "UPI/PhonePe"
-                          : m.charAt(0).toUpperCase() + m.slice(1)}
-                      </Badge>
-                    );
-                  })}
+                  {(["cash", "ac", "upi", "cheque"] as const).map((m) => (
+                    <Badge
+                      key={m}
+                      onClick={() => setPaymentMode(m)}
+                      className={`cursor-pointer px-4 py-2 rounded-full border transition ${
+                        paymentMode === m
+                          ? "bg-[#139BC3] text-white border-[#139BC3]"
+                          : "bg-white text-slate-700 border-slate-200"
+                      }`}
+                    >
+                      {m === "ac"
+                        ? "A/C Transfer"
+                        : m === "upi"
+                        ? "UPI/PhonePe"
+                        : m.charAt(0).toUpperCase() + m.slice(1)}
+                    </Badge>
+                  ))}
                 </div>
               </div>
 
@@ -481,14 +402,12 @@ export function ClientPayments() {
               </div>
             </div>
 
-            {/* Non-AC Payment References */}
+            {/* References */}
             {paymentMode !== "ac" && (
               <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                   <div className="space-y-2">
-                    <Label>
-                      Reference No <span className="text-rose-600">*</span>
-                    </Label>
+                    <Label>Reference No</Label>
                     <Input
                       placeholder="e.g. REC2025-001"
                       value={referenceNo}
@@ -496,7 +415,6 @@ export function ClientPayments() {
                       className="h-11 font-mono"
                     />
                   </div>
-
                   <div className="space-y-2">
                     <Label>
                       {paymentMode === "upi"
@@ -504,9 +422,6 @@ export function ClientPayments() {
                         : paymentMode === "cheque"
                         ? "Cheque Number"
                         : "Cash Receipt No"}
-                      {paymentMode !== "cash" && (
-                        <span className="text-rose-600"> *</span>
-                      )}
                     </Label>
                     <Input
                       placeholder={
@@ -521,7 +436,7 @@ export function ClientPayments() {
               </div>
             )}
 
-            {/* Bank Details for A/C Transfer */}
+            {/* Bank Details */}
             {paymentMode === "ac" && (
               <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 sm:p-6">
                 <h3 className="text-lg font-semibold mb-4">
@@ -564,43 +479,6 @@ export function ClientPayments() {
               </div>
             )}
 
-            {/* Full / Partial Toggle */}
-            <div className="mt-8">
-              <Label className="text-base font-semibold">Payment Type</Label>
-              <div className="flex flex-col lg:flex-row gap-4 mt-3">
-                <div className="grid grid-cols-2 sm:flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsPartial(false)}
-                    className={`px-5 py-2 rounded-full border font-semibold transition ${
-                      !isPartial
-                        ? "bg-[#139BC3] text-white border-[#139BC3]"
-                        : "bg-white text-slate-700 border-slate-200"
-                    }`}
-                  >
-                    Full Payment
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsPartial(true)}
-                    className={`px-5 py-2 rounded-full border font-semibold transition ${
-                      isPartial
-                        ? "bg-[#139BC3] text-white border-[#139BC3]"
-                        : "bg-white text-slate-700 border-slate-200"
-                    }`}
-                  >
-                    Partial Payment
-                  </button>
-                </div>
-                {isPartial && (
-                  <div className="text-sm text-slate-700 self-center">
-                    Receiving <strong>{currency(Number(amount) || 0)}</strong>{" "}
-                    of <strong>{currency(totalBilled)}</strong>
-                  </div>
-                )}
-              </div>
-            </div>
-
             {/* Summary Cards */}
             <div className="mt-8 rounded-2xl border border-slate-200 bg-slate-50 p-4 sm:p-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -611,7 +489,7 @@ export function ClientPayments() {
                   </p>
                 </div>
                 <div className="rounded-xl bg-white border border-slate-200 p-4 text-center">
-                  <p className="text-xs text-slate-600">Paid</p>
+                  <p className="text-xs text-slate-600">Paid So Far</p>
                   <p className="mt-1 font-bold text-slate-900 text-xl">
                     {currency(paidAmount)}
                   </p>

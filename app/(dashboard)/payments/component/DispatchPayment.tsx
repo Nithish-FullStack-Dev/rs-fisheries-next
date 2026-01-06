@@ -19,9 +19,37 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-type SourceType = "CLIENT" | "FORMER" | "AGENT";
-
 const PRIMARY = "#139BC3";
+
+type LoadingItem = {
+  id: string;
+  totalPrice?: number | null;
+};
+
+type ClientLoading = {
+  id: string;
+  clientName?: string | null;
+  billNo?: string | null;
+  totalPrice?: number | null;
+  items?: LoadingItem[];
+  vehicleId?: string | null;
+  vehicleNo?: string | null;
+};
+
+type DispatchCharge = {
+  id: string;
+  type: "ICE_COOLING" | "TRANSPORT" | "OTHER";
+  label?: string | null;
+  amount: number;
+  notes?: string | null;
+  createdAt: string;
+  sourceRecordId: string;
+};
+
+type PackingAmount = {
+  id: string;
+  totalAmount: number;
+};
 
 const currency = (v: number) =>
   new Intl.NumberFormat("en-IN", {
@@ -30,23 +58,24 @@ const currency = (v: number) =>
     maximumFractionDigits: 0,
   }).format(Number(v || 0));
 
-function safeNum(v: any) {
+function safeNum(v: unknown) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
 
+const isNumericInput = (value: string) => /^\d*\.?\d*$/.test(value);
+
 export const DispatchPayment = () => {
   const queryClient = useQueryClient();
 
-  const [sourceType, setSourceType] = useState<SourceType>("CLIENT");
-  const [sourceRecordId, setSourceRecordId] = useState("");
+  const [sourceRecordId, setSourceRecordId] = useState<string>("");
 
   // Inputs
-  const [iceAmount, setIceAmount] = useState("");
-  const [transportAmount, setTransportAmount] = useState("");
-  const [otherLabel, setOtherLabel] = useState("");
-  const [otherAmount, setOtherAmount] = useState("");
-  const [notes, setNotes] = useState("");
+  const [iceAmount, setIceAmount] = useState<string>("");
+  const [transportAmount, setTransportAmount] = useState<string>("");
+  const [otherLabel, setOtherLabel] = useState<string>("");
+  const [otherAmount, setOtherAmount] = useState<string>("");
+  const [notes, setNotes] = useState<string>("");
 
   const resetForm = () => {
     setIceAmount("");
@@ -56,82 +85,62 @@ export const DispatchPayment = () => {
     setNotes("");
   };
 
-  const getSourceLabel = () => {
-    return sourceType === "CLIENT"
-      ? "Client"
-      : sourceType === "FORMER"
-      ? "Farmer"
-      : "Agent";
-  };
-
-  const loadingEndpoint =
-    sourceType === "CLIENT"
-      ? "/api/client-loading"
-      : sourceType === "FORMER"
-      ? "/api/former-loading"
-      : "/api/agent-loading";
-
+  /**
+   * Loadings (Client only)
+   * - also filters out loadings that already have at least 1 dispatch charge
+   */
   const { data: loadings = [], isLoading: loadingLoadings } = useQuery({
-    queryKey: ["loadings", sourceType],
-    queryFn: async () => {
-      const allLoadings = await axios
-        .get(loadingEndpoint)
-        .then((res) => res.data?.data || []);
-
-      const dispatchRes = await axios.get(
-        `/api/payments/dispatch?sourceType=${sourceType}`
-      );
-      const dispatchData = dispatchRes.data?.data || [];
-      const usedIds = new Set(dispatchData.map((d: any) => d.sourceRecordId));
-
-      return allLoadings.filter((l: any) => !usedIds.has(l.id));
-    },
+    queryKey: ["dispatch-pending-loadings"],
+    queryFn: async () =>
+      axios
+        .get("/api/client-loading?stage=DISPATCH_PENDING")
+        .then((res) => res.data?.data || []),
   });
 
-  const selectedLoading = useMemo(
-    () => loadings.find((l: any) => l.id === sourceRecordId),
-    [loadings, sourceRecordId]
-  );
+  const selectedLoading = useMemo(() => {
+    return loadings.find((l: ClientLoading) => l.id === sourceRecordId) || null;
+  }, [loadings, sourceRecordId]);
 
-  const { data: dispatchCharges = [] } = useQuery({
-    queryKey: ["dispatch-charges", sourceType, sourceRecordId],
+  const hasVehicle = useMemo(() => {
+    if (!selectedLoading) return false;
+    return Boolean(
+      (selectedLoading.vehicleId && selectedLoading.vehicleId.trim()) ||
+        (selectedLoading.vehicleNo && selectedLoading.vehicleNo.trim())
+    );
+  }, [selectedLoading]);
+
+  const { data: dispatchCharges = [] } = useQuery<DispatchCharge[]>({
+    queryKey: ["dispatch-charges", sourceRecordId],
     queryFn: () =>
       axios
-        .get(
-          `/api/payments/dispatch?sourceType=${sourceType}&sourceRecordId=${sourceRecordId}`
-        )
-        .then((res) => res.data?.data || []),
+        .get(`/api/payments/dispatch?sourceRecordId=${sourceRecordId}`)
+        .then((res) => (res.data?.data || []) as DispatchCharge[]),
     enabled: !!sourceRecordId,
   });
 
-  const { data: packingAmounts = [] } = useQuery({
-    queryKey: ["packing-amounts", sourceType, sourceRecordId],
+  const { data: packingAmounts = [] } = useQuery<PackingAmount[]>({
+    queryKey: ["packing-amounts", sourceRecordId],
     queryFn: () =>
       axios
-        .get(
-          `/api/payments/packing-amount?sourceType=${sourceType}&sourceRecordId=${sourceRecordId}`
-        )
-        .then((res) => res.data?.data || []),
+        .get(`/api/payments/packing-amount?sourceRecordId=${sourceRecordId}`)
+        .then((res) => (res.data?.data || []) as PackingAmount[]),
     enabled: !!sourceRecordId,
   });
 
   const totalDispatchCharges = useMemo(() => {
-    return dispatchCharges.reduce(
-      (sum: number, c: any) => sum + safeNum(c.amount),
-      0
-    );
+    return dispatchCharges.reduce((sum, c) => sum + safeNum(c.amount), 0);
   }, [dispatchCharges]);
 
   const totalPackingAmount = useMemo(() => {
-    return packingAmounts.reduce(
-      (sum: number, p: any) => sum + safeNum(p.totalAmount),
-      0
-    );
+    return packingAmounts.reduce((sum, p) => sum + safeNum(p.totalAmount), 0);
   }, [packingAmounts]);
 
   const itemsTotalPrice = useMemo(() => {
     const items = selectedLoading?.items || [];
-    return items.reduce((s: number, it: any) => s + safeNum(it.totalPrice), 0);
+    return items.reduce(
+      (s: number, it: LoadingItem) => s + safeNum(it.totalPrice),
+      0
+    );
   }, [selectedLoading]);
 
   const baseAmount = useMemo(() => {
@@ -141,20 +150,17 @@ export const DispatchPayment = () => {
 
   const netAmount = baseAmount + totalDispatchCharges + totalPackingAmount;
 
-  const netLabel =
-    sourceType === "CLIENT"
-      ? "Net Receivable from Client"
-      : "Net Payable to Vendor";
+  const canSubmit = totalPackingAmount > 0;
 
   const mutation = useMutation({
-    mutationFn: (payload: any) =>
-      axios.post("/api/payments/dispatch", {
-        sourceType,
-        ...payload,
-      }),
+    mutationFn: (payload: {
+      sourceRecordId: string;
+      type: "ICE_COOLING" | "TRANSPORT" | "OTHER";
+      amount: number;
+      label?: string;
+      notes?: string | null;
+    }) => axios.post("/api/payments/dispatch", payload),
   });
-
-  const canSubmit = totalPackingAmount > 0;
 
   const handleSaveAll = async () => {
     if (!sourceRecordId) return toast.error("Select a loading");
@@ -166,19 +172,36 @@ export const DispatchPayment = () => {
       return;
     }
 
-    const charges: any[] = [];
+    const charges: Array<{
+      sourceRecordId: string;
+      type: "ICE_COOLING" | "TRANSPORT" | "OTHER";
+      amount: number;
+      label?: string;
+      notes?: string | null;
+    }> = [];
 
     if (iceAmount) {
       charges.push({
+        sourceRecordId,
         type: "ICE_COOLING",
         amount: safeNum(iceAmount),
+        notes: notes.trim() || null,
       });
     }
 
+    // ✅ Only allow TRANSPORT if vehicle exists
     if (transportAmount) {
+      if (!hasVehicle) {
+        toast.error("Transport charge not allowed", {
+          description: "Vehicle not assigned for this loading.",
+        });
+        return;
+      }
       charges.push({
+        sourceRecordId,
         type: "TRANSPORT",
         amount: safeNum(transportAmount),
+        notes: notes.trim() || null,
       });
     }
 
@@ -186,36 +209,30 @@ export const DispatchPayment = () => {
       if (!otherLabel.trim()) return toast.error("Other label required");
       if (!otherAmount) return toast.error("Other amount required");
       charges.push({
+        sourceRecordId,
         type: "OTHER",
         label: otherLabel.trim(),
         amount: safeNum(otherAmount),
+        notes: notes.trim() || null,
       });
     }
 
     if (charges.length === 0) return toast.error("Enter at least one charge");
 
     try {
-      await Promise.all(
-        charges.map((c) =>
-          mutation.mutateAsync({
-            sourceRecordId,
-            ...c,
-            notes: notes.trim() || null,
-          })
-        )
-      );
+      await Promise.all(charges.map((c) => mutation.mutateAsync(c)));
 
       toast.success(`${charges.length} charge(s) added!`);
 
       await Promise.all([
         queryClient.invalidateQueries({
-          queryKey: ["dispatch-charges", sourceType, sourceRecordId],
+          queryKey: ["dispatch-charges", sourceRecordId],
         }),
         queryClient.invalidateQueries({
-          queryKey: ["packing-amounts", sourceType, sourceRecordId],
+          queryKey: ["packing-amounts", sourceRecordId],
         }),
         queryClient.invalidateQueries({
-          queryKey: ["loadings", sourceType],
+          queryKey: ["dispatch-pending-loadings"],
         }),
       ]);
 
@@ -226,12 +243,12 @@ export const DispatchPayment = () => {
     }
   };
 
-  const displayLoadingAmount = (l: any) => {
+  const displayLoadingAmount = (l: ClientLoading) => {
     const apiTotalPrice = safeNum(l.totalPrice);
     if (apiTotalPrice > 0) return apiTotalPrice;
 
     const items = l.items || [];
-    return items.reduce((s: number, it: any) => s + safeNum(it.totalPrice), 0);
+    return items.reduce((s, it) => s + safeNum(it.totalPrice), 0);
   };
 
   return (
@@ -252,35 +269,10 @@ export const DispatchPayment = () => {
       }
     >
       <div className="space-y-8 py-6">
-        {/* Source Tabs */}
-        <div className="flex flex-wrap gap-3 justify-center">
-          {(["CLIENT", "FORMER", "AGENT"] as const).map((st) => (
-            <button
-              key={st}
-              onClick={() => {
-                setSourceType(st);
-                setSourceRecordId("");
-                resetForm();
-              }}
-              className={`px-6 py-3 rounded-xl font-semibold text-sm transition-all ${
-                sourceType === st
-                  ? "bg-[#139BC3] text-white shadow-lg"
-                  : "bg-white text-slate-700 border border-slate-200 hover:bg-slate-50"
-              }`}
-            >
-              {st === "CLIENT"
-                ? "Client"
-                : st === "FORMER"
-                ? "Farmer"
-                : "Agent"}
-            </button>
-          ))}
-        </div>
-
         {/* Loading Selector */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
           <Label className="text-lg font-medium text-slate-800">
-            Select {getSourceLabel()} Loading
+            Select Client Loading
           </Label>
 
           <Select
@@ -297,12 +289,10 @@ export const DispatchPayment = () => {
             </SelectTrigger>
 
             <SelectContent>
-              {loadings.map((l: any) => (
+              {loadings.map((l: ClientLoading) => (
                 <SelectItem key={l.id} value={l.id}>
                   <div className="flex items-center justify-between w-full">
-                    <span className="font-medium">
-                      {l.clientName || l.FarmerName || l.agentName}
-                    </span>
+                    <span className="font-medium">{l.clientName || "-"}</span>
                     <div className="flex items-center gap-3 ml-4">
                       <Badge variant="secondary">#{l.billNo}</Badge>
                       <span className="font-bold" style={{ color: PRIMARY }}>
@@ -334,14 +324,16 @@ export const DispatchPayment = () => {
             </div>
 
             <div className="bg-indigo-50 border border-indigo-200 rounded-2xl p-5 text-center">
-              <p className="text-sm text-indigo-700">Packing Amount</p>
+              <p className="text-sm text-indigo-700">Ice</p>
               <p className="text-2xl font-bold text-indigo-600 mt-2">
                 {currency(totalPackingAmount)}
               </p>
             </div>
 
             <div className="bg-emerald-50 border border-emerald-300 rounded-2xl p-5 text-center">
-              <p className="text-sm font-medium text-emerald-800">{netLabel}</p>
+              <p className="text-sm font-medium text-emerald-800">
+                Net Receivable from Client
+              </p>
               <p className="text-3xl font-bold text-emerald-600 mt-2">
                 {currency(netAmount)}
               </p>
@@ -371,42 +363,54 @@ export const DispatchPayment = () => {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div
+              className={`grid grid-cols-1 md:grid-cols-3 gap-8 ${
+                hasVehicle ? "lg:grid-cols-3" : "lg:grid-cols-2"
+              }`}
+            >
               {/* Ice */}
               <div className="space-y-3">
                 <div className="flex items-center gap-3">
                   <Snowflake className="w-6 h-6 text-cyan-600" />
-                  <Label className="text-lg font-medium">Ice / Cooling</Label>
+                  <Label className="text-lg font-medium">Ice Packing</Label>
                 </div>
                 <Input
                   type="text"
                   placeholder="Enter amount"
                   value={iceAmount}
                   onChange={(e) =>
-                    /^\d*\.?\d*$/.test(e.target.value) &&
+                    isNumericInput(e.target.value) &&
                     setIceAmount(e.target.value)
                   }
                   className="h-12 text-lg font-mono"
                 />
               </div>
 
-              {/* Transport */}
-              <div className="space-y-3">
-                <div className="flex items-center gap-3">
-                  <Truck className="w-6 h-6 text-orange-600" />
-                  <Label className="text-lg font-medium">Transport</Label>
+              {/* ✅ Transport only if vehicle exists */}
+              {hasVehicle && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3">
+                    <Truck className="w-6 h-6 text-orange-600" />
+                    <Label className="text-lg font-medium">Transport</Label>
+                  </div>
+                  <Input
+                    type="text"
+                    placeholder="Enter amount"
+                    value={transportAmount}
+                    onChange={(e) =>
+                      isNumericInput(e.target.value) &&
+                      setTransportAmount(e.target.value)
+                    }
+                    className="h-12 text-lg font-mono"
+                  />
+                  <p className="text-xs text-slate-500">
+                    Vehicle:{" "}
+                    <span className="font-medium">
+                      {selectedLoading?.vehicleNo || selectedLoading?.vehicleId}
+                    </span>
+                  </p>
                 </div>
-                <Input
-                  type="text"
-                  placeholder="Enter amount"
-                  value={transportAmount}
-                  onChange={(e) =>
-                    /^\d*\.?\d*$/.test(e.target.value) &&
-                    setTransportAmount(e.target.value)
-                  }
-                  className="h-12 text-lg font-mono"
-                />
-              </div>
+              )}
 
               {/* Other */}
               <div className="space-y-3">
@@ -425,7 +429,7 @@ export const DispatchPayment = () => {
                   placeholder="Enter amount"
                   value={otherAmount}
                   onChange={(e) =>
-                    /^\d*\.?\d*$/.test(e.target.value) &&
+                    isNumericInput(e.target.value) &&
                     setOtherAmount(e.target.value)
                   }
                   className="h-12 text-lg font-mono mt-3"

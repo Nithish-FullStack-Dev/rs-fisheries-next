@@ -941,10 +941,175 @@ export default function VendorBillsPage() {
                 </table>
               </div>
 
+              {/* ✅ Mobile cards */}
+              <div className="mt-6 grid grid-cols-1 gap-3 md:hidden">
+                {paginatedItems.map((it) => {
+                  const edit = editing[it.id];
+                  const isEditing = !!edit;
+                  const isSaving = !!savingIds[it.id];
+
+                  return (
+                    <div
+                      key={it.id}
+                      className="rounded-2xl border bg-white p-4 shadow-sm"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold">
+                            {it.billNo}
+                          </div>
+                          <div className="text-xs text-gray-600">{it.name}</div>
+                          {/* <div className="text-[11px] text-gray-500 mt-1">
+                            {it.hasVehicle
+                              ? "Vehicle: Yes (No 5% cut)"
+                              : "Vehicle: No (5% cut)"}
+                          </div> */}
+                        </div>
+
+                        {!isEditing ? (
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => startEdit(it)}
+                            >
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-red-600 hover:bg-red-50"
+                              onClick={() => openDeleteItemDialog(it)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        ) : (
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => saveRow(it)}
+                              disabled={isSaving}
+                              className="bg-green-600 hover:bg-green-700 text-white"
+                            >
+                              {isSaving ? "..." : <Check className="w-4 h-4" />}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => cancelEdit(it.id)}
+                            >
+                              <X className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <div className="text-xs text-gray-500">Variety</div>
+                          <div className="font-medium">
+                            {it.varietyCode || "-"}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-xs text-gray-500">
+                            Total Price
+                          </div>
+                          <div className="font-bold text-green-600">
+                            {isEditing
+                              ? Number(edit.totalPrice ?? 0).toFixed(2)
+                              : Number(it.totalPrice ?? 0).toFixed(2)}
+                          </div>
+                        </div>
+
+                        <div>
+                          <div className="text-xs text-gray-500">Trays</div>
+                          {isEditing ? (
+                            <Input
+                              value={edit.noTrays ?? 0}
+                              onChange={(e) =>
+                                setEditing((prev) => ({
+                                  ...prev,
+                                  [it.id]: {
+                                    ...prev[it.id],
+                                    noTrays: Number(e.target.value),
+                                  },
+                                }))
+                              }
+                              className="h-9"
+                              type="number"
+                              min={0}
+                            />
+                          ) : (
+                            <div className="font-medium">{it.noTrays ?? 0}</div>
+                          )}
+                        </div>
+
+                        <div>
+                          <div className="text-xs text-gray-500">
+                            Loose (Kgs)
+                          </div>
+                          {isEditing ? (
+                            <Input
+                              value={edit.loose ?? 0}
+                              onChange={(e) =>
+                                setEditing((prev) => ({
+                                  ...prev,
+                                  [it.id]: {
+                                    ...prev[it.id],
+                                    loose: Number(e.target.value),
+                                  },
+                                }))
+                              }
+                              className="h-9"
+                              type="number"
+                              min={0}
+                              step="0.1"
+                            />
+                          ) : (
+                            <div className="font-medium">
+                              {Number(it.loose ?? 0).toFixed(1)}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="col-span-2">
+                          <div className="text-xs text-gray-500">Price/Kg</div>
+                          {isEditing ? (
+                            <Input
+                              value={edit.pricePerKg ?? 0}
+                              onChange={(e) =>
+                                setEditing((prev) => ({
+                                  ...prev,
+                                  [it.id]: {
+                                    ...prev[it.id],
+                                    pricePerKg: Number(e.target.value),
+                                  },
+                                }))
+                              }
+                              className="h-9"
+                              type="number"
+                              min={0}
+                              step="0.01"
+                            />
+                          ) : (
+                            <div className="font-medium">
+                              {Number(it.pricePerKg ?? 0).toFixed(2)}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
               {/* Pagination */}
-              {filteredItems.length > 0 && totalPages >= 1 && (
-                <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-                  <div className="text-sm text-gray-500">
+              {totalPages > 1 && (
+                <div className="mt-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                  <div className="text-sm text-gray-700">
                     Showing{" "}
                     <span className="font-medium text-gray-900">
                       {(page - 1) * PAGE_SIZE + 1}
