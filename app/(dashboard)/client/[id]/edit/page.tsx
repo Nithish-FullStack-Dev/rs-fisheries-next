@@ -99,11 +99,7 @@ export default function EditClientPage() {
 
   if (isFetching || !formReady)
     return <div className="p-10 text-center">Loading client data...</div>;
-  const RequiredStar = () => (
-    <span className="text-red-500 ml-1">
-      <RequiredStar />
-    </span>
-  );
+  const RequiredStar = () => <span className="text-red-500 ml-1">*</span>;
 
   return (
     <div className="mx-auto py-10">
