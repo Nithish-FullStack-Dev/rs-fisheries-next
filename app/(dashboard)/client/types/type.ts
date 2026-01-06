@@ -37,9 +37,15 @@ export const clientSchema = z.object({
   state: z.string().optional(),
 
   billingAddress: z.string().min(1, "Billing address is required"),
-  openingBalance: z.coerce.number({ error: "Must be a number" }).default(0),
+  openingBalance: z.coerce
+    .number({ error: "Must be a number" })
+    .min(0, { message: "Opening balance cannot be negative" })
+    .default(0),
   balanceType: z.nativeEnum(BalanceType),
-  creditLimit: z.coerce.number().optional(),
+  creditLimit: z.coerce
+    .number()
+    .min(0, { message: "Credit limit cannot be negative" })
+    .optional(),
   referenceNo: z.string().optional(),
   accountNumber: z
     .string()
