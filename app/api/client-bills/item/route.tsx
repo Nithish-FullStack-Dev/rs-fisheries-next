@@ -1,11 +1,13 @@
 // app/api/client-bills/item/route.ts
+import { logAudit } from "@/lib/auditLogger";
 import { prisma } from "@/lib/prisma";
+import { withAuth } from "@/lib/withAuth";
 import { NextResponse } from "next/server";
 
 const TRAY_KG = 35;
 const DEDUCTION_PERCENT = 5;
 
-export async function POST(req: Request) {
+export const POST = withAuth(async (req: Request) => {
   try {
     const body = (await req.json()) as {
       loadingId?: string;
@@ -141,9 +143,31 @@ export async function POST(req: Request) {
         });
       }
 
-      await tx.clientLoading.update({
+      const client = await tx.clientLoading.update({
         where: { id: loadingId },
         data: { totalTrays, totalKgs: totalKgsAll, grandTotal, totalPrice },
+      });
+
+      await logAudit({
+        user: (req as any).user,
+        action: "CREATE",
+        module: "Client Bills",
+        recordId: created.id,
+        request: req,
+        oldValues: null,
+        newValues: {
+          billNo: client.billNo,
+          clientName: client.clientName,
+          varietyCode,
+          noTrays,
+          loose,
+          trayKgs,
+          totalKgs,
+          vehicleNumber:
+            updatedLoading.vehicle?.vehicleNumber ??
+            updatedLoading.vehicleNo ??
+            null,
+        },
       });
 
       return { created };
@@ -160,4 +184,4 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-}
+});
