@@ -33,6 +33,7 @@ import {
   ChevronDown,
   ArrowUpDown,
   Check,
+  RefreshCw,
 } from "lucide-react";
 
 // --- Shadcn UI Imports ---
@@ -189,6 +190,7 @@ const AuditLogsPage = () => {
     isLoading,
     isError,
     error,
+    refetch,
   } = useQuery<AuditLog[]>({
     queryKey: ["audit-logs"],
     queryFn: async () => {
@@ -427,14 +429,28 @@ const AuditLogsPage = () => {
 
         {/* Toolbar */}
         <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
-          <div className="relative flex-1 w-full max-w-sm">
-            <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search all columns..."
-              value={globalFilter}
-              onChange={(e) => setGlobalFilter(e.target.value)}
-              className="pl-9 w-full bg-background"
-            />
+          <div className="flex gap-3">
+            <div className="relative flex-1 w-full max-w-sm">
+              <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search all columns..."
+                value={globalFilter}
+                onChange={(e) => setGlobalFilter(e.target.value)}
+                className="pl-9 w-full bg-background"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2 justify-end">
+              {/* Refresh */}
+              <Button
+                variant="outline"
+                onClick={() => refetch()}
+                disabled={isLoading}
+                className="gap-2"
+              >
+                <RefreshCw className={isLoading ? "animate-spin" : ""} />
+                <span className="hidden sm:inline">Refresh</span>
+              </Button>
+            </div>
           </div>
 
           <div className="flex items-center gap-2 w-full sm:w-auto">
