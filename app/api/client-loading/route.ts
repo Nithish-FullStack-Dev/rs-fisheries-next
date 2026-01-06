@@ -1,6 +1,6 @@
 // app/api/client-loading/route.ts
 import { prisma } from "@/lib/prisma";
-import { NextResponse } from "next/server";
+import { NextResponse, NextRequest } from "next/server";
 
 const TRAY_KG = 35;
 const DEDUCTION_PERCENT = 5;
@@ -185,22 +185,22 @@ export async function POST(req: Request) {
     // vehicle attach only if useVehicle
     if (useVehicle) {
       if (normalizedVehicleId) {
-        createData.vehicle = { connect: { id: normalizedVehicleId } };
+        createData.vehicleId = normalizedVehicleId; // ✅ FIX
         createData.vehicleNo = normalizedVehicleNo || "";
       } else {
         createData.vehicleNo = normalizedVehicleNo || "";
       }
     } else {
-      createData.vehicleNo = ""; // ✅ never null
+      createData.vehicleNo = ""; // never null
     }
-
     const saved = await prisma.clientLoading.create({
       data: createData,
       include: {
         items: true,
-        vehicle: { select: { vehicleNumber: true } },
+        vehicle: { select: { vehicleNumber: true } }, // ✅ works for reading
       },
     });
+
 
     return NextResponse.json({ success: true, data: saved }, { status: 201 });
   } catch (e) {
@@ -209,9 +209,178 @@ export async function POST(req: Request) {
   }
 }
 
-export async function GET() {
+// export async function GET() {
+//   try {
+//     const loadings = await prisma.clientLoading.findMany({
+//       where: {
+//         packingAmounts: {
+//           none: {}, // ✅ EXCLUDE already packed client loadings
+//         },
+//       },
+//       include: {
+//         items: {
+//           select: {
+//             id: true,
+//             varietyCode: true,
+//             noTrays: true,
+//             trayKgs: true,
+//             loose: true,
+//             totalKgs: true,
+//             pricePerKg: true,
+//             totalPrice: true,
+//           },
+//         },
+//         vehicle: { select: { vehicleNumber: true } },
+//         dispatchCharges: {
+//           select: { type: true, label: true, amount: true },
+//           orderBy: { createdAt: "desc" },
+//         },
+//       },
+//       orderBy: { date: "desc" },
+//     });
+
+//     const formatted = loadings.map((l) => {
+//       const breakdown = {
+//         iceCooling: 0,
+//         transportCharges: 0,
+//         otherCharges: [] as { label: string; amount: number }[],
+//         dispatchChargesTotal: 0,
+//       };
+
+//       l.dispatchCharges.forEach((c) => {
+//         const amt = Number(c.amount);
+//         breakdown.dispatchChargesTotal += amt;
+
+//         if (c.type === "ICE_COOLING") breakdown.iceCooling += amt;
+//         else if (c.type === "TRANSPORT") breakdown.transportCharges += amt;
+//         else if (c.type === "OTHER" && c.label)
+//           breakdown.otherCharges.push({ label: c.label, amount: amt });
+//       });
+
+//       return {
+//         ...l,
+//         vehicleNo: l.vehicle?.vehicleNumber ?? l.vehicleNo ?? "",
+//         vehicle: undefined,
+//         dispatchBreakdown: breakdown,
+//       };
+//     });
+
+//     return NextResponse.json({ success: true, data: formatted });
+//   } catch (error) {
+//     console.error("ClientLoading GET error:", error);
+//     return NextResponse.json(
+//       { success: false, message: "Failed to fetch data" },
+//       { status: 500 }
+//     );
+//   }
+// }
+// export async function GET(req: NextRequest) {
+//   try {
+//     const { searchParams } = new URL(req.url);
+//     const onlyUnpacked = searchParams.get("onlyUnpacked") === "true";
+
+//     const whereClause: any = {};
+
+//     // ✅ keep your old logic only when explicitly requested
+//     if (onlyUnpacked) {
+//       whereClause.packingAmounts = { none: {} };
+//     }
+
+//     const loadings = await prisma.clientLoading.findMany({
+//       where: whereClause,
+//       include: {
+//         items: {
+//           select: {
+//             id: true,
+//             varietyCode: true,
+//             noTrays: true,
+//             trayKgs: true,
+//             loose: true,
+//             totalKgs: true,
+//             pricePerKg: true,
+//             totalPrice: true,
+//           },
+//         },
+//         vehicle: { select: { vehicleNumber: true } },
+//         dispatchCharges: {
+//           select: { type: true, label: true, amount: true },
+//           orderBy: { createdAt: "desc" },
+//         },
+//       },
+//       orderBy: { date: "desc" },
+//     });
+
+//     const formatted = loadings.map((l) => {
+//       const breakdown = {
+//         iceCooling: 0,
+//         transportCharges: 0,
+//         otherCharges: [] as { label: string; amount: number }[],
+//         dispatchChargesTotal: 0,
+//       };
+
+//       l.dispatchCharges.forEach((c) => {
+//         const amt = Number(c.amount);
+//         breakdown.dispatchChargesTotal += amt;
+
+//         if (c.type === "ICE_COOLING") breakdown.iceCooling += amt;
+//         else if (c.type === "TRANSPORT") breakdown.transportCharges += amt;
+//         else if (c.type === "OTHER" && c.label)
+//           breakdown.otherCharges.push({ label: c.label, amount: amt });
+//       });
+
+//       return {
+//         ...l,
+//         vehicleNo: l.vehicle?.vehicleNumber ?? l.vehicleNo ?? "",
+//         vehicle: undefined,
+//         dispatchBreakdown: breakdown,
+//       };
+//     });
+
+//     return NextResponse.json({ success: true, data: formatted });
+//   } catch (error) {
+//     console.error("ClientLoading GET error:", error);
+//     return NextResponse.json(
+//       { success: false, message: "Failed to fetch data" },
+//       { status: 500 }
+//     );
+//   }
+// }
+
+type Stage = "PACKING_PENDING" | "DISPATCH_PENDING" | "PAYMENT_PENDING" | "ALL";
+
+export async function GET(req: NextRequest) {
   try {
+    const { searchParams } = new URL(req.url);
+    const stage = (searchParams.get("stage") || "ALL") as Stage;
+
+    const whereClause: any = {};
+
+    // ✅ Stage filters
+    if (stage === "PACKING_PENDING") {
+      // packing not done yet
+      whereClause.packingAmounts = { none: {} };
+    }
+
+    if (stage === "DISPATCH_PENDING") {
+      // packing done, dispatch not done
+      whereClause.AND = [
+        { packingAmounts: { some: {} } },
+        { dispatchCharges: { none: {} } },
+      ];
+    }
+
+    if (stage === "PAYMENT_PENDING") {
+      // packing done + dispatch done, payment not done
+      // ⚠️ Change `clientPayments` to your real relation name in schema
+      whereClause.AND = [
+        { packingAmounts: { some: {} } },
+        { dispatchCharges: { some: {} } },
+        { clientPayments: { none: {} } },
+      ];
+    }
+
     const loadings = await prisma.clientLoading.findMany({
+      where: whereClause,
       include: {
         items: {
           select: {
@@ -230,6 +399,12 @@ export async function GET() {
           select: { type: true, label: true, amount: true },
           orderBy: { createdAt: "desc" },
         },
+        packingAmounts: {
+          select: { id: true, totalAmount: true },
+          orderBy: { createdAt: "desc" },
+        },
+        // ⚠️ Keep only if exists in schema
+        // clientPayments: { select: { id: true }, orderBy: { createdAt: "desc" } },
       },
       orderBy: { date: "desc" },
     });
@@ -248,7 +423,9 @@ export async function GET() {
 
         if (c.type === "ICE_COOLING") breakdown.iceCooling += amt;
         else if (c.type === "TRANSPORT") breakdown.transportCharges += amt;
-        else if (c.type === "OTHER" && c.label) breakdown.otherCharges.push({ label: c.label, amount: amt });
+        else if (c.type === "OTHER" && c.label) {
+          breakdown.otherCharges.push({ label: c.label, amount: amt });
+        }
       });
 
       return {
@@ -256,12 +433,19 @@ export async function GET() {
         vehicleNo: l.vehicle?.vehicleNumber ?? l.vehicleNo ?? "",
         vehicle: undefined,
         dispatchBreakdown: breakdown,
+
+        // helpful flags for frontend
+        packingDone: (l.packingAmounts?.length || 0) > 0,
+        dispatchDone: (l.dispatchCharges?.length || 0) > 0,
       };
     });
 
     return NextResponse.json({ success: true, data: formatted });
-  } catch (error) {
+  } catch (error: any) {
     console.error("ClientLoading GET error:", error);
-    return NextResponse.json({ success: false, message: "Failed to fetch data" }, { status: 500 });
+    return NextResponse.json(
+      { success: false, message: "Failed to fetch data", details: error.message },
+      { status: 500 }
+    );
   }
 }

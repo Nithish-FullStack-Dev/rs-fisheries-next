@@ -234,15 +234,17 @@ model VendorPayment {
 }
 
 model ClientPayment {
-  id          String   @id @default(uuid())
-  clientId    String
-  clientKey   String
-  clientName  String
-  date        DateTime
-  amount      Float
-  paymentMode String
-
-  createdAt DateTime @default(now())
+  id                String   @id @default(uuid())
+  clientId          String
+  clientKey         String
+  clientName        String
+  date              DateTime
+  amount            Float
+  paymentMode       String
+  isInstallment     Boolean  @default(false)
+  installments      Int?
+  installmentNumber Int?
+  createdAt         DateTime @default(now())
 
   client        ClientLoading  @relation(fields: [clientId], references: [id], onDelete: Cascade)
   clientInvoice ClientInvoice?

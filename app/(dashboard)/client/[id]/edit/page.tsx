@@ -97,7 +97,7 @@ export default function EditClientPage() {
     },
   });
 
-  if (isFetching || !formReady)
+  if (isFetching)
     return <div className="p-10 text-center">Loading client data...</div>;
   const RequiredStar = () => (
     <span className="text-red-500 ml-1">

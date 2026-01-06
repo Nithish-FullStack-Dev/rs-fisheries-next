@@ -4,8 +4,9 @@ import React, { useState } from "react";
 import { VendorPayments } from "./component/VendorPayments";
 import { ClientPayments } from "./component/ClientPayments";
 import { EmployeePayments } from "./component/EmployeePayments";
-import { PackingAmount } from "./component/PackingAmount";
+// import { PackingAmount } from "./component/PackingAmount";
 import { DispatchPayment } from "./component/DispatchPayment";
+import PackingAmount from "./component/PackingAmount";
 
 type TabId = "dispatch" | "vendor" | "client" | "employee" | "packing";
 
@@ -135,7 +136,7 @@ export default function Payments() {
         <TabsRoot value={tab} onValueChange={setTab}>
           <TabsList>
             <TabsTrigger value="packing" activeValue={tab} onClick={setTab}>
-              Packing Amount
+              Ice
             </TabsTrigger>
             <TabsTrigger value="dispatch" activeValue={tab} onClick={setTab}>
               Dispatch

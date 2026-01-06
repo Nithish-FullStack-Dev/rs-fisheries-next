@@ -445,7 +445,7 @@ export default function ClientBillsPage() {
               <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto">
                 <Button
                   onClick={() => setAddOpen(true)}
-                  className="w-full lg:w-auto"
+                  className="bg-[#139BC3] hover:bg-[#139BC3]/80 text-white"
                   variant="outline"
                 >
                   <PlusCircle className="w-4 h-4 mr-2" />
@@ -575,11 +575,11 @@ export default function ClientBillsPage() {
                           <div className="text-xs text-gray-600">
                             {it.clientName}
                           </div>
-                          <div className="text-[11px] text-gray-500 mt-1">
+                          {/* <div className="text-[11px] text-gray-500 mt-1">
                             {it.hasVehicle
                               ? "Vehicle: Yes (No 5% cut)"
                               : "Vehicle: No (5% cut)"}
-                          </div>
+                          </div> */}
                         </div>
 
                         {!isEditing ? (
@@ -738,11 +738,11 @@ export default function ClientBillsPage() {
                             <div className="text-xs text-gray-600">
                               {it.clientName}
                             </div>
-                            <div className="text-[11px] text-gray-500 mt-1">
+                            {/* <div className="text-[11px] text-gray-500 mt-1">
                               {it.hasVehicle
                                 ? "Vehicle: Yes (No 5% cut)"
                                 : "Vehicle: No (5% cut)"}
-                            </div>
+                            </div> */}
                           </td>
 
                           <td className="p-4">{it.varietyCode || "-"}</td>
@@ -991,51 +991,86 @@ export default function ClientBillsPage() {
               </Select>
             </div>
 
-            <div className="sm:col-span-2">
-              <div className="text-xs font-semibold text-gray-500 mb-1">
-                Variety (stock trays)
-              </div>
-              <Select value={addVarietyCode} onValueChange={setAddVarietyCode}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select Variety" />
-                </SelectTrigger>
-                <SelectContent className="max-h-72">
-                  {availableVarieties.map((v) => (
-                    <SelectItem key={v.code} value={v.code}>
-                      {v.code} ({v.netTrays} trays)
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <div className="mt-3 space-y-3">
+              <div>
+                <div className="text-xs font-semibold text-slate-500 mb-1">
+                  Variety * {varietiesFetching ? "(refreshing...)" : ""}
+                </div>
 
-            <div>
-              <div className="text-xs font-semibold text-gray-500 mb-1">
-                Trays
-              </div>
-              <Input
-                type="number"
-                min={0}
-                value={addTrays}
-                onChange={(e) =>
-                  setAddTrays(Math.max(0, Number(e.target.value) || 0))
-                }
-              />
-            </div>
+                <Select
+                  value={addVarietyCode}
+                  onValueChange={(code) => {
+                    setAddVarietyCode(code);
+                    setAddTrays(0);
+                    setAddLoose(0);
+                  }}
+                >
+                  <SelectTrigger className="h-11 rounded-xl border-slate-200 focus:ring-2 focus:ring-[#139BC3]/30">
+                    <SelectValue placeholder="Select" />
+                  </SelectTrigger>
 
-            <div>
-              <div className="text-xs font-semibold text-gray-500 mb-1">
-                Loose (Kgs)
+                  <SelectContent className="max-h-72">
+                    {availableVarieties.map((v) => (
+                      <SelectItem key={v.code} value={v.code}>
+                        {v.code} ({v.netTrays} trays)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+
+                <div className="mt-2 text-sm text-slate-700">
+                  {availableVarieties.find((v) => v.code === addVarietyCode)
+                    ?.name || "—"}
+                </div>
               </div>
-              <Input
-                type="number"
-                min={0}
-                step="0.1"
-                value={addLoose}
-                onChange={(e) =>
-                  setAddLoose(Math.max(0, Number(e.target.value) || 0))
-                }
-              />
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-xs font-semibold text-slate-500 mb-1">
+                    Trays
+                  </div>
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    className="h-11 w-full rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
+                    value={addTrays}
+                    disabled={!addVarietyCode}
+                    onChange={(e) =>
+                      setAddTrays(Math.max(0, Number(e.target.value) || 0))
+                    }
+                  />
+                </div>
+
+                <div>
+                  <div className="text-xs font-semibold text-slate-500 mb-1">
+                    Loose
+                  </div>
+                  <Input
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    className="h-11 w-full rounded-xl border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
+                    value={addLoose}
+                    disabled={!addVarietyCode}
+                    onChange={(e) =>
+                      setAddLoose(Math.max(0, Number(e.target.value) || 0))
+                    }
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between">
+                <div className="text-sm text-slate-600">Total</div>
+                <div className="text-lg font-extrabold text-slate-900">
+                  {(
+                    addTrays *
+                      (availableVarieties.find((v) => v.code === addVarietyCode)
+                        ?.netKgs || 0) +
+                    addLoose
+                  ).toFixed(2)}
+                </div>
+              </div>
             </div>
           </div>
 
