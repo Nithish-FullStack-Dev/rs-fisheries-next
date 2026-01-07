@@ -28,8 +28,8 @@ import type { DashboardMetrics } from "@/lib/dashboard";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 import {
-  BarChart,
-  Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
@@ -39,8 +39,8 @@ import {
   Cell,
   CartesianGrid,
   Legend,
-  AreaChart,
-  Area,
+  BarChart,
+  Bar,
 } from "recharts";
 
 import {
@@ -71,7 +71,7 @@ const CHART = {
   pie: [THEME, "#3B82F6", "#60A5FA", "#93C5FD", "#BFDBFE", "#DBEAFE"],
 };
 
-function money(n: number) {
+function money(n: number): string {
   return new Intl.NumberFormat("en-IN", {
     style: "currency",
     currency: "INR",
@@ -79,7 +79,7 @@ function money(n: number) {
   }).format(Number(n || 0));
 }
 
-function qty(n: number) {
+function qty(n: number): string {
   return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 1 }).format(n);
 }
 
@@ -224,7 +224,7 @@ const PRESETS = [
   },
 ];
 
-function formatRange(r: DateRange) {
+function formatRange(r: DateRange): string {
   if (!r.from) return "Select date range";
   const a = format(r.from, "dd MMM yyyy");
   const b = r.to ? format(r.to, "dd MMM yyyy") : a;
@@ -460,9 +460,7 @@ export default function DashboardClient({
   };
 
   const handleExport = async () => {
-    const wb = XLSX.utils.book_new();
-
-    const [former, agent, client] = await Promise.all([
+    const [farmer, agent, client] = await Promise.all([
       fetch("/api/former-loading").then((res) =>
         res.json().then((j) => j.data || [])
       ),
@@ -474,67 +472,124 @@ export default function DashboardClient({
       ),
     ]);
 
-    const formerSheet = XLSX.utils.json_to_sheet(
-      former.flatMap((f: any) =>
-        (f.items || []).map((it: any) => ({
-          Type: "Former",
-          BillNo: f.billNo,
-          Date: f.date,
-          FarmerName: f.FarmerName || "",
-          Village: f.village,
-          VarietyCode: it.varietyCode,
-          NoTrays: it.noTrays,
-          TrayKgs: it.trayKgs,
-          Loose: it.loose,
-          TotalKgs: it.totalKgs,
-          PricePerKg: it.pricePerKg,
-          TotalPrice: it.totalPrice,
-        }))
-      )
-    );
-    XLSX.utils.book_append_sheet(wb, formerSheet, "Former Loadings");
+    const wb = XLSX.utils.book_new();
 
-    const agentSheet = XLSX.utils.json_to_sheet(
-      agent.flatMap((a: any) =>
-        (a.items || []).map((it: any) => ({
-          Type: "Agent",
-          BillNo: a.billNo,
-          Date: a.date,
-          AgentName: a.agentName,
-          Village: a.village,
-          VarietyCode: it.varietyCode,
-          NoTrays: it.noTrays,
-          TrayKgs: it.trayKgs,
-          Loose: it.loose,
-          TotalKgs: it.totalKgs,
-          PricePerKg: it.pricePerKg,
-          TotalPrice: it.totalPrice,
-        }))
-      )
-    );
+    const farmerSheet = createLoadingSheet(farmer, "farmer");
+    XLSX.utils.book_append_sheet(wb, farmerSheet, "Farmer Loadings");
+
+    const agentSheet = createLoadingSheet(agent, "agent");
     XLSX.utils.book_append_sheet(wb, agentSheet, "Agent Loadings");
 
-    const clientSheet = XLSX.utils.json_to_sheet(
-      client.flatMap((c: any) =>
-        (c.items || []).map((it: any) => ({
-          Type: "Client",
-          BillNo: c.billNo,
-          Date: c.date,
-          ClientName: c.clientName,
-          Village: c.village,
-          VarietyCode: it.varietyCode,
-          NoTrays: it.noTrays,
-          TrayKgs: it.trayKgs,
-          Loose: it.loose,
-          TotalKgs: it.totalKgs,
-          PricePerKg: it.pricePerKg,
-          TotalPrice: it.totalPrice,
-        }))
-      )
-    );
+    const clientSheet = createClientSheet(client);
     XLSX.utils.book_append_sheet(wb, clientSheet, "Client Loadings");
 
-    XLSX.writeFile(wb, "RS-Fisheries_All_Loadings.xlsx");
+    XLSX.writeFile(wb, "RS-Fisheries_Loadings.xlsx");
+  };
+
+  const createLoadingSheet = (loadings: any[], type: "farmer" | "agent") => {
+    let ws_data: any[][] = [];
+
+    loadings.forEach((l) => {
+      const nameKey = type === "farmer" ? "FarmerName" : "agentName";
+      const nameLabel = type === "farmer" ? "Farmer Name" : "Agent Name";
+
+      ws_data.push([
+        nameLabel,
+        l[nameKey],
+        "Date",
+        format(new Date(l.date), "dd/MM/yyyy"),
+      ]);
+      ws_data.push(["Bill No", l.billNo]);
+      ws_data.push([
+        "Sl.No",
+        "Item Description",
+        "Tray",
+        "Loose",
+        "Total",
+        "Rate",
+        "Amount",
+      ]);
+
+      l.items.forEach((it: any, idx: number) => {
+        ws_data.push([
+          idx + 1,
+          it.varietyCode,
+          it.noTrays,
+          it.loose,
+          it.totalKgs,
+          it.pricePerKg,
+          it.totalPrice,
+        ]);
+      });
+
+      ws_data.push([
+        "Total",
+        "",
+        l.totalTrays,
+        l.totalLooseKgs,
+        l.totalKgs,
+        "",
+        l.totalPrice,
+      ]);
+      ws_data.push([]); // empty row
+    });
+
+    return XLSX.utils.aoa_to_sheet(ws_data);
+  };
+
+  const createClientSheet = (loadings: any[]) => {
+    let ws_data: any[][] = [];
+
+    loadings.forEach((l) => {
+      ws_data.push([
+        "Buyer Name",
+        l.clientName,
+        "Date",
+        format(new Date(l.date), "dd/MM/yyyy"),
+      ]);
+      ws_data.push(["Bill No", l.billNo]);
+      ws_data.push([
+        "Sl.No",
+        "Category",
+        "No.of Trays",
+        "Loose",
+        "Total weight",
+        "Less",
+        "Total KGS",
+        "Rate",
+        "Amount",
+      ]);
+
+      l.items.forEach((it: any, idx: number) => {
+        const less = 0; // No 'less' in data, set to 0
+        const totalWeight = it.trayKgs + it.loose;
+        const totalKGS = totalWeight - less;
+        ws_data.push([
+          idx + 1,
+          it.varietyCode,
+          it.noTrays,
+          it.loose,
+          totalWeight,
+          less,
+          totalKGS,
+          it.pricePerKg,
+          it.totalPrice,
+        ]);
+      });
+
+      ws_data.push(["Total Amount", "", "", "", "", "", "", "", l.totalPrice]);
+
+      const icePacking = l.dispatchBreakdown.iceCooling + l.packingAmountTotal;
+      const freight = l.dispatchBreakdown.transportCharges;
+
+      ws_data.push(["", "Ice & Packing", icePacking]);
+      ws_data.push(["", "Freight", freight]);
+      ws_data.push(["Grand Total", l.grandTotal]);
+
+      ws_data.push([]); // empty row
+    });
+
+    return XLSX.utils.aoa_to_sheet(ws_data);
   };
 
   const weeklyData = useMemo(
@@ -619,6 +674,10 @@ export default function DashboardClient({
           </div>
 
           <DateRangePicker value={range} onApply={applyRangeToUrl} />
+          <Button onClick={handleExport} variant="outline" size="sm">
+            <Download className="mr-2 h-4 w-4" />
+            Export Loadings
+          </Button>
         </motion.div>
 
         {/* KPI grid */}
@@ -720,7 +779,7 @@ export default function DashboardClient({
                       width={isMobile ? 26 : 34}
                       tickFormatter={(value) => money(value).replace("₹", "")}
                     />
-                    <Tooltip {...tooltipProps} />
+                    <Tooltip content={<CustomTooltip />} />
                     <Legend verticalAlign="top" height={36} />
                     <Bar
                       dataKey="purchase"
@@ -816,51 +875,8 @@ export default function DashboardClient({
               </CardHeader>
               <CardContent className="px-2 sm:px-6 h-[230px] sm:h-[310px] lg:h-[330px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart
-                    data={movementData}
-                    margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
-                  >
-                    <defs>
-                      <linearGradient
-                        id="salesWave"
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
-                      >
-                        <stop
-                          offset="0%"
-                          stopColor={CHART.sales}
-                          stopOpacity={0.35}
-                        />
-                        <stop
-                          offset="100%"
-                          stopColor={CHART.sales}
-                          stopOpacity={0.05}
-                        />
-                      </linearGradient>
-
-                      <linearGradient
-                        id="purchaseWave"
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
-                      >
-                        <stop
-                          offset="0%"
-                          stopColor={CHART.purchase}
-                          stopOpacity={0.35}
-                        />
-                        <stop
-                          offset="100%"
-                          stopColor={CHART.purchase}
-                          stopOpacity={0.05}
-                        />
-                      </linearGradient>
-                    </defs>
-
-                    <CartesianGrid stroke={CHART.grid} strokeDasharray="4 6" />
+                  <LineChart data={movementData}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={CHART.grid} />
                     <XAxis
                       dataKey="day"
                       tick={{ fill: CHART.muted, fontSize: 11 }}
@@ -876,25 +892,27 @@ export default function DashboardClient({
                       width={isMobile ? 26 : 34}
                       tickFormatter={(v) => money(v).replace("₹", "")}
                     />
-
-                    <Tooltip {...tooltipProps} />
+                    <Tooltip content={<CustomTooltip />} />
                     <Legend verticalAlign="top" height={36} />
-
-                    <Area
+                    <Line
                       type="monotone"
                       dataKey="sales"
                       name="Sales"
-                      stroke="none"
-                      fill="url(#salesWave)"
+                      stroke={CHART.sales}
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 8 }}
                     />
-                    <Area
+                    <Line
                       type="monotone"
                       dataKey="purchase"
                       name="Stock Movement"
-                      stroke="none"
-                      fill="url(#purchaseWave)"
+                      stroke={CHART.purchase}
+                      strokeWidth={2}
+                      dot={false}
+                      activeDot={{ r: 8 }}
                     />
-                  </AreaChart>
+                  </LineChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
