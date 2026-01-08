@@ -92,6 +92,63 @@ type DispatchBreakdown = {
   otherCharges?: Array<{ label?: string; amount?: number }>;
   dispatchChargesTotal: number;
 };
+type VendorPayment = {
+  id: string;
+  vendorId: string; // like "farmer:<id>" or "agent:<id>"
+  vendorKey?: string | null;
+  vendorName: string;
+  source: "farmer" | "agent";
+  date: string;
+  amount: number;
+  paymentMode: string;
+  isInstallment: boolean;
+  installments?: number | null;
+  installmentNumber?: number | null;
+  createdAt: string;
+  sourceRecordId: string; // IMPORTANT: matches loading.id
+};
+
+type FarmerLoading = {
+  id: string;
+  billNo: string;
+  FarmerName: string;
+  date: string;
+  village?: string;
+  vehicleNo?: string;
+  tripStatus?: string;
+
+  totalTrays: number;
+  totalLooseKgs: number;
+  totalKgs: number;
+
+  totalPrice: number;
+  dispatchChargesTotal: number;
+  packingAmountTotal: number;
+  grandTotal: number;
+
+  items: LoadingItem[];
+};
+
+type AgentLoading = {
+  id: string;
+  billNo: string;
+  agentName: string;
+  date: string;
+  village?: string;
+  vehicleNo?: string;
+  tripStatus?: string;
+
+  totalTrays: number;
+  totalLooseKgs: number;
+  totalKgs: number;
+
+  totalPrice: number;
+  dispatchChargesTotal: number;
+  packingAmountTotal: number;
+  grandTotal: number;
+
+  items: LoadingItem[];
+};
 
 type ClientLoading = {
   id: string;
@@ -580,43 +637,61 @@ export default function DashboardClient({
   /* ---------------- ✅ Export: Farmer + Agent + Client + Payments ---------------- */
   const handleExport = async () => {
     try {
-      const [farmer, agent, clientLoadings, clientPayments] = await Promise.all<
-        [unknown, unknown, unknown, unknown]
-      >([
-        fetchJson<unknown>("/api/former-loading"),
-        fetchJson<unknown>("/api/agent-loading"),
-        fetchJson<unknown>("/api/client-loading"),
-        fetchJson<unknown>("/api/payments/client"),
-      ]);
+      const [farmer, agent, clientLoadings, clientPayments, vendorPayments] =
+        await Promise.all<[unknown, unknown, unknown, unknown, unknown]>([
+          fetchJson<unknown>("/api/former-loading"),
+          fetchJson<unknown>("/api/agent-loading"),
+          fetchJson<unknown>("/api/client-loading"),
+          fetchJson<unknown>("/api/payments/client"),
+          fetchJson<unknown>("/api/payments/vendor"),
+        ]);
 
-      const farmerRows = Array.isArray(farmer) ? farmer : [];
-      const agentRows = Array.isArray(agent) ? agent : [];
+      const farmerRows = Array.isArray(farmer)
+        ? (farmer as FarmerLoading[])
+        : [];
+      const agentRows = Array.isArray(agent) ? (agent as AgentLoading[]) : [];
 
       const clientRows = Array.isArray(clientLoadings)
         ? (clientLoadings as ClientLoading[])
         : [];
 
-      const paymentRows = Array.isArray(clientPayments)
+      const clientPaymentRows = Array.isArray(clientPayments)
         ? (clientPayments as ClientPayment[])
         : [];
+
+      const vendorPaymentRows = Array.isArray(vendorPayments)
+        ? (vendorPayments as VendorPayment[])
+        : [];
+
+      const farmerPay = vendorPaymentRows.filter((p) => p.source === "farmer");
+      const agentPay = vendorPaymentRows.filter((p) => p.source === "agent");
 
       const wb = new ExcelJS.Workbook();
       wb.creator = "RS Fisheries";
       wb.created = new Date();
 
-      // Farmer + Agent
-      buildSimpleLoadingSheetExcelJS(
+      // ✅ Farmer + Agent (same like client style with payments & balance)
+      buildVendorWithPaymentsSheetExcelJS(
         wb,
         farmerRows,
-        "Farmer Loadings",
-        "farmer"
+        farmerPay,
+        "Farmer Loadings + Payments",
+        "Farmer"
       );
-      buildSimpleLoadingSheetExcelJS(wb, agentRows, "Agent Loadings", "agent");
 
-      // Client with Payments
-      buildClientWithPaymentsSheetExcelJS(wb, clientRows, paymentRows);
+      buildVendorWithPaymentsSheetExcelJS(
+        wb,
+        agentRows,
+        agentPay,
+        "Agent Loadings + Payments",
+        "Agent"
+      );
+
+      // ✅ Client (keep your existing)
+      buildClientWithPaymentsSheetExcelJS(wb, clientRows, clientPaymentRows);
 
       const buf = await wb.xlsx.writeBuffer();
+
       saveAs(
         new Blob([buf], {
           type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1165,6 +1240,7 @@ function buildSimpleLoadingSheetExcelJS(
     { header: "Amount", key: "amount", width: 14 },
   ];
 
+  // Header style
   const headerRow = ws.getRow(1);
   headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
   headerRow.fill = {
@@ -1175,8 +1251,35 @@ function buildSimpleLoadingSheetExcelJS(
   headerRow.alignment = { vertical: "middle", horizontal: "center" };
   headerRow.height = 20;
 
+  ws.views = [{ state: "frozen", ySplit: 1 }];
+
+  // Helpers
+  const moneyCell = (cell: ExcelJS.Cell) => {
+    cell.numFmt = "₹#,##0";
+    cell.alignment = { vertical: "middle", horizontal: "right" };
+  };
+
+  const centerCell = (cell: ExcelJS.Cell) => {
+    cell.alignment = { vertical: "middle", horizontal: "center" };
+  };
+
+  const applyThinBorder = (cell: ExcelJS.Cell) => {
+    cell.border = {
+      top: { style: "thin", color: { argb: "FFE2E8F0" } },
+      left: { style: "thin", color: { argb: "FFE2E8F0" } },
+      bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
+      right: { style: "thin", color: { argb: "FFE2E8F0" } },
+    };
+  };
+
+  let grandTrays = 0;
+  let grandLoose = 0;
+  let grandKgs = 0;
+  let grandAmount = 0;
+
   for (const raw of loadings) {
     if (!isObj(raw)) continue;
+
     const l = raw as Record<string, unknown>;
     const nameKey = type === "farmer" ? "FarmerName" : "agentName";
     const name = typeof l[nameKey] === "string" ? (l[nameKey] as string) : "";
@@ -1187,11 +1290,20 @@ function buildSimpleLoadingSheetExcelJS(
     const billNo = typeof l.billNo === "string" ? (l.billNo as string) : "";
 
     const items = Array.isArray(l.items) ? (l.items as unknown[]) : [];
+
+    // Bill totals from API if present (best, matches your backend)
+    const billTotalTrays = typeof l.totalTrays === "number" ? l.totalTrays : 0;
+    const billTotalLoose =
+      typeof l.totalLooseKgs === "number" ? l.totalLooseKgs : 0;
+    const billTotalKgs = typeof l.totalKgs === "number" ? l.totalKgs : 0;
+    const billTotalAmount = typeof l.totalPrice === "number" ? l.totalPrice : 0;
+
+    // Add item rows
     for (const itRaw of items) {
       if (!isObj(itRaw)) continue;
       const it = itRaw as Record<string, unknown>;
 
-      ws.addRow({
+      const row = ws.addRow({
         name,
         date: dateStr,
         bill: billNo,
@@ -1202,9 +1314,381 @@ function buildSimpleLoadingSheetExcelJS(
         rate: typeof it.pricePerKg === "number" ? it.pricePerKg : 0,
         amount: typeof it.totalPrice === "number" ? it.totalPrice : 0,
       });
+
+      // align numeric
+      centerCell(row.getCell(5));
+      centerCell(row.getCell(6));
+      centerCell(row.getCell(7));
+      moneyCell(row.getCell(8));
+      moneyCell(row.getCell(9));
     }
 
+    // ✅ Per-bill TOTAL row
+    const totalRow = ws.addRow({
+      name: "",
+      date: "",
+      bill: "",
+      variety: "TOTAL",
+      trays: billTotalTrays,
+      loose: billTotalLoose,
+      kgs: billTotalKgs,
+      rate: "",
+      amount: billTotalAmount,
+    });
+
+    totalRow.font = { bold: true };
+    totalRow.fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FFF1F5F9" },
+    };
+    centerCell(totalRow.getCell(5));
+    centerCell(totalRow.getCell(6));
+    centerCell(totalRow.getCell(7));
+    moneyCell(totalRow.getCell(9));
+
+    // accumulate grand totals
+    grandTrays += billTotalTrays;
+    grandLoose += billTotalLoose;
+    grandKgs += billTotalKgs;
+    grandAmount += billTotalAmount;
+
+    // blank spacer row
     ws.addRow({});
+  }
+
+  // ✅ Final GRAND TOTAL row (bottom)
+  const grandRow = ws.addRow({
+    name: "",
+    date: "",
+    bill: "",
+    variety: "GRAND TOTAL",
+    trays: grandTrays,
+    loose: grandLoose,
+    kgs: grandKgs,
+    rate: "",
+    amount: grandAmount,
+  });
+
+  grandRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+  grandRow.fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FF0F172A" },
+  };
+  centerCell(grandRow.getCell(5));
+  centerCell(grandRow.getCell(6));
+  centerCell(grandRow.getCell(7));
+  moneyCell(grandRow.getCell(9));
+
+  // Borders for all non-empty cells
+  for (let row = 1; row <= ws.rowCount; row++) {
+    for (let col = 1; col <= 9; col++) {
+      const cell = ws.getCell(row, col);
+      const v = cell.value;
+      const hasValue =
+        v !== null &&
+        v !== undefined &&
+        !(typeof v === "string" && v.trim() === "");
+      if (hasValue) applyThinBorder(cell);
+    }
+  }
+}
+function buildVendorWithPaymentsSheetExcelJS(
+  wb: ExcelJS.Workbook,
+  loadings: Array<FarmerLoading | AgentLoading>,
+  payments: VendorPayment[],
+  sheetName: string,
+  vendorLabel: "Farmer" | "Agent"
+) {
+  const ws = wb.addWorksheet(sheetName);
+
+  ws.columns = [
+    { header: "Label", key: "c1", width: 22 },
+    { header: "Value", key: "c2", width: 40 },
+    { header: "Label", key: "c3", width: 16 },
+    { header: "Value", key: "c4", width: 20 },
+    { header: "Label", key: "c5", width: 16 },
+    { header: "Value", key: "c6", width: 18 },
+  ];
+
+  const THEME = "FF139BC3";
+  const LIGHT = "FFF1F5F9";
+  const SOFT_GREEN = "FFDCFCE7";
+  const SOFT_RED = "FFFEE2E2";
+  const DARK = "FF0F172A";
+
+  const titleStyle = (row: ExcelJS.Row) => {
+    row.font = { bold: true, size: 12, color: { argb: "FFFFFFFF" } };
+    row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: THEME } };
+    row.alignment = { vertical: "middle", horizontal: "left" };
+    row.height = 20;
+  };
+
+  const sectionStyle = (row: ExcelJS.Row) => {
+    row.font = { bold: true, color: { argb: "FF0F172A" } };
+    row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: LIGHT } };
+    row.alignment = { vertical: "middle", horizontal: "left" };
+    row.height = 18;
+  };
+
+  const tableHeaderStyle = (row: ExcelJS.Row) => {
+    row.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: DARK } };
+    row.alignment = { vertical: "middle", horizontal: "center" };
+    row.height = 18;
+  };
+
+  const moneyCell = (cell: ExcelJS.Cell) => {
+    cell.numFmt = "₹#,##0";
+    cell.alignment = { vertical: "middle", horizontal: "right" };
+  };
+
+  const centerCell = (cell: ExcelJS.Cell) => {
+    cell.alignment = { vertical: "middle", horizontal: "center" };
+  };
+
+  const leftCell = (cell: ExcelJS.Cell) => {
+    cell.alignment = { vertical: "middle", horizontal: "left", wrapText: true };
+  };
+
+  const applyThinBorder = (cell: ExcelJS.Cell) => {
+    cell.border = {
+      top: { style: "thin", color: { argb: "FFE2E8F0" } },
+      left: { style: "thin", color: { argb: "FFE2E8F0" } },
+      bottom: { style: "thin", color: { argb: "FFE2E8F0" } },
+      right: { style: "thin", color: { argb: "FFE2E8F0" } },
+    };
+  };
+
+  // group vendor payments by loading.id using sourceRecordId
+  const paymentsBySourceRecordId = new Map<string, VendorPayment[]>();
+  for (const p of payments) {
+    const arr = paymentsBySourceRecordId.get(p.sourceRecordId) ?? [];
+    arr.push(p);
+    paymentsBySourceRecordId.set(p.sourceRecordId, arr);
+  }
+
+  let r = 1;
+
+  ws.mergeCells(`A${r}:F${r}`);
+  ws.getCell(`A${r}`).value = `${vendorLabel} Loadings + Charges + Payments`;
+  titleStyle(ws.getRow(r));
+  r += 2;
+
+  for (let i = 0; i < loadings.length; i++) {
+    const l = loadings[i];
+
+    const vendorName =
+      vendorLabel === "Farmer"
+        ? (l as FarmerLoading).FarmerName
+        : (l as AgentLoading).agentName;
+
+    // Bill title
+    ws.mergeCells(`A${r}:F${r}`);
+    ws.getCell(`A${r}`).value = `#${i + 1}  ${vendorName}  •  Bill: ${
+      l.billNo
+    }`;
+    titleStyle(ws.getRow(r));
+    r++;
+
+    // Info row 1
+    ws.getCell(`A${r}`).value = `${vendorLabel} Name`;
+    ws.getCell(`B${r}`).value = vendorName;
+
+    ws.getCell(`C${r}`).value = "Date";
+    ws.getCell(`D${r}`).value = l.date
+      ? format(new Date(l.date), "dd/MM/yyyy")
+      : "";
+
+    ws.getCell(`E${r}`).value = "Trip";
+    ws.getCell(`F${r}`).value = l.tripStatus ?? "";
+
+    leftCell(ws.getCell(`B${r}`));
+    centerCell(ws.getCell(`D${r}`));
+    centerCell(ws.getCell(`F${r}`));
+    r++;
+
+    // Info row 2
+    ws.getCell(`A${r}`).value = "Village / Address";
+    ws.getCell(`B${r}`).value = l.village ?? "";
+
+    ws.getCell(`C${r}`).value = "Vehicle";
+    ws.getCell(`D${r}`).value = l.vehicleNo ?? "";
+
+    ws.getCell(`E${r}`).value = "Fish Code";
+    ws.getCell(`F${r}`).value = (l as any).fishCode ?? "";
+
+    leftCell(ws.getCell(`B${r}`));
+    leftCell(ws.getCell(`D${r}`));
+    centerCell(ws.getCell(`F${r}`));
+    r++;
+
+    // Items section
+    ws.mergeCells(`A${r}:F${r}`);
+    ws.getCell(`A${r}`).value = "Loading Items";
+    sectionStyle(ws.getRow(r));
+    r++;
+
+    ws.getRow(r).values = [
+      "",
+      "Sl.No",
+      "Category",
+      "Trays",
+      "Loose",
+      "Total KGS",
+    ];
+    tableHeaderStyle(ws.getRow(r));
+    r++;
+
+    for (let idx = 0; idx < (l.items ?? []).length; idx++) {
+      const it = l.items[idx];
+      ws.getCell(`B${r}`).value = idx + 1;
+      ws.getCell(`C${r}`).value = it.varietyCode ?? "";
+      ws.getCell(`D${r}`).value = Number(it.noTrays ?? 0);
+      ws.getCell(`E${r}`).value = Number(it.loose ?? 0);
+      ws.getCell(`F${r}`).value = Number(it.totalKgs ?? 0);
+
+      centerCell(ws.getCell(`B${r}`));
+      leftCell(ws.getCell(`C${r}`));
+      centerCell(ws.getCell(`D${r}`));
+      centerCell(ws.getCell(`E${r}`));
+      centerCell(ws.getCell(`F${r}`));
+      r++;
+    }
+
+    // ✅ Bill TOTAL row (only per bill, no grand)
+    ws.getCell(`C${r}`).value = "Total";
+    ws.getCell(`D${r}`).value = Number(l.totalTrays ?? 0);
+    ws.getCell(`E${r}`).value = Number(l.totalLooseKgs ?? 0);
+    ws.getCell(`F${r}`).value = Number(l.totalKgs ?? 0);
+    ws.getRow(r).font = { bold: true };
+    ws.getRow(r).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: LIGHT },
+    };
+    r += 2;
+
+    // Charges section
+    ws.mergeCells(`A${r}:F${r}`);
+    ws.getCell(`A${r}`).value = "Charges & Totals";
+    sectionStyle(ws.getRow(r));
+    r++;
+
+    ws.getCell(`A${r}`).value = "Total Price";
+    ws.getCell(`B${r}`).value = Number(l.totalPrice ?? 0);
+    moneyCell(ws.getCell(`B${r}`));
+
+    ws.getCell(`C${r}`).value = "Dispatch";
+    ws.getCell(`D${r}`).value = Number(l.dispatchChargesTotal ?? 0);
+    moneyCell(ws.getCell(`D${r}`));
+
+    ws.getCell(`E${r}`).value = "Ice";
+    ws.getCell(`F${r}`).value = Number(l.packingAmountTotal ?? 0);
+    moneyCell(ws.getCell(`F${r}`));
+    r++;
+
+    ws.getCell(`A${r}`).value = "Grand Total";
+    ws.getCell(`B${r}`).value = Number(l.grandTotal ?? 0);
+    moneyCell(ws.getCell(`B${r}`));
+    ws.getRow(r).font = { bold: true };
+    ws.getRow(r).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FFE0F2FE" },
+    };
+    r += 2;
+
+    // Payments section
+    ws.mergeCells(`A${r}:F${r}`);
+    ws.getCell(`A${r}`).value = "Payments (Full / Installments)";
+    sectionStyle(ws.getRow(r));
+    r++;
+
+    ws.getRow(r).values = [
+      "",
+      "Date",
+      "Amount",
+      "Mode",
+      "Type",
+      "Installment #",
+    ];
+    tableHeaderStyle(ws.getRow(r));
+    r++;
+
+    const pay = (paymentsBySourceRecordId.get(l.id) ?? [])
+      .slice()
+      .sort(
+        (a, b) =>
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+
+    let paidTotal = 0;
+
+    if (pay.length === 0) {
+      ws.mergeCells(`B${r}:F${r}`);
+      ws.getCell(`B${r}`).value = "No payments found for this bill.";
+      ws.getCell(`B${r}`).font = { italic: true, color: { argb: "FF64748B" } };
+      r++;
+    } else {
+      for (const p of pay) {
+        paidTotal += Number(p.amount ?? 0);
+
+        ws.getCell(`B${r}`).value = p.date
+          ? format(new Date(p.date), "dd/MM/yyyy")
+          : "";
+        ws.getCell(`C${r}`).value = Number(p.amount ?? 0);
+        ws.getCell(`D${r}`).value = p.paymentMode ?? "";
+        ws.getCell(`E${r}`).value = p.isInstallment ? "Installment" : "Full";
+        ws.getCell(`F${r}`).value = p.isInstallment
+          ? p.installmentNumber ?? "-"
+          : "-";
+
+        centerCell(ws.getCell(`B${r}`));
+        moneyCell(ws.getCell(`C${r}`));
+        centerCell(ws.getCell(`D${r}`));
+        centerCell(ws.getCell(`E${r}`));
+        centerCell(ws.getCell(`F${r}`));
+        r++;
+      }
+    }
+
+    const grand = Number(l.grandTotal ?? 0);
+    const balance = Math.max(0, grand - paidTotal);
+
+    ws.getCell(`A${r}`).value = "Paid Total";
+    ws.getCell(`B${r}`).value = paidTotal;
+    moneyCell(ws.getCell(`B${r}`));
+
+    ws.getCell(`C${r}`).value = "Balance";
+    ws.getCell(`D${r}`).value = balance;
+    moneyCell(ws.getCell(`D${r}`));
+
+    ws.getRow(r).font = { bold: true };
+    ws.getRow(r).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: balance === 0 ? SOFT_GREEN : SOFT_RED },
+    };
+    r += 2;
+
+    // separator
+    ws.addRow([]);
+    r++;
+  }
+
+  // borders
+  for (let row = 1; row <= ws.rowCount; row++) {
+    for (let col = 1; col <= 6; col++) {
+      const cell = ws.getCell(row, col);
+      const v = cell.value;
+      const hasValue =
+        v !== null &&
+        v !== undefined &&
+        !(typeof v === "string" && v.trim() === "");
+      if (hasValue) applyThinBorder(cell);
+    }
   }
 
   ws.views = [{ state: "frozen", ySplit: 1 }];
@@ -1390,7 +1874,7 @@ function buildClientWithPaymentsSheetExcelJS(
     ws.getCell(`D${r}`).value = Number(l.dispatchChargesTotal ?? 0);
     moneyCell(ws.getCell(`D${r}`));
 
-    ws.getCell(`E${r}`).value = "Packing";
+    ws.getCell(`E${r}`).value = "Ice";
     ws.getCell(`F${r}`).value = Number(l.packingAmountTotal ?? 0);
     moneyCell(ws.getCell(`F${r}`));
     r++;
