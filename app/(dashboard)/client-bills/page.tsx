@@ -73,6 +73,7 @@ type UIItem = ClientItem & {
   billNo: string;
   clientName: string;
   date: string;
+  createdAt: string;
   recordTotalKgs: number;
   recordGrandTotal: number;
   netKgsForThisItem: number;
@@ -197,6 +198,7 @@ export default function ClientBillsPage() {
           billNo: rec.billNo || "",
           clientName: rec.clientName || "",
           date: rec.date?.split("T")[0] || "",
+          createdAt: rec.createdAt || rec.date || "", // ✅ KEY
           recordTotalKgs,
           recordGrandTotal,
           netKgsForThisItem,
@@ -218,11 +220,12 @@ export default function ClientBillsPage() {
     if (fromDate) result = result.filter((it) => (it.date || "") >= fromDate);
     if (toDate) result = result.filter((it) => (it.date || "") <= toDate);
 
-    result.sort((a, b) =>
-      sortOrder === "newest"
-        ? (b.date || "").localeCompare(a.date || "")
-        : (a.date || "").localeCompare(b.date || "")
-    );
+    result.sort((a, b) => {
+      const aTime = new Date(a.createdAt).getTime();
+      const bTime = new Date(b.createdAt).getTime();
+
+      return sortOrder === "newest" ? bTime - aTime : aTime - bTime;
+    });
 
     return result;
   }, [records, searchTerm, sortOrder, fromDate, toDate]);
@@ -1057,18 +1060,6 @@ export default function ClientBillsPage() {
                       setAddLoose(Math.max(0, Number(e.target.value) || 0))
                     }
                   />
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 flex items-center justify-between">
-                <div className="text-sm text-slate-600">Total</div>
-                <div className="text-lg font-extrabold text-slate-900">
-                  {(
-                    addTrays *
-                      (availableVarieties.find((v) => v.code === addVarietyCode)
-                        ?.netKgs || 0) +
-                    addLoose
-                  ).toFixed(2)}
                 </div>
               </div>
             </div>
