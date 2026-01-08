@@ -6,7 +6,6 @@ import { format, startOfDay, endOfDay, subDays } from "date-fns";
 import type { DateRange } from "react-day-picker";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
-// ✅ Excel export (styled)
 import * as ExcelJS from "exceljs";
 import { saveAs } from "file-saver";
 
@@ -63,7 +62,6 @@ import {
 
 import { AnimatePresence, motion } from "framer-motion";
 
-/* ---------------- Types used by Export (safe minimal) ---------------- */
 type LoadingItem = {
   id?: string;
   varietyCode: string;
@@ -94,7 +92,7 @@ type DispatchBreakdown = {
 };
 type VendorPayment = {
   id: string;
-  vendorId: string; // like "farmer:<id>" or "agent:<id>"
+  vendorId: string;
   vendorKey?: string | null;
   vendorName: string;
   source: "farmer" | "agent";
@@ -105,7 +103,7 @@ type VendorPayment = {
   installments?: number | null;
   installmentNumber?: number | null;
   createdAt: string;
-  sourceRecordId: string; // IMPORTANT: matches loading.id
+  sourceRecordId: string;
 };
 
 type FarmerLoading = {
@@ -152,7 +150,7 @@ type AgentLoading = {
 
 type ClientLoading = {
   id: string;
-  clientId?: string; // sometimes exists as details id
+  clientId?: string;
   clientName: string;
   billNo: string;
   date: string;
@@ -301,12 +299,14 @@ function KpiCard({
   icon,
   tone = "brand",
   sub,
+  variant = "default", // ✅ NEW
 }: {
   title: string;
   value: string;
   icon: React.ReactNode;
   tone?: "brand" | "green" | "red";
   sub?: string;
+  variant?: "default" | "danger"; // ✅ NEW
 }) {
   const ring =
     tone === "green"
@@ -315,22 +315,52 @@ function KpiCard({
       ? "rgba(239,68,68,.18)"
       : "rgba(19,155,195,.18)";
 
+  const isDanger = variant === "danger";
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45 }}
     >
-      <Card className="rounded-2xl border border-slate-200 bg-white shadow-sm hover:shadow-md transition-shadow">
+      <Card
+        className={[
+          "rounded-2xl border shadow-sm hover:shadow-md transition-shadow",
+          isDanger
+            ? "border-red-200 bg-red-50" // ✅ whole card becomes red-ish
+            : "border-slate-200 bg-white", // ✅ normal white
+        ].join(" ")}
+      >
         <CardContent className="p-4 sm:p-5">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <p className="text-xs sm:text-sm text-slate-600">{title}</p>
-              <p className="mt-2 text-xl sm:text-3xl font-extrabold text-slate-900 tabular-nums">
+              <p
+                className={
+                  isDanger
+                    ? "text-xs sm:text-sm text-red-700"
+                    : "text-xs sm:text-sm text-slate-600"
+                }
+              >
+                {title}
+              </p>
+
+              <p
+                className={[
+                  "mt-2 text-xl sm:text-3xl font-extrabold tabular-nums",
+                  isDanger ? "text-red-900" : "text-slate-900",
+                ].join(" ")}
+              >
                 {value}
               </p>
+
               {sub ? (
-                <p className="mt-2 text-xs text-slate-500 line-clamp-1">
+                <p
+                  className={
+                    isDanger
+                      ? "mt-2 text-xs text-red-700/80 line-clamp-1"
+                      : "mt-2 text-xs text-slate-500 line-clamp-1"
+                  }
+                >
                   {sub}
                 </p>
               ) : (
@@ -342,7 +372,9 @@ function KpiCard({
 
             <div
               className="h-11 w-11 rounded-2xl flex items-center justify-center"
-              style={{ backgroundColor: ring }}
+              style={{
+                backgroundColor: isDanger ? "rgba(239,68,68,.16)" : ring,
+              }}
             >
               {icon}
             </div>
@@ -806,23 +838,24 @@ export default function DashboardClient({
         {/* KPI grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 sm:gap-5">
           {(() => {
-            const hasSales = data.today.sales > 0;
-            const purchaseExceedsDispatch =
-              data.today.purchase > data.today.outstanding;
+            const sales = Number(data.today.sales || 0);
+            const purchase = Number(data.today.purchase || 0);
 
-            const salesTone =
-              hasSales && !purchaseExceedsDispatch ? "green" : "red";
+            const isLowSales = sales === 0 || sales < purchase;
+
+            const salesTone: "green" | "red" = isLowSales ? "red" : "green";
 
             return (
               <KpiCard
                 title="Dispatch"
-                value={money(data.today.sales)}
+                value={money(sales)}
                 tone={salesTone}
+                variant={isLowSales ? "danger" : "default"} // ✅ card background
                 icon={
-                  salesTone === "green" ? (
-                    <TrendingUp className="text-green-600 w-6 h-6" />
-                  ) : (
+                  isLowSales ? (
                     <TrendingDown className="text-red-600 w-6 h-6" />
+                  ) : (
+                    <TrendingUp className="text-green-600 w-6 h-6" />
                   )
                 }
                 sub="Total sales value (selected range)"
@@ -845,14 +878,6 @@ export default function DashboardClient({
             icon={<Truck style={{ color: THEME }} className="w-6 h-6" />}
             sub="Count (selected range)"
           />
-
-          {/* <KpiCard
-            title="Dispatch"
-            value={money(data.today.outstanding)}
-            tone="red"
-            icon={<Wallet className="text-red-600 w-6 h-6" />}
-            sub="Receivable (selected range)"
-          /> */}
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-3 items-stretch">
@@ -1211,10 +1236,6 @@ export default function DashboardClient({
     </AnimatePresence>
   );
 }
-
-/* =============================================================================
-   ✅ ExcelJS Export Helpers (Styled, production safe)
-============================================================================= */
 
 function buildSimpleLoadingSheetExcelJS(
   wb: ExcelJS.Workbook,
