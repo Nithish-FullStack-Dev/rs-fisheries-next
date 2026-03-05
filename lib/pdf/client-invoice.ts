@@ -38,7 +38,7 @@ export type ClientInvoiceAssets = {
 
 /* ---------------- COMPANY DETAILS ---------------- */
 const COMPANY = {
-  name: "RS FISHERIES PVT LTD",
+  name: "RS FISHERIES",
   title: "Tax Invoice",
   addressLine: "Hyderabad, Telangana - 500072",
 
@@ -51,7 +51,7 @@ const COMPANY = {
   bankName: "HDFC BANK LIMITED, JUBILEE HILLS ROAD",
   bankAccNo: "7541050000423",
   bankIfsc: "ICIC0007541",
-  accountHolder: "RS FISHERIES PVT LTD",
+  accountHolder: "RS FISHERIES",
 
   defaultPaymentMode: "Credit",
 };

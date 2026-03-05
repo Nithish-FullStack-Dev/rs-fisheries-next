@@ -44,7 +44,7 @@ function TabsList({ children }: { children: React.ReactNode }) {
       role="tablist"
       className={cn(
         "w-full grid grid-cols-2 gap-2",
-        "sm:w-auto sm:inline-flex sm:items-center sm:gap-1 sm:rounded-2xl sm:border sm:border-slate-200 sm:bg-gray-100 sm:p-1 sm:shadow-sm sm:backdrop-blur"
+        "sm:w-auto sm:inline-flex sm:items-center sm:gap-1 sm:rounded-2xl sm:border sm:border-slate-200 sm:bg-gray-100 sm:p-1 sm:shadow-sm sm:backdrop-blur",
       )}
     >
       {children}
@@ -84,7 +84,7 @@ function TabsTrigger({
         "sm:w-auto sm:bg-transparent sm:ring-0 sm:px-4 sm:py-2",
         isActive
           ? "sm:bg-white sm:text-[#139BC3] sm:shadow-sm sm:border sm:border-slate-200"
-          : "sm:text-slate-600 sm:hover:bg-slate-50"
+          : "sm:text-slate-600 sm:hover:bg-slate-50",
       )}
     >
       <span className="flex items-center justify-center sm:justify-start gap-2">
@@ -95,7 +95,7 @@ function TabsTrigger({
       <span
         className={cn(
           "pointer-events-none absolute inset-x-3 -bottom-[8px] h-[2px] rounded-full transition-opacity hidden sm:block",
-          isActive ? "bg-[#139BC3] opacity-100" : "opacity-0"
+          isActive ? "bg-[#139BC3] opacity-100" : "opacity-0",
         )}
       />
     </button>
@@ -116,12 +116,12 @@ export default function ReceiptsPage() {
 
   const [openVendorInvoice, setOpenVendorInvoice] = useState(false);
   const [selectedVendor, setSelectedVendor] = useState<VendorReceipt | null>(
-    null
+    null,
   );
 
   const [openClientInvoice, setOpenClientInvoice] = useState(false);
   const [selectedClient, setSelectedClient] = useState<ClientReceipt | null>(
-    null
+    null,
   );
 
   const [invoiceMap, setInvoiceMap] = useState<Record<string, boolean>>({});
@@ -167,7 +167,7 @@ export default function ReceiptsPage() {
         normalized.sort(
           (a: any, b: any) =>
             new Date(b.date || b.createdAt).getTime() -
-            new Date(a.date || a.createdAt).getTime()
+            new Date(a.date || a.createdAt).getTime(),
         );
 
         setReceipts(normalized);
@@ -182,7 +182,7 @@ export default function ReceiptsPage() {
                   : `/api/invoices/client/by-payment?paymentId=${r.id}`;
               const x = await fetch(endpoint);
               map[r.id] = x.ok;
-            })
+            }),
           );
           setInvoiceMap(map);
         } else {
@@ -241,7 +241,7 @@ export default function ReceiptsPage() {
       const party = (getPartyName(r) || "").toLowerCase();
       const mode = String((r as any).paymentMode || "").toLowerCase();
       const ref = String(
-        (r as any).reference || (r as any).referenceNo || ""
+        (r as any).reference || (r as any).referenceNo || "",
       ).toLowerCase();
       const billNo = String((r as any).billNo || "").toLowerCase();
       const invoiceNo = String((r as any).invoiceNo || "").toLowerCase();
@@ -262,7 +262,7 @@ export default function ReceiptsPage() {
     out.sort(
       (a: any, b: any) =>
         new Date(b.date || b.createdAt).getTime() -
-        new Date(a.date || a.createdAt).getTime()
+        new Date(a.date || a.createdAt).getTime(),
     );
 
     return out;
@@ -303,9 +303,8 @@ export default function ReceiptsPage() {
     }
 
     if (isVendor) {
-      const { generateVendorInvoicePDF } = await import(
-        "@/lib/pdf/vendor-invoice"
-      );
+      const { generateVendorInvoicePDF } =
+        await import("@/lib/pdf/vendor-invoice");
       await generateVendorInvoicePDF(
         jsPDF,
         {
@@ -316,16 +315,15 @@ export default function ReceiptsPage() {
           paymentRef: payment?.paymentRef,
           paymentdetails: payment?.paymentdetails,
         },
-        { logoDataUrl }
+        { logoDataUrl },
       );
     } else {
       const clientRes = await fetch(`/api/client/${r.clientDetailsId}`);
       const clientData = await clientRes.json();
       const client = clientData?.data;
 
-      const { generateClientInvoicePDF } = await import(
-        "@/lib/pdf/client-invoice"
-      );
+      const { generateClientInvoicePDF } =
+        await import("@/lib/pdf/client-invoice");
 
       const baseAmount = Number(invoice?.taxableValue ?? 0);
 
@@ -348,7 +346,7 @@ export default function ReceiptsPage() {
           paymentMode: payment?.paymentMode,
           placeOfSupply: client?.state,
         },
-        { logoDataUrl }
+        { logoDataUrl },
       );
     }
   };
@@ -681,7 +679,7 @@ export default function ReceiptsPage() {
                       >
                         {p}
                       </Button>
-                    )
+                    ),
                   )}
 
                   <Button

@@ -42,7 +42,7 @@ export const drawCompanyHeader = async (
 
     doc.setFont("helvetica", "bold");
     doc.setFontSize(14);
-    doc.text("RS FISHERIES PVT LTD", right, 24, { align: "right" });
+    doc.text("RS FISHERIES", right, 24, { align: "right" });
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);

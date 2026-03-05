@@ -734,6 +734,84 @@ export default function VendorBillsPage() {
             background: #f9fafb;
             font-weight: bold;
           }
+.bill-header-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:8px;
+  font-size:13px;
+}
+
+.bill-title{
+  text-align:center;
+  font-weight:bold;
+  font-size:16px;
+}
+
+.bill-left{
+  width:30%;
+}
+
+.bill-right{
+  width:30%;
+  text-align:right;
+}
+
+.farmer-row{
+  display:grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  align-items:center;
+  margin-bottom:12px;
+  font-size:13px;
+}
+
+.farmer-row-left{
+  text-align:left;
+}
+
+.farmer-row-center{
+  text-align:center;
+}
+
+.farmer-row-right{
+  text-align:right;
+}
+.items-table{
+  width:100%;
+  border-collapse:collapse;
+}
+
+.items-table th,
+.items-table td{
+  border:1.5px solid #000;
+  padding:8px;
+}
+
+.items-table th{
+  background:#f3f4f6;
+}
+
+.totals-section{
+  display:flex;
+  justify-content:space-between;
+  margin-top:10px;
+  font-size:14px;
+}
+
+.amounts{
+  text-align:right;
+}
+
+.net-amount{
+  margin-top:6px;
+}
+  .net-amount-row{
+  width:100%;
+  text-align:right;
+  margin-top:8px;
+  font-size:14px;
+  font-weight:bold;
+}
         </style>
       </head>
       <body>
@@ -1751,16 +1829,15 @@ export default function VendorBillsPage() {
 
               {/* Center company details */}
               <div className="center">
-                <h1>RS FISHERIES PVT LTD</h1>
-                <p className="contact">
+                <h1>RS FISHERIES</h1>
+                {/* <p className="contact">
                   Hyderabad, Telangana - 500081
                   <br />
                   Phone: +919494288997, +919440011704
                   <br />
                   Email: n.vamsikiran4@gmail.com
                   <br />
-                  {/* GSTIN: 36AAAAA0000A1Z5 */}
-                </p>
+                </p> */}
               </div>
 
               {/* Right address
@@ -1777,34 +1854,37 @@ Madhapur, Hyderabad 500081
 
             <hr className="separator" />
 
-            <div className="title">Billing</div>
-
-            <div className="meta">
-              <div className="meta-row">
-                <div>
-                  <strong>Bill No:</strong> {bill.billNo || "—"}
-                </div>
-                <div>
-                  <strong>Date:</strong>{" "}
-                  {bill.date
-                    ? new Date(bill.date).toLocaleDateString("en-IN", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })
-                    : new Date().toLocaleDateString("en-IN", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                </div>
+            <div className="bill-header-row">
+              <div className="bill-left">
+                <strong>Bill No:</strong> {bill.billNo || "—"}
               </div>
-              <div>
+
+              <div className="bill-title">ESTIMATION BILLING</div>
+
+              <div className="bill-right">
+                <strong>Date:</strong>{" "}
+                {bill.date
+                  ? new Date(bill.date).toLocaleDateString("en-IN", {
+                      day: "2-digit",
+                      month: "short",
+                      year: "numeric",
+                    })
+                  : ""}
+              </div>
+            </div>
+
+            <hr className="separator" />
+            <div className="farmer-row">
+              <div className="farmer-row-left">
                 <strong>{activeTab === "farmer" ? "Farmer" : "Agent"}:</strong>{" "}
                 {bill.name || "—"}
-                {bill.village && ` • Village: ${bill.village}`}
-                {bill.vehicleNo && ` • Vehicle: ${bill.vehicleNo}`}
               </div>
+
+              <div className="farmer-row-center">
+                <strong>Village:</strong> {bill.village || "—"}
+              </div>
+
+              {/* <div className="farmer-row-right"></div> */}
             </div>
 
             <table className="items-table">
@@ -1818,12 +1898,13 @@ Madhapur, Hyderabad 500081
                   <th>Total (₹)</th>
                 </tr>
               </thead>
+
               <tbody>
                 {bill.items.map((item, index) => (
                   <tr key={item.id}>
                     <td>{index + 1}</td>
-                    <td>{item.varietyCode || "—"}</td>
-                    <td>{item.noTrays || 0}</td>
+                    <td>{item.varietyCode}</td>
+                    <td>{item.noTrays}</td>
                     <td>{(item.loose || 0).toFixed(2)}</td>
                     <td>{(item.pricePerKg || 0).toFixed(2)}</td>
                     <td>{(item.totalPrice || 0).toFixed(2)}</td>
@@ -1832,13 +1913,28 @@ Madhapur, Hyderabad 500081
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={5} className="text-right">
-                    Grand Total
+                  {/* Total trays label */}
+                  <td></td>
+                  <td className="text-right font-semibold">Total Trays :</td>
+
+                  <td className="text-center font-semibold">
+                    {bill.items.reduce((sum, it) => sum + (it.noTrays || 0), 0)}
                   </td>
-                  <td>{n(bill.totalPrice).toFixed(2)}</td>
+                  <td></td>
+
+                  {/* bill label */}
+                  <td className="text-right font-semibold">Bill Amount :</td>
+
+                  {/* bill value */}
+                  <td className="text-right font-semibold">
+                    {n(bill.totalPrice).toFixed(2)}
+                  </td>
                 </tr>
               </tfoot>
             </table>
+            <div className="net-amount-row">
+              <strong>Net Amount :</strong> __________
+            </div>
           </div>
         ))}
       </div>
