@@ -46,7 +46,7 @@ export type VendorInvoiceAssets = {
 // 9494288997 , 9440011704
 // n.vamsikiran4@gmail.com
 const COMPANY = {
-    name: "RS FISHERIES PVT LTD",
+    name: "RS FISHERIES",
     title: " Receipt ",
     addressLine: "3rd floor, Above Varun Bajaj showroom, ViP Hills , 100 feet Road\n Madhapur, Hyderabad 500081",
 
@@ -59,7 +59,7 @@ const COMPANY = {
     bankName: "HDFC BANK LIMITED, JUBILEE HILLS ROAD",
     bankAccNo: "7541050000423",
     bankIfsc: "ICIC0007541",
-    accountHolder: "RS FISHERIES PVT LTD",
+    accountHolder: "RS FISHERIES",
 
     defaultPaymentMode: "Credit",
 };
