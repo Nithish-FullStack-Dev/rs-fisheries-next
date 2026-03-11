@@ -247,3 +247,137 @@ export const PATCH = withAuth(
     }
   }
 );
+export const DELETE = withAuth(
+  async (_req: Request, context: { params: Promise<{ id: string }> }) => {
+    try {
+      const { id: itemId } = await context.params;
+
+      if (!itemId) {
+        return NextResponse.json(
+          { success: false, message: "Missing item id" },
+          { status: 400 }
+        );
+      }
+
+      const result = await prisma.$transaction(async (tx) => {
+        /* ================= FARMER ITEM ================= */
+
+        const fItem = await tx.formerItem.findUnique({
+          where: { id: itemId },
+        });
+
+        if (fItem) {
+          const loadingId = fItem.formerLoadingId;
+
+          await tx.formerItem.delete({
+            where: { id: itemId },
+          });
+
+          const remaining = await tx.formerItem.findMany({
+            where: { formerLoadingId: loadingId },
+          });
+
+          // If no items left → delete whole bill
+          if (remaining.length === 0) {
+            await tx.formerLoading.delete({
+              where: { id: loadingId },
+            });
+
+            return { deletedBill: true };
+          }
+
+          // recompute totals
+          const totalTrays = remaining.reduce((s, i) => s + i.noTrays, 0);
+          const totalLooseKgs = remaining.reduce((s, i) => s + i.loose, 0);
+          const totalTrayKgs = remaining.reduce((s, i) => s + i.trayKgs, 0);
+          const totalKgs = remaining.reduce((s, i) => s + i.totalKgs, 0);
+          const totalPrice = remaining.reduce((s, i) => s + i.totalPrice, 0);
+
+          await tx.formerLoading.update({
+            where: { id: loadingId },
+            data: {
+              totalTrays,
+              totalLooseKgs,
+              totalTrayKgs,
+              totalKgs,
+              totalPrice,
+              grandTotal: totalPrice,
+            },
+          });
+
+          return { deletedBill: false };
+        }
+
+        /* ================= AGENT ITEM ================= */
+
+        const aItem = await tx.agentItem.findUnique({
+          where: { id: itemId },
+        });
+
+        if (aItem) {
+          const loadingId = aItem.agentLoadingId;
+
+          await tx.agentItem.delete({
+            where: { id: itemId },
+          });
+
+          const remaining = await tx.agentItem.findMany({
+            where: { agentLoadingId: loadingId },
+          });
+
+          if (remaining.length === 0) {
+            await tx.agentLoading.delete({
+              where: { id: loadingId },
+            });
+
+            return { deletedBill: true };
+          }
+
+          const totalTrays = remaining.reduce((s, i) => s + i.noTrays, 0);
+          const totalLooseKgs = remaining.reduce((s, i) => s + i.loose, 0);
+          const totalTrayKgs = remaining.reduce((s, i) => s + i.trayKgs, 0);
+          const totalKgs = remaining.reduce((s, i) => s + i.totalKgs, 0);
+          const totalPrice = remaining.reduce((s, i) => s + i.totalPrice, 0);
+
+          await tx.agentLoading.update({
+            where: { id: loadingId },
+            data: {
+              totalTrays,
+              totalLooseKgs,
+              totalTrayKgs,
+              totalKgs,
+              totalPrice,
+              grandTotal: totalPrice,
+            },
+          });
+
+          return { deletedBill: false };
+        }
+
+        return null;
+      });
+
+      if (!result) {
+        return NextResponse.json(
+          { success: false, message: "Item not found" },
+          { status: 404 }
+        );
+      }
+
+      return NextResponse.json({
+        success: true,
+        ...result,
+      });
+    } catch (error: any) {
+      console.error("DELETE ITEM ERROR:", error);
+
+      return NextResponse.json(
+        {
+          success: false,
+          message: error?.message || "Failed to delete item",
+        },
+        { status: 500 }
+      );
+    }
+  }
+);
