@@ -38,9 +38,10 @@ export type ClientInvoiceAssets = {
 
 /* ---------------- COMPANY DETAILS ---------------- */
 const COMPANY = {
-  name: "RS FISHERIES",
+  name: "RSF",
   title: "Tax Invoice",
-  addressLine: "Hyderabad, Telangana - 500072",
+  addressLine: `Office NH16, Jio PetrolPump,
+     Golden Ice Factory, Kovuru, Nellore, 524366.`,
 
   phone: "+91 40 1234 5678",
   email: "accounts@rsfisheries.com",
