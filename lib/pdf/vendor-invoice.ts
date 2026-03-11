@@ -46,9 +46,10 @@ export type VendorInvoiceAssets = {
 // 9494288997 , 9440011704
 // n.vamsikiran4@gmail.com
 const COMPANY = {
-    name: "RS FISHERIES",
+    name: "RSF",
     title: " Receipt ",
-    addressLine: "3rd floor, Above Varun Bajaj showroom, ViP Hills , 100 feet Road\n Madhapur, Hyderabad 500081",
+    addressLine: `Office NH16, Jio PetrolPump,
+     Golden Ice Factory, Kovuru, Nellore, 524366.`,
 
     phone: "+919494288997 , +919440011704",
     email: "n.vamsikiran4@gmail.com",
