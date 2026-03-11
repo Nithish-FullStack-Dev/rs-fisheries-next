@@ -531,10 +531,10 @@ export default function ClientBillsPage() {
             padding: 0 20px;
           }
           .center h1 {
-            font-size: 20px;
+            font-size: 28px;
             font-weight: bold;
             color: #139BC3;
-            margin: 0 0 4px;
+            margin: 15px 0 0 0;
           }
           .center p {
             font-size: 12px;
@@ -1657,14 +1657,14 @@ export default function ClientBillsPage() {
             <div className="header">
               <div className="logo">
                 <img
-                  src="/assets/favicon.png" // ← confirm this path works
+                  src="/assets/printlogo.jpeg"
                   alt="RS Fisheries Logo"
                   className="w-full h-auto"
                 />
               </div>
 
               <div className="center">
-                <h1>RS FISHERIES</h1>
+                <h1>RSF</h1>
                 {/* <p className="contact">
                   Hyderabad, Telangana - 500081
                   <br />
@@ -1677,8 +1677,7 @@ export default function ClientBillsPage() {
               <div className="address">
                 <strong>Office Address:</strong>
                 <br />
-                3rd floor, Above Varun Bajaj showroom,ViP Hills, 100 feet Road
-                Madhapur, Hyderabad 500081 India
+                NH16,Jio PetrolPump, Golden Ice Factory,Kovuru, Nellore,524366.
               </div>
             </div>
 
