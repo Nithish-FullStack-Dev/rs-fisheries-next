@@ -433,7 +433,7 @@ export default function ClientBillsPage() {
       await refreshRecords();
 
       if (res.data?.deletedBill)
-        toast.success("Item deleted ✅ Bill also removed (last item)");
+        toast.success("Item deleted  Bill also removed (last item)");
       else toast.success("Item deleted");
 
       closeDeleteItemDialog();
