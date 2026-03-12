@@ -1,3 +1,4 @@
+// app\api\agent-loading\route.ts
 import { prisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
@@ -157,9 +158,51 @@ export async function POST(req: Request) {
   }
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const { searchParams } = new URL(req.url);
+
+    const search = searchParams.get("search") || "";
+    const fromDate = searchParams.get("fromDate");
+    const toDate = searchParams.get("toDate");
+
+    const where: any = {};
+
+    // 🔎 SEARCH (BillNo OR AgentName)
+    if (search) {
+      where.OR = [
+        {
+          billNo: {
+            contains: search,
+            mode: "insensitive",
+          },
+        },
+        {
+          agentName: {
+            contains: search,
+            mode: "insensitive",
+          },
+        },
+      ];
+    }
+
+    // 📅 DATE RANGE FILTER
+    if (fromDate || toDate) {
+      where.date = {};
+
+      if (fromDate) {
+        where.date.gte = new Date(fromDate);
+      }
+
+      if (toDate) {
+        const end = new Date(toDate);
+        end.setHours(23, 59, 59, 999);
+        where.date.lte = end;
+      }
+    }
+
     const rows = await prisma.agentLoading.findMany({
+      where,
       include: {
         items: true,
         vehicle: { select: { vehicleNumber: true } },

@@ -19,6 +19,7 @@ import { PlusCircle, Save, Trash2 } from "lucide-react";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { fi } from "date-fns/locale";
 import { Textarea } from "@/components/ui/textarea";
+import AgentLoadingList from "./AgentLoadingList";
 
 const TRAY_WEIGHT = 35;
 const DEDUCTION_PERCENT = 5;
@@ -73,9 +74,11 @@ export default function AgentLoading() {
 
   const isOtherVehicle = vehicleId === "__OTHER__";
 
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingBillNo, setEditingBillNo] = useState<string | null>(null);
   // ✅ hide used vehicles without reload
   const [usedVehicleIds, setUsedVehicleIds] = useState<Set<string>>(
-    () => new Set()
+    () => new Set(),
   );
 
   const [items, setItems] = useState<ItemRow[]>([
@@ -136,7 +139,37 @@ export default function AgentLoading() {
       setOtherVehicleNo("");
     }
   }, [useVehicle]);
+  const handleEditLoading = (loading: any) => {
+    setEditingId(loading.id);
+    setEditingBillNo(loading.billNo);
 
+    setAgentName(loading.agentName || "");
+    setVillage(loading.village || "");
+    setDate(new Date(loading.date).toISOString().slice(0, 10));
+
+    setUseVehicle(Boolean(loading.vehicleId || loading.vehicleNo));
+    setVehicleId(loading.vehicleId || "");
+    setOtherVehicleNo(loading.vehicleNo || "");
+
+    const rows = loading.items.map((i: any) => {
+      const trayKgs = i.noTrays * TRAY_WEIGHT;
+      const totalKgs = trayKgs + i.loose;
+
+      return {
+        id: crypto.randomUUID(),
+        varietyCode: i.varietyCode,
+        name: getVarietyName(i.varietyCode),
+        noTrays: i.noTrays,
+        loose: i.loose,
+        trayKgs,
+        totalKgs,
+      };
+    });
+
+    setItems(rows);
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   // ✅ Vehicles filtered (hide used instantly; keep selected visible)
   const availableVehicles = useMemo(() => {
     return (vehicles ?? []).filter((v: any) => {
@@ -179,7 +212,7 @@ export default function AgentLoading() {
         }
 
         return { ...row, [field]: value } as ItemRow;
-      })
+      }),
     );
   };
 
@@ -200,13 +233,13 @@ export default function AgentLoading() {
 
   const deleteRow = (id: string) => {
     setItems((prev) =>
-      prev.length === 1 ? prev : prev.filter((r) => r.id !== id)
+      prev.length === 1 ? prev : prev.filter((r) => r.id !== id),
     );
   };
 
   const totalKgs = useMemo(
     () => items.reduce((sum, r) => sum + safeNum(r.totalKgs), 0),
-    [items]
+    [items],
   );
 
   const totalTrays = useMemo(
@@ -215,7 +248,7 @@ export default function AgentLoading() {
         sum = sum + safeNum(item.noTrays);
         return sum;
       }, 0),
-    [items]
+    [items],
   );
 
   const grandTotal = useMemo(() => {
@@ -224,6 +257,9 @@ export default function AgentLoading() {
   }, [totalKgs, useVehicle]);
 
   const resetForm = () => {
+    setEditingId(null);
+    setEditingBillNo(null);
+
     setAgentName("");
     setVillage("");
     setDate(todayYMD());
@@ -253,10 +289,11 @@ export default function AgentLoading() {
     }
 
     const name = agentName.trim();
-    if (!name) return toast.error("Enter Agent Name"), false;
+    if (!name) return (toast.error("Enter Agent Name"), false);
     if (!AGENT_NAME_REGEX.test(name))
       return (
-        toast.error("Agent Name should contain only letters and spaces"), false
+        toast.error("Agent Name should contain only letters and spaces"),
+        false
       );
 
     // const vil = village.trim();
@@ -265,7 +302,7 @@ export default function AgentLoading() {
     //     toast.error("Village should contain only letters and spaces"), false
     //   );
 
-    if (!date.trim()) return toast.error("Select Date"), false;
+    if (!date.trim()) return (toast.error("Select Date"), false);
 
     // if (!vehicleId.trim()) return toast.error("Select Vehicle"), false;
     // if (isOtherVehicle && !otherVehicleNo.trim())
@@ -273,7 +310,7 @@ export default function AgentLoading() {
 
     // active rows = any qty
     const activeRows = items.filter(
-      (r) => safeNum(r.noTrays) > 0 || safeNum(r.loose) > 0
+      (r) => safeNum(r.noTrays) > 0 || safeNum(r.loose) > 0,
     );
 
     if (activeRows.length === 0) {
@@ -299,62 +336,55 @@ export default function AgentLoading() {
 
   const handleSave = async () => {
     if (!validateForm()) return;
+
     setLoading(true);
 
     const activeRows = items.filter(
-      (r) => safeNum(r.noTrays) > 0 || safeNum(r.loose) > 0
+      (r) => safeNum(r.noTrays) > 0 || safeNum(r.loose) > 0,
     );
 
     const fishCodeValue = activeRows[0].varietyCode.toUpperCase();
 
-    const totals = {
-      totalTrays: items.reduce((a, b) => a + safeNum(b.noTrays), 0),
-      totalLooseKgs: items.reduce((a, b) => a + safeNum(b.loose), 0),
-      totalTrayKgs: items.reduce(
-        (a, b) => a + safeNum(b.noTrays) * TRAY_WEIGHT,
-        0
-      ),
-      totalKgs,
+    const payload = {
+      agentName: agentName.trim(),
+      fishCode: fishCodeValue,
+      village: village.trim(),
+      date,
+
+      useVehicle,
+
+      vehicleId: useVehicle && !isOtherVehicle ? vehicleId : null,
+      vehicleNo: useVehicle && isOtherVehicle ? otherVehicleNo.trim() : null,
+
+      items: activeRows.map((r) => ({
+        varietyCode: r.varietyCode,
+        noTrays: safeNum(r.noTrays),
+        loose: safeNum(r.loose),
+      })),
     };
 
     try {
-      await axios.post("/api/agent-loading", {
-        agentName: agentName.trim(),
-        fishCode: fishCodeValue,
-        billNo,
-        village: village.trim(),
-        date,
+      if (editingId) {
+        // ✅ UPDATE EXISTING
+        await axios.put(`/api/agent-loading/${editingId}`, payload);
 
-        useVehicle,
-
-        vehicleId: useVehicle && !isOtherVehicle ? vehicleId : null,
-        vehicleNo: useVehicle && isOtherVehicle ? otherVehicleNo.trim() : null,
-
-        items: activeRows.map((r) => ({
-          varietyCode: r.varietyCode,
-          noTrays: safeNum(r.noTrays),
-          loose: safeNum(r.loose),
-        })),
-      });
-
-      toast.success("Agent loading saved!");
-
-      queryClient.invalidateQueries({ queryKey: ["assigned-vehicles"] });
-
-      // ✅ hide vehicle instantly without refresh
-      if (!isOtherVehicle && vehicleId) {
-        setUsedVehicleIds((prev) => {
-          const next = new Set(prev);
-          next.add(vehicleId);
-          return next;
+        toast.success("Agent loading updated successfully!");
+      } else {
+        // ✅ CREATE NEW
+        await axios.post("/api/agent-loading", {
+          ...payload,
+          billNo,
         });
+
+        toast.success("Agent loading saved!");
       }
 
+      queryClient.invalidateQueries({ queryKey: ["agent-loadings"] });
+      queryClient.invalidateQueries({ queryKey: ["assigned-vehicles"] });
+      queryClient.invalidateQueries({ queryKey: ["agent-bill-no"] });
       resetForm();
     } catch (err: any) {
-      toast.error(
-        err?.response?.data?.message || "Failed to save agent loading"
-      );
+      toast.error(err?.response?.data?.message || "Failed to save");
     } finally {
       setLoading(false);
     }
@@ -375,11 +405,11 @@ export default function AgentLoading() {
 
         <Button
           onClick={handleSave}
-          className="w-full sm:w-auto rounded-xl px-5 bg-[#139BC3] text-white hover:bg-[#1088AA] shadow-[0_12px_24px_-14px_rgba(19,155,195,0.7)]"
           disabled={loading}
+          className="w-full sm:w-auto rounded-xl px-5 bg-[#139BC3] text-white hover:bg-[#1088AA]"
         >
           <Save className="h-4 w-4 mr-2" />
-          Save
+          {editingId ? "Update" : "Save"}
         </Button>
       </div>
 
@@ -390,7 +420,7 @@ export default function AgentLoading() {
             <FieldLabel>Agent Bill No</FieldLabel>
             <Input
               readOnly
-              value={billNo}
+              value={editingBillNo || billNo}
               className="bg-slate-50 font-semibold border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
             />
           </Field>
@@ -719,7 +749,7 @@ export default function AgentLoading() {
 
             <div className="flex justify-end items-center gap-4">
               <span className="text-slate-500">
-                Grand Total (after 5% deduction):
+                Grand Total {useVehicle ? "(No deduction)" : "(5% deduction)"}:
               </span>
               <span className="text-2xl font-bold">
                 {grandTotal}
@@ -729,6 +759,7 @@ export default function AgentLoading() {
           </div>
         </div>
       </CardContent>
+      <AgentLoadingList onEdit={handleEditLoading} />
     </Card>
   );
 }

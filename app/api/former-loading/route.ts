@@ -164,9 +164,51 @@ export async function POST(req: Request) {
   }
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
+    const { searchParams } = new URL(req.url);
+
+    const search = searchParams.get("search") || "";
+    const fromDate = searchParams.get("fromDate");
+    const toDate = searchParams.get("toDate");
+
+    const where: any = {};
+
+    // 🔎 Search filter
+    if (search) {
+      where.OR = [
+        {
+          billNo: {
+            contains: search,
+            mode: "insensitive",
+          },
+        },
+        {
+          FarmerName: {
+            contains: search,
+            mode: "insensitive",
+          },
+        },
+      ];
+    }
+
+    // 📅 Date filter
+    if (fromDate || toDate) {
+      where.date = {};
+
+      if (fromDate) {
+        where.date.gte = new Date(fromDate);
+      }
+
+      if (toDate) {
+        const end = new Date(toDate);
+        end.setHours(23, 59, 59, 999);
+        where.date.lte = end;
+      }
+    }
+
     const rows = await prisma.formerLoading.findMany({
+      where,
       include: {
         items: true,
         vehicle: { select: { vehicleNumber: true } },
@@ -201,15 +243,16 @@ export async function GET() {
         ...l,
         vehicleNo: l.vehicle?.vehicleNumber ?? l.vehicleNo ?? "",
         dispatchBreakdown: breakdown,
-      };
+      }; 
     });
 
     return NextResponse.json({ success: true, data }, { status: 200 });
   } catch (err: unknown) {
     console.error("FormerLoading GET error:", err);
+
     return NextResponse.json(
       { success: false, message: "Failed to fetch farmer loadings" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -6,14 +6,14 @@ export const runtime = "nodejs";
 
 export async function DELETE(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
 
   if (!id) {
     return NextResponse.json(
       { message: "FormerLoading ID required" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -51,7 +51,85 @@ export async function DELETE(
     console.error("FormerLoading DELETE error:", error);
     return NextResponse.json(
       { message: "Delete failed", error: error.message },
-      { status: 500 }
+      { status: 500 },
+    );
+  }
+}
+
+const TRAY_KG = 35;
+
+export async function PUT(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  try {
+    const { id } = await params;
+    const body = await req.json();
+
+    if (!body.items || !Array.isArray(body.items)) {
+      return NextResponse.json(
+        { success: false, message: "Items are required" },
+        { status: 400 },
+      );
+    }
+
+    const items = body.items.map((i: any) => {
+      const trayKgs = i.noTrays * TRAY_KG;
+      const totalKgs = trayKgs + i.loose;
+
+      return {
+        formerLoadingId: id,
+        varietyCode: i.varietyCode,
+        noTrays: i.noTrays,
+        trayKgs,
+        loose: i.loose,
+        totalKgs,
+      };
+    });
+
+    const totalTrays = items.reduce((s, i) => s + i.noTrays, 0);
+    const totalLooseKgs = items.reduce((s, i) => s + i.loose, 0);
+    const totalTrayKgs = items.reduce((s, i) => s + i.trayKgs, 0);
+    const totalKgs = items.reduce((s, i) => s + i.totalKgs, 0);
+
+    const result = await prisma.$transaction(async (tx) => {
+      await tx.formerItem.deleteMany({
+        where: { formerLoadingId: id },
+      });
+
+      await tx.formerItem.createMany({
+        data: items,
+      });
+
+      return tx.formerLoading.update({
+        where: { id },
+        data: {
+          FarmerName: body.FarmerName,
+          village: body.village,
+          date: new Date(body.date),
+          totalTrays,
+          totalLooseKgs,
+          totalTrayKgs,
+          totalKgs,
+        },
+        include: { items: true },
+      });
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: result,
+    });
+  } catch (err: any) {
+    console.error("FormerLoading PUT error:", err);
+
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Update failed",
+        error: err.message,
+      },
+      { status: 500 },
     );
   }
 }

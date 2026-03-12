@@ -6,14 +6,14 @@ export const runtime = "nodejs";
 
 export async function DELETE(
   req: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
 
   if (!id) {
     return NextResponse.json(
       { message: "AgentLoading ID required" },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -50,7 +50,94 @@ export async function DELETE(
     console.error("AgentLoading DELETE error:", error);
     return NextResponse.json(
       { message: "Delete failed", error: error.message },
-      { status: 500 }
+      { status: 500 },
+    );
+  }
+}
+export async function PUT(
+  req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const { id } = await params;
+  const body = await req.json();
+
+  if (!id) {
+    return NextResponse.json(
+      { success: false, message: "AgentLoading ID required" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const exists = await prisma.agentLoading.findUnique({
+      where: { id },
+      select: { id: true },
+    });
+
+    if (!exists) {
+      return NextResponse.json(
+        { success: false, message: "Bill not found" },
+        { status: 404 },
+      );
+    }
+
+    // remove old items
+    await prisma.agentItem.deleteMany({
+      where: { agentLoadingId: id },
+    });
+
+    const items = body.items.map((i: any) => {
+      const trayKgs = i.noTrays * 35;
+      const totalKgs = trayKgs + i.loose;
+
+      return {
+        varietyCode: i.varietyCode,
+        noTrays: i.noTrays,
+        loose: i.loose,
+        trayKgs,
+        totalKgs,
+      };
+    });
+
+    const totalKgs = items.reduce((sum: number, i: any) => sum + i.totalKgs, 0);
+
+    const grandTotal = body.useVehicle
+      ? Math.round(totalKgs)
+      : Math.round(totalKgs * 0.95);
+
+    const updated = await prisma.agentLoading.update({
+      where: { id },
+      data: {
+        agentName: body.agentName,
+        village: body.village || "",
+        date: new Date(body.date),
+
+        totalKgs,
+        grandTotal,
+
+        items: {
+          create: items,
+        },
+      },
+      include: {
+        items: true,
+      },
+    });
+
+    return NextResponse.json({
+      success: true,
+      data: updated,
+    });
+  } catch (err: any) {
+    console.error("AgentLoading PUT error:", err);
+
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Failed to update agent loading",
+        error: err.message,
+      },
+      { status: 500 },
     );
   }
 }
