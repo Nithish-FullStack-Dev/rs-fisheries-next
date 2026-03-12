@@ -3,7 +3,14 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
-
+type FormerItemPayload = {
+  formerLoadingId: string;
+  varietyCode: string;
+  noTrays: number;
+  trayKgs: number;
+  loose: number;
+  totalKgs: number;
+};
 export async function DELETE(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -73,7 +80,7 @@ export async function PUT(
       );
     }
 
-    const items = body.items.map((i: any) => {
+    const items: FormerItemPayload[] = body.items.map((i: any) => {
       const trayKgs = i.noTrays * TRAY_KG;
       const totalKgs = trayKgs + i.loose;
 
@@ -87,10 +94,10 @@ export async function PUT(
       };
     });
 
-    const totalTrays = items.reduce((s, i) => s + i.noTrays, 0);
-    const totalLooseKgs = items.reduce((s, i) => s + i.loose, 0);
-    const totalTrayKgs = items.reduce((s, i) => s + i.trayKgs, 0);
-    const totalKgs = items.reduce((s, i) => s + i.totalKgs, 0);
+    const totalTrays = items.reduce((s: number, i) => s + i.noTrays, 0);
+    const totalLooseKgs = items.reduce((s: number, i) => s + i.loose, 0);
+    const totalTrayKgs = items.reduce((s: number, i) => s + i.trayKgs, 0);
+    const totalKgs = items.reduce((s: number, i) => s + i.totalKgs, 0);
 
     const result = await prisma.$transaction(async (tx) => {
       await tx.formerItem.deleteMany({
