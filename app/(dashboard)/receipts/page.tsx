@@ -293,7 +293,7 @@ export default function ReceiptsPage() {
     const { jsPDF } = await import("jspdf");
     await import("jspdf-autotable");
 
-    const LOGO_PATH = "/assets/favicon.png";
+    const LOGO_PATH = "/assets/printlogo.jpeg";
     let logoDataUrl: string | undefined;
     try {
       const { loadImageAsDataUrl } = await import("@/lib/pdf/client-invoice");

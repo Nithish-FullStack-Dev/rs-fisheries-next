@@ -38,7 +38,7 @@ export type ClientInvoiceAssets = {
 
 /* ---------------- COMPANY DETAILS ---------------- */
 const COMPANY = {
-  name: "RSF",
+  name: "R S F",
   title: "Tax Invoice",
   addressLine: `Office NH16, Jio PetrolPump,
      Golden Ice Factory, Kovuru, Nellore, 524366.`,
@@ -307,7 +307,7 @@ async function renderClientInvoice(
   const headerH = 24;
   rect(doc, L, y, W, headerH);
 
-  const logoAreaW = 26;
+  const logoAreaW = 36;
   const rightAreaW = 62;
   const centerAreaW = W - logoAreaW - rightAreaW;
 
@@ -315,13 +315,15 @@ async function renderClientInvoice(
   const centerX = L + logoAreaW;
   const rightX = centerX + centerAreaW;
 
+  const logoPadding = 3;
+
   await addImageSafe(
     doc,
     assets?.logoDataUrl,
-    logoX,
-    y,
-    logoAreaW,
-    headerH,
+    logoX + logoPadding,
+    y + logoPadding,
+    logoAreaW - logoPadding * 2,
+    headerH - logoPadding * 2,
     assets?.logoWidth,
     assets?.logoHeight
   );

@@ -66,10 +66,10 @@ export default function LoginPage() {
 
         <div className="relative z-10 flex items-start justify-center flex-col p-12 text-white max-w-lg">
           <Image
-            src="/assets/favicon.jpg"
+            src="/assets/printlogo.jpeg"
             alt="RS Fisheries Logo"
-            width={140}
-            height={140}
+            width={240}
+            height={240}
             priority
             className="rounded-xl shadow-2xl mb-8"
           />
@@ -100,7 +100,7 @@ export default function LoginPage() {
           {/* Mobile Logo */}
           <div className="lg:hidden pt-10 text-center">
             <Image
-              src="/assets/favicon.jpg"
+              src="/assets/printlogo.jpeg"
               alt="RS Fisheries Logo"
               width={110}
               height={110}

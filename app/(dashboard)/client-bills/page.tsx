@@ -53,12 +53,14 @@ interface ClientItem {
   totalKgs?: number;
   pricePerKg?: number;
   totalPrice?: number;
+  pendingBalance?: number;
 }
 
 interface ClientRecord {
   id: string;
   billNo?: string;
   date?: string;
+  clientId?: string;
   clientName?: string;
   vehicleNo?: string;
   vehicleId?: string | null;
@@ -68,6 +70,7 @@ interface ClientRecord {
   totalKgs?: number;
   grandTotal?: number;
   totalPrice?: number;
+  pendingBalance?: number;
 }
 
 type UIItem = ClientItem & {
@@ -94,6 +97,7 @@ type BillRow = {
   varietyCount: number;
   uniqueVarietyCount: number;
   totalPrice: number; // ✅ ALWAYS SUM OF ITEMS
+  pendingBalance?: number;
 };
 
 const fetchClientLoadings = async (): Promise<ClientRecord[]> => {
@@ -162,10 +166,13 @@ export default function ClientBillsPage() {
   const [addTrays, setAddTrays] = useState<number>(0);
   const [addLoose, setAddLoose] = useState<number>(0);
   const [addingItem, setAddingItem] = useState(false);
-
+  const [clientBalances, setClientBalances] = useState<Record<string, number>>(
+    {},
+  );
   const refreshRecords = useCallback(async () => {
     const data = await fetchClientLoadings();
     setRecords(data);
+    await fetchClientBalances(data);
   }, []);
 
   const {
@@ -186,17 +193,50 @@ export default function ClientBillsPage() {
 
   useEffect(() => {
     let mounted = true;
-    setLoading(true);
 
-    refreshRecords()
-      .catch(() => toast.error("Failed to load client bills"))
-      .finally(() => mounted && setLoading(false));
+    const loadData = async () => {
+      try {
+        setLoading(true);
+
+        const data = await fetchClientLoadings();
+        if (!mounted) return;
+
+        setRecords(data);
+
+        await fetchClientBalances(data); // ⭐ IMPORTANT
+      } catch {
+        toast.error("Failed to load client bills");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    loadData();
 
     return () => {
       mounted = false;
     };
-  }, [refreshRecords]);
+  }, []);
+  const fetchClientBalances = async (records: ClientRecord[]) => {
+    const balances: Record<string, number> = {};
 
+    const uniqueClientIds = [
+      ...new Set(records.map((r) => r.clientId).filter(Boolean)),
+    ] as string[];
+
+    await Promise.all(
+      uniqueClientIds.map(async (id) => {
+        try {
+          const res = await axios.get(`/api/client/${id}`);
+          balances[id] = res.data?.data?.pendingBalance ?? 0;
+        } catch {
+          balances[id] = 0;
+        }
+      }),
+    );
+
+    setClientBalances(balances);
+  };
   // New badge logic
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -218,7 +258,9 @@ export default function ClientBillsPage() {
     const base: BillRow[] = records.map((rec) => {
       const hasVehicle =
         Boolean(rec.vehicleId) || Boolean((rec.vehicleNo || "").trim());
-
+      const pendingBalance = rec.clientId
+        ? (clientBalances[rec.clientId] ?? 0)
+        : 0;
       const items: UIItem[] = (rec.items || []).map((it) => {
         const totalKgs = n(it.totalKgs);
         const pricePerKg = n(it.pricePerKg);
@@ -238,6 +280,7 @@ export default function ClientBillsPage() {
           date: rec.date?.split("T")[0] || "",
           createdAt: rec.createdAt || rec.date || "",
           hasVehicle,
+          pendingBalance,
         };
       });
 
@@ -264,6 +307,7 @@ export default function ClientBillsPage() {
         varietyCount,
         uniqueVarietyCount,
         totalPrice: computedTotal,
+        pendingBalance,
       };
     });
 
@@ -291,7 +335,7 @@ export default function ClientBillsPage() {
     });
 
     return filtered;
-  }, [records, searchTerm, sortOrder, fromDate, toDate]);
+  }, [records, clientBalances, searchTerm, sortOrder, fromDate, toDate]);
 
   // ✅ map itemId -> item for preview calculations
   const itemById = useMemo(() => {
@@ -500,6 +544,7 @@ export default function ClientBillsPage() {
     <html>
       <head>
         <title>Bill ${billId}</title>
+        <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Cinzel+Decorative:wght@700&display=swap" rel="stylesheet">
         <style>
           @page {
             size: A4;
@@ -515,37 +560,53 @@ export default function ClientBillsPage() {
           .header {
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 20px;
+            align-items: center;
           }
+
+          /* Logo */
           .logo {
-            width: 140px;
+            width: 120px;
           }
+
           .logo img {
             width: 100%;
             height: auto;
           }
+
+          /* Center Section */
           .center {
             flex: 1;
             text-align: center;
-            padding: 0 20px;
           }
-          .center h1 {
-            font-size: 28px;
-            font-weight: bold;
-            color: #139BC3;
-            margin: 15px 0 0 0;
-          }
-          .center p {
-            font-size: 12px;
-            line-height: 1.4;
-            margin: 0;
-          }
+
+       .company-short {
+  font-family: "Cinzel Decorative", serif;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: #1f5f8b;
+  margin: 0;
+}
+
+.company-full {
+  font-family: "Cinzel", serif;
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+          /* Address */
           .address {
-            width: 180px;
-            font-size: 12px;
-            line-height: 1.4;
+            width: 220px;
             text-align: right;
+            font-size: 12px;
+            line-height: 1.5;
+          }
+
+          .address strong {
+            font-size: 13px;
           }
           hr {
             border: none;
@@ -664,7 +725,7 @@ export default function ClientBillsPage() {
 .net-amount{
   margin-top:6px;
 }
-  .net-amount-row{
+  .net-amount-row, .balance-row{
   width:100%;
   text-align:right;
   margin-top:8px;
@@ -1655,29 +1716,31 @@ export default function ClientBillsPage() {
           >
             {/* Header */}
             <div className="header">
+              {/* Logo */}
               <div className="logo">
                 <img
                   src="/assets/printlogo.jpeg"
                   alt="RS Fisheries Logo"
-                  className="w-full h-auto"
+                  className="logo-img"
                 />
               </div>
 
+              {/* Company Name */}
               <div className="center">
-                <h1>RSF</h1>
-                {/* <p className="contact">
-                  Hyderabad, Telangana - 500081
-                  <br />
-                  Phone: +919494288997, +919440011704
-                  <br />
-                  Email: n.vamsikiran4@gmail.com
-                </p> */}
+                <h1 className="company-short">RSF</h1>
+                <h2 className="company-full">Rama Satyanarayana Fisheries</h2>
               </div>
 
+              {/* Address */}
               <div className="address">
-                <strong>Office Address:</strong>
-                <br />
-                NH16,Jio PetrolPump, Golden Ice Factory,Kovuru, Nellore,524366.
+                <strong>Office Address</strong>
+                <p>
+                  NH16, Jio Petrol Pump
+                  <br />
+                  Golden Ice Factory
+                  <br />
+                  Kovuru, Nellore - 524366
+                </p>
               </div>
             </div>
 
@@ -1785,8 +1848,13 @@ export default function ClientBillsPage() {
                 </tr>
               </tfoot>
             </table>
+            <div className="balance-row">
+              <strong>Pending Balance :</strong> ₹
+              {/* {bill?.pendingBalance.toLocaleString()} */}
+              {bill?.pendingBalance}
+            </div>
             <div className="net-amount-row">
-              <strong>Net Amount :</strong> __________
+              <strong>Net Amount :</strong> {bill?.totalPrice}
             </div>
           </div>
         ))}

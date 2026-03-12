@@ -200,8 +200,38 @@ export const GET = apiHandler(async (_req: Request, context: any) => {
     },
   });
 
+  if (!client) {
+    throw new ApiError(404, "Client not found");
+  }
+
+  // ✅ STEP 2: Calculate totals
+  const totalLoadings = client.loadings.reduce(
+    (sum, l) => sum + (l.grandTotal || 0),
+    0
+  );
+
+  const totalPayments = client.payments.reduce(
+    (sum, p) => sum + (p.amount || 0),
+    0
+  );
+
+  const pendingBalance =
+    (client.openingBalance || 0) +
+    totalLoadings -
+    totalPayments;
+
+  // ✅ STEP 3: Return with balance data
   return NextResponse.json(
-    new ApiResponse(200, client, "Client fetched successfully"),
+    new ApiResponse(
+      200,
+      {
+        ...client,
+        totalLoadings,
+        totalPayments,
+        pendingBalance,
+      },
+      "Client fetched successfully"
+    ),
     { status: 200 }
   );
 });

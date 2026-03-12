@@ -19,6 +19,7 @@ import {
 import { Save, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
+import FarmerLoadingList from "./FarmerLoadingList";
 
 const TRAY_WEIGHT = 35;
 const DEDUCTION_PERCENT = 5;
@@ -78,10 +79,11 @@ export default function FormerLoading() {
   const [otherVehicleNo, setOtherVehicleNo] = useState("");
 
   const [loading, setLoading] = useState(false);
-
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingBillNo, setEditingBillNo] = useState<string | null>(null);
   // ✅ local set to hide vehicles without page reload
   const [usedVehicleIds, setUsedVehicleIds] = useState<Set<string>>(
-    () => new Set()
+    () => new Set(),
   );
 
   const isOtherVehicle = vehicleId === OTHER_VEHICLE_VALUE;
@@ -104,11 +106,14 @@ export default function FormerLoading() {
     if (isErrorBillNo) toast.error("Failed to load bill number");
   }, [isErrorBillNo]);
 
-  const displayBillNo = isLoadingBillNo
-    ? "Loading..."
-    : isErrorBillNo
-    ? "Failed to load"
-    : billNoData?.billNo ?? "";
+  const displayBillNo =
+    editingId && editingBillNo
+      ? editingBillNo
+      : isLoadingBillNo
+        ? "Loading..."
+        : isErrorBillNo
+          ? "Failed to load"
+          : (billNoData?.billNo ?? "");
 
   // Vehicles
   const { data: vehicles = [] } = useQuery<VehicleRow[]>({
@@ -152,12 +157,12 @@ export default function FormerLoading() {
 
   const totalKgs = useMemo(
     () => items.reduce((sum, item) => sum + calculateRowTotal(item), 0),
-    [items]
+    [items],
   );
 
   const totalTrays = useMemo(
     () => items.reduce((sum, item) => sum + safeNum(item.noTrays), 0),
-    [items]
+    [items],
   );
 
   // ✅ Same logic as client:
@@ -178,6 +183,9 @@ export default function FormerLoading() {
   }, [useVehicle]);
 
   const resetForm = () => {
+    setEditingId(null);
+    setEditingBillNo(null);
+
     setFarmerName("");
     setVillage("");
     setDate(todayYMD());
@@ -203,7 +211,7 @@ export default function FormerLoading() {
 
   const removeRow = (id: string) => {
     setItems((prev) =>
-      prev.length === 1 ? prev : prev.filter((r) => r.id !== id)
+      prev.length === 1 ? prev : prev.filter((r) => r.id !== id),
     );
   };
 
@@ -218,25 +226,50 @@ export default function FormerLoading() {
 
         const n = Math.max(0, safeNum(value));
         return { ...r, [field]: n } as ItemRow;
-      })
+      }),
     );
   };
+  const handleEditLoading = (loading: any) => {
+    setEditingId(loading.id);
+    setEditingBillNo(loading.billNo);
 
+    setFarmerName(loading.FarmerName || "");
+    setVillage(loading.village || "");
+    setDate(new Date(loading.date).toISOString().slice(0, 10));
+
+    setUseVehicle(Boolean(loading.vehicleId || loading.vehicleNo));
+    setVehicleId(loading.vehicleId || "");
+    setOtherVehicleNo(loading.vehicleNo || "");
+
+    const rows = loading.items.map((i: any) => ({
+      id: crypto.randomUUID(),
+      varietyCode: i.varietyCode,
+      noTrays: i.noTrays,
+      loose: i.loose,
+    }));
+
+    setItems(rows);
+
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
   // ---- VALIDATION ----
   const validateForm = () => {
-    if (isLoadingBillNo || isErrorBillNo || !billNoData?.billNo) {
+    if (
+      !editingId &&
+      (isLoadingBillNo || isErrorBillNo || !billNoData?.billNo)
+    ) {
       toast.error("Bill number not available");
       return false;
     }
 
     const name = farmerName.trim();
-    if (!name) return toast.error("Enter Farmer Name"), false;
+    if (!name) return (toast.error("Enter Farmer Name"), false);
     if (!NAME_REGEX.test(name)) {
       toast.error("Farmer Name should contain only letters and spaces");
       return false;
     }
 
-    if (!date) return toast.error("Select Date"), false;
+    if (!date) return (toast.error("Select Date"), false);
 
     // ✅ Vehicle validation ONLY if checkbox checked
     if (useVehicle) {
@@ -251,7 +284,7 @@ export default function FormerLoading() {
     }
 
     const activeRows = items.filter(
-      (i) => safeNum(i.noTrays) > 0 || safeNum(i.loose) > 0
+      (i) => safeNum(i.noTrays) > 0 || safeNum(i.loose) > 0,
     );
     if (activeRows.length === 0) {
       toast.error("Enter at least one item");
@@ -275,42 +308,51 @@ export default function FormerLoading() {
     setLoading(true);
 
     const activeRows = items.filter(
-      (i) => safeNum(i.noTrays) > 0 || safeNum(i.loose) > 0
+      (i) => safeNum(i.noTrays) > 0 || safeNum(i.loose) > 0,
     );
 
     const fishCodeValue = String(
-      activeRows[0]?.varietyCode || ""
+      activeRows[0]?.varietyCode || "",
     ).toUpperCase();
+
     if (!fishCodeValue) {
       toast.error("Select at least one variety");
       setLoading(false);
       return;
     }
 
+    const payload = {
+      fishCode: fishCodeValue,
+      FarmerName: farmerName.trim(),
+      village: village.trim(),
+      date,
+      useVehicle,
+      vehicleId: useVehicle && !isOtherVehicle ? vehicleId : null,
+      vehicleNo: useVehicle && isOtherVehicle ? otherVehicleNo.trim() : null,
+      items: activeRows.map((i) => ({
+        varietyCode: i.varietyCode,
+        noTrays: safeNum(i.noTrays),
+        loose: safeNum(i.loose),
+      })),
+    };
+
     try {
-      await axios.post("/api/former-loading", {
-        billNo: billNoData!.billNo,
-        fishCode: fishCodeValue,
-        FarmerName: farmerName.trim(),
-        village: village.trim(),
-        date,
+      if (editingId) {
+        // UPDATE EXISTING RECORD
+        await axios.put(`/api/former-loading/${editingId}`, payload);
 
-        // ✅ send flag like client
-        useVehicle,
+        toast.success("Farmer loading updated successfully!");
+      } else {
+        // CREATE NEW RECORD
+        await axios.post("/api/former-loading", {
+          ...payload,
+          billNo: billNoData!.billNo,
+        });
 
-        vehicleId: useVehicle && !isOtherVehicle ? vehicleId : null,
-        vehicleNo: useVehicle && isOtherVehicle ? otherVehicleNo.trim() : null,
+        toast.success("Farmer loading saved successfully!");
+      }
 
-        items: activeRows.map((i) => ({
-          varietyCode: i.varietyCode,
-          noTrays: safeNum(i.noTrays),
-          loose: safeNum(i.loose),
-        })),
-      });
-
-      toast.success("Farmer loading saved successfully!");
-
-      // ✅ hide vehicle instantly (only for selected vehicleId)
+      // hide used vehicle instantly
       if (useVehicle && !isOtherVehicle && vehicleId) {
         setUsedVehicleIds((prev) => {
           const next = new Set(prev);
@@ -320,11 +362,14 @@ export default function FormerLoading() {
       }
 
       resetForm();
+
+      // refresh queries
+      queryClient.invalidateQueries({ queryKey: ["farmer-loadings"] });
       queryClient.invalidateQueries({ queryKey: ["former-next-bill-no"] });
       queryClient.invalidateQueries({ queryKey: ["assigned-vehicles"] });
     } catch (err: any) {
       toast.error(err?.response?.data?.message || "Failed to save");
-      // Optional: show prisma meta if returned
+
       if (err?.response?.data?.prisma?.meta) {
         console.log("PRISMA META:", err.response.data.prisma.meta);
       }
@@ -347,11 +392,11 @@ export default function FormerLoading() {
         </div>
         <Button
           onClick={handleSave}
-          className="w-full sm:w-auto rounded-xl px-5 bg-[#139BC3] text-white hover:bg-[#1088AA]"
           disabled={loading}
+          className="w-full sm:w-auto rounded-xl px-5 bg-[#139BC3] text-white hover:bg-[#1088AA]"
         >
           <Save className="h-4 w-4 mr-2" />
-          Save
+          {editingId ? "Update" : "Save"}
         </Button>
       </div>
 
@@ -648,6 +693,7 @@ export default function FormerLoading() {
           </div>
         </div>
       </div>
+      <FarmerLoadingList onEdit={handleEditLoading} />
     </Card>
   );
 }
