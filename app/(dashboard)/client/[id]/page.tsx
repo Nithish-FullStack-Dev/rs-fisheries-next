@@ -293,7 +293,7 @@ const ClientViewPage = () => {
                                 {formatCurrency(payment.amount)}
                               </td>
                             </tr>
-                          )
+                          ),
                         )}
                     </tbody>
                   </table>
@@ -345,7 +345,7 @@ const ClientViewPage = () => {
                   <div className="text-right">
                     <p className="text-xs text-muted-foreground">Grand Total</p>
                     <p className="text-xl font-bold text-primary">
-                      {formatCurrency(loading.grandTotal)}
+                      {formatCurrency(loading?.grandTotal)}
                     </p>
                   </div>
                 </div>

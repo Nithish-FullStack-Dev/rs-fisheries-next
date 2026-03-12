@@ -669,11 +669,13 @@ export default function VendorBillsPage() {
             padding: 0 20px;
           }
           .center h1 {
-            font-size: 28px;
-            font-weight: bold;
-            color: #139BC3;
-            margin: 15px 0 0 0;
-          }
+  font-family: "Montserrat", Arial, sans-serif;
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  color: #139BC3;
+  margin: 8px 0 0 0;
+}
           .center p {
             font-size: 12px;
             line-height: 1.4;
@@ -1830,20 +1832,7 @@ export default function VendorBillsPage() {
               {/* Center company details */}
               <div className="center">
                 <h1>RSF</h1>
-                {/* <p className="contact">
-                  Hyderabad, Telangana - 500081
-                  <br />
-                  Phone: +919494288997, +919440011704
-                  <br />
-                  Email: n.vamsikiran4@gmail.com
-                  <br />
-                </p> */}
               </div>
-
-              {/* Right address
-              3rd floor, Above Varun Bajaj showroom, ViP Hills , 100 feet Road
-Madhapur, Hyderabad 500081
-              */}
               <div className="address">
                 <strong>Office Address:</strong>
                 <br />

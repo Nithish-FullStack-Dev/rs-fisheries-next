@@ -2,7 +2,12 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import PWARegister from "./pwa-register";
+import { Montserrat } from "next/font/google";
 
+const montserrat = Montserrat({
+  subsets: ["latin"],
+  weight: ["600", "700", "800"],
+});
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
@@ -46,7 +51,7 @@ export default function RootLayout({
       </head>
 
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${montserrat.className}${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <PWARegister />
         {children}

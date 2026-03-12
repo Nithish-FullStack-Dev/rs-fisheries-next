@@ -46,7 +46,7 @@ export type VendorInvoiceAssets = {
 // 9494288997 , 9440011704
 // n.vamsikiran4@gmail.com
 const COMPANY = {
-    name: "RSF",
+    name: "R S F",
     title: " Receipt ",
     addressLine: `Office NH16, Jio PetrolPump,
      Golden Ice Factory, Kovuru, Nellore, 524366.`,
@@ -336,7 +336,7 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData, assets?: V
     const headerH = 24;
     rect(doc, L, y, W, headerH);
 
-    const logoAreaW = 26;
+    const logoAreaW = 36;
     const rightAreaW = 62;
     const centerAreaW = W - logoAreaW - rightAreaW;
 
@@ -344,7 +344,18 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData, assets?: V
     const centerX = L + logoAreaW;
     const rightX = centerX + centerAreaW;
 
-    await addImageSafe(doc, assets?.logoDataUrl, logoX, y, logoAreaW, headerH, assets?.logoWidth, assets?.logoHeight);
+    const logoPadding = 3;
+
+    await addImageSafe(
+        doc,
+        assets?.logoDataUrl,
+        logoX + logoPadding,
+        y + logoPadding,
+        logoAreaW - logoPadding * 2,
+        headerH - logoPadding * 2,
+        assets?.logoWidth,
+        assets?.logoHeight
+    );
 
     doc.setFont("Helvetica", "bold");
     doc.setFontSize(12);
@@ -603,7 +614,7 @@ IFSC code : ${COMPANY.bankIfsc}
 Account holder's name : ${COMPANY.accountHolder}`;
 
     if (assets?.qrDataUrl) {
-        await addImageSafe(doc, assets.qrDataUrl, L + 2, y + 7, 18, 18);
+        await addImageSafe(doc, assets.qrDataUrl, L + 3, y + 7, 18, 18);
         textBox(doc, bankText, L + 20, y + 5, bankW - 20, footerH - 5, 7.0, 3.1);
     } else {
         textBox(doc, bankText, L, y + 5, bankW, footerH - 5, 7.0, 3.1);

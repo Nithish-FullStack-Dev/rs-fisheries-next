@@ -53,12 +53,14 @@ interface ClientItem {
   totalKgs?: number;
   pricePerKg?: number;
   totalPrice?: number;
+  pendingBalance?: number;
 }
 
 interface ClientRecord {
   id: string;
   billNo?: string;
   date?: string;
+  clientId?: string;
   clientName?: string;
   vehicleNo?: string;
   vehicleId?: string | null;
@@ -68,6 +70,7 @@ interface ClientRecord {
   totalKgs?: number;
   grandTotal?: number;
   totalPrice?: number;
+  pendingBalance?: number;
 }
 
 type UIItem = ClientItem & {
@@ -94,6 +97,7 @@ type BillRow = {
   varietyCount: number;
   uniqueVarietyCount: number;
   totalPrice: number; // ✅ ALWAYS SUM OF ITEMS
+  pendingBalance?: number;
 };
 
 const fetchClientLoadings = async (): Promise<ClientRecord[]> => {
@@ -162,10 +166,13 @@ export default function ClientBillsPage() {
   const [addTrays, setAddTrays] = useState<number>(0);
   const [addLoose, setAddLoose] = useState<number>(0);
   const [addingItem, setAddingItem] = useState(false);
-
+  const [clientBalances, setClientBalances] = useState<Record<string, number>>(
+    {},
+  );
   const refreshRecords = useCallback(async () => {
     const data = await fetchClientLoadings();
     setRecords(data);
+    await fetchClientBalances(data);
   }, []);
 
   const {
@@ -186,17 +193,50 @@ export default function ClientBillsPage() {
 
   useEffect(() => {
     let mounted = true;
-    setLoading(true);
 
-    refreshRecords()
-      .catch(() => toast.error("Failed to load client bills"))
-      .finally(() => mounted && setLoading(false));
+    const loadData = async () => {
+      try {
+        setLoading(true);
+
+        const data = await fetchClientLoadings();
+        if (!mounted) return;
+
+        setRecords(data);
+
+        await fetchClientBalances(data); // ⭐ IMPORTANT
+      } catch {
+        toast.error("Failed to load client bills");
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    loadData();
 
     return () => {
       mounted = false;
     };
-  }, [refreshRecords]);
+  }, []);
+  const fetchClientBalances = async (records: ClientRecord[]) => {
+    const balances: Record<string, number> = {};
 
+    const uniqueClientIds = [
+      ...new Set(records.map((r) => r.clientId).filter(Boolean)),
+    ] as string[];
+
+    await Promise.all(
+      uniqueClientIds.map(async (id) => {
+        try {
+          const res = await axios.get(`/api/client/${id}`);
+          balances[id] = res.data?.data?.pendingBalance ?? 0;
+        } catch {
+          balances[id] = 0;
+        }
+      }),
+    );
+
+    setClientBalances(balances);
+  };
   // New badge logic
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -218,7 +258,9 @@ export default function ClientBillsPage() {
     const base: BillRow[] = records.map((rec) => {
       const hasVehicle =
         Boolean(rec.vehicleId) || Boolean((rec.vehicleNo || "").trim());
-
+      const pendingBalance = rec.clientId
+        ? (clientBalances[rec.clientId] ?? 0)
+        : 0;
       const items: UIItem[] = (rec.items || []).map((it) => {
         const totalKgs = n(it.totalKgs);
         const pricePerKg = n(it.pricePerKg);
@@ -238,6 +280,7 @@ export default function ClientBillsPage() {
           date: rec.date?.split("T")[0] || "",
           createdAt: rec.createdAt || rec.date || "",
           hasVehicle,
+          pendingBalance,
         };
       });
 
@@ -264,6 +307,7 @@ export default function ClientBillsPage() {
         varietyCount,
         uniqueVarietyCount,
         totalPrice: computedTotal,
+        pendingBalance,
       };
     });
 
@@ -291,7 +335,7 @@ export default function ClientBillsPage() {
     });
 
     return filtered;
-  }, [records, searchTerm, sortOrder, fromDate, toDate]);
+  }, [records, clientBalances, searchTerm, sortOrder, fromDate, toDate]);
 
   // ✅ map itemId -> item for preview calculations
   const itemById = useMemo(() => {
@@ -530,12 +574,14 @@ export default function ClientBillsPage() {
             text-align: center;
             padding: 0 20px;
           }
-          .center h1 {
-            font-size: 28px;
-            font-weight: bold;
-            color: #139BC3;
-            margin: 15px 0 0 0;
-          }
+         .center h1 {
+  font-family: "Montserrat", Arial, sans-serif;
+  font-size: 34px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  color: #139BC3;
+  margin: 8px 0 0 0;
+}
           .center p {
             font-size: 12px;
             line-height: 1.4;
@@ -664,7 +710,7 @@ export default function ClientBillsPage() {
 .net-amount{
   margin-top:6px;
 }
-  .net-amount-row{
+  .net-amount-row, .balance-row{
   width:100%;
   text-align:right;
   margin-top:8px;
@@ -1785,6 +1831,11 @@ export default function ClientBillsPage() {
                 </tr>
               </tfoot>
             </table>
+            <div className="balance-row">
+              <strong>Pending Balance :</strong> ₹
+              {/* {bill?.pendingBalance.toLocaleString()} */}
+              {bill?.pendingBalance}
+            </div>
             <div className="net-amount-row">
               <strong>Net Amount :</strong> __________
             </div>
