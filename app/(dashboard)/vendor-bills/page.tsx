@@ -632,6 +632,7 @@ export default function VendorBillsPage() {
     <html>
       <head>
         <title>Bill ${billId}</title>
+        <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Cinzel+Decorative:wght@700&display=swap" rel="stylesheet">
         <style>
           @page {
             size: A4;
@@ -650,43 +651,57 @@ export default function VendorBillsPage() {
             margin: 0 auto;
             background: white;
           }
-          .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 20px;
-          }
-          .logo {
-            width: 140px;
-          }
-          .logo img {
-            width: 100%;
-            height: auto;
-          }
-          .center {
-            flex: 1;
-            text-align: center;
-            padding: 0 20px;
-          }
-          .center h1 {
-  font-family: "Montserrat", Arial, sans-serif;
-  font-size: 34px;
-  font-weight: 800;
-  letter-spacing: 4px;
-  color: #139BC3;
-  margin: 8px 0 0 0;
+         .header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
-          .center p {
-            font-size: 12px;
-            line-height: 1.4;
-            margin: 0;
-          }
-          .address {
-            width: 180px;
-            font-size: 12px;
-            line-height: 1.4;
-            text-align: right;
-          }
+
+/* Logo */
+.logo {
+  width: 120px;
+}
+
+.logo img {
+  width: 100%;
+  height: auto;
+}
+
+/* Center Section */
+.center {
+  flex: 1;
+  text-align: center;
+}
+
+.company-short {
+  font-family: "Cinzel Decorative", serif;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: #1f5f8b;
+  margin: 0;
+}
+
+.company-full {
+  font-family: "Cinzel", serif;
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+/* Address */
+.address {
+  width: 220px;
+  text-align: right;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.address strong {
+  font-size: 13px;
+}
           hr {
             border: none;
             border-top: 1.5px solid #000;
@@ -1820,7 +1835,7 @@ export default function VendorBillsPage() {
           >
             {/* Header with more breathing space */}
             <div className="header">
-              {/* Logo with top/bottom margin */}
+              {/* Logo */}
               <div className="logo">
                 <img
                   src="/assets/printlogo.jpeg"
@@ -1829,14 +1844,21 @@ export default function VendorBillsPage() {
                 />
               </div>
 
-              {/* Center company details */}
+              {/* Company Name */}
               <div className="center">
-                <h1>RSF</h1>
+                <h1 className="company-short">RSF</h1>
+                <h2 className="company-full">RAMA SATYANARAYANA FISHERIES</h2>
               </div>
+              {/* Address */}
               <div className="address">
-                <strong>Office Address:</strong>
-                <br />
-                NH16,Jio PetrolPump, Golden Ice Factory,Kovuru, Nellore,524366.
+                <strong>Office Address</strong>
+                <p>
+                  NH16, Jio Petrol Pump
+                  <br />
+                  Golden Ice Factory
+                  <br />
+                  Kovuru, Nellore - 524366
+                </p>
               </div>
             </div>
 
@@ -1921,7 +1943,7 @@ export default function VendorBillsPage() {
               </tfoot>
             </table>
             <div className="net-amount-row">
-              <strong>Net Amount :</strong> __________
+              <strong>Net Amount :</strong> {bill?.totalPrice}
             </div>
           </div>
         ))}

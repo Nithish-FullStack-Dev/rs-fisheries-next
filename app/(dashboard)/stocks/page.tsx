@@ -130,8 +130,8 @@ function StatPair({
     tone === "incoming"
       ? "text-green-700"
       : tone === "outgoing"
-      ? "text-red-600"
-      : "text-gray-900";
+        ? "text-red-600"
+        : "text-gray-900";
 
   return (
     <span className={cls("font-semibold tabular-nums", toneCls)}>
@@ -158,7 +158,7 @@ function Pill({
         "focus:outline-none focus:ring-2 focus:ring-offset-2",
         active
           ? "text-white border-transparent"
-          : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50"
+          : "bg-white text-gray-700 border-gray-200 hover:bg-gray-50",
       )}
       style={
         active
@@ -417,13 +417,15 @@ export default function StocksPage() {
     };
 
     // Farmer incoming
-    farmer.forEach((l) => {
-      // FIXED: Changed "former" to "farmer"
+    farmer.forEach((l: any) => {
       const d = parseDateSafe(l.date);
       const ok = d ? inRange(d, rangeFrom, rangeTo) : true;
       if (!ok) return;
 
-      l.items.forEach((i) => (ensure(i.varietyCode).farmerKgs += i.totalKgs));
+      l.items.forEach((i: any) => {
+        const loss = i.loss || 0;
+        ensure(i.varietyCode).farmerKgs += i.totalKgs - loss;
+      });
     });
 
     // Agent incoming
@@ -472,7 +474,7 @@ export default function StocksPage() {
       const q = search.toLowerCase();
       rows = rows.filter(
         (r) =>
-          r.code.toLowerCase().includes(q) || r.name?.toLowerCase().includes(q)
+          r.code.toLowerCase().includes(q) || r.name?.toLowerCase().includes(q),
       );
     }
 
@@ -499,7 +501,7 @@ export default function StocksPage() {
         acc.loose += r.incomingLoose;
         return acc;
       },
-      { trays: 0, loose: 0 }
+      { trays: 0, loose: 0 },
     );
 
     const outgoing = stockRows.reduce(
@@ -508,7 +510,7 @@ export default function StocksPage() {
         acc.loose += r.outgoingLoose;
         return acc;
       },
-      { trays: 0, loose: 0 }
+      { trays: 0, loose: 0 },
     );
 
     return { incoming, outgoing };
@@ -528,7 +530,7 @@ export default function StocksPage() {
         acc.loose += split.loose;
         return acc;
       },
-      { trays: 0, loose: 0 }
+      { trays: 0, loose: 0 },
     );
   }, [availableVarieties]);
 
@@ -658,7 +660,7 @@ export default function StocksPage() {
                     {availabilityPreview.top.map((r) => {
                       const looseKgs = +Math.max(
                         0,
-                        r.netKgs - r.netTrays * STOCK_TRAY_KGS
+                        r.netKgs - r.netTrays * STOCK_TRAY_KGS,
                       ).toFixed(2);
 
                       return (
@@ -715,7 +717,7 @@ export default function StocksPage() {
                   >
                     {availableTotals.trays}{" "}
                     <span className="text-gray-300">|</span>{" "}
-                    {availableTotals.loose}
+                    {availableTotals?.loose}
                   </p>
                 </div>
                 <Warehouse className="h-8 w-8" style={{ color: THEME }} />

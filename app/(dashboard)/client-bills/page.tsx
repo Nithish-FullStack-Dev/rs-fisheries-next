@@ -544,6 +544,7 @@ export default function ClientBillsPage() {
     <html>
       <head>
         <title>Bill ${billId}</title>
+        <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Cinzel+Decorative:wght@700&display=swap" rel="stylesheet">
         <style>
           @page {
             size: A4;
@@ -559,39 +560,53 @@ export default function ClientBillsPage() {
           .header {
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
-            margin-bottom: 20px;
+            align-items: center;
           }
+
+          /* Logo */
           .logo {
-            width: 140px;
+            width: 120px;
           }
+
           .logo img {
             width: 100%;
             height: auto;
           }
+
+          /* Center Section */
           .center {
             flex: 1;
             text-align: center;
-            padding: 0 20px;
           }
-         .center h1 {
-  font-family: "Montserrat", Arial, sans-serif;
+
+       .company-short {
+  font-family: "Cinzel Decorative", serif;
   font-size: 34px;
-  font-weight: 800;
+  font-weight: 700;
   letter-spacing: 4px;
-  color: #139BC3;
-  margin: 8px 0 0 0;
+  color: #1f5f8b;
+  margin: 0;
 }
-          .center p {
-            font-size: 12px;
-            line-height: 1.4;
-            margin: 0;
-          }
+
+.company-full {
+  font-family: "Cinzel", serif;
+  font-size: 18px;
+  font-weight: 400;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+          /* Address */
           .address {
-            width: 180px;
-            font-size: 12px;
-            line-height: 1.4;
+            width: 220px;
             text-align: right;
+            font-size: 12px;
+            line-height: 1.5;
+          }
+
+          .address strong {
+            font-size: 13px;
           }
           hr {
             border: none;
@@ -1701,29 +1716,31 @@ export default function ClientBillsPage() {
           >
             {/* Header */}
             <div className="header">
+              {/* Logo */}
               <div className="logo">
                 <img
                   src="/assets/printlogo.jpeg"
                   alt="RS Fisheries Logo"
-                  className="w-full h-auto"
+                  className="logo-img"
                 />
               </div>
 
+              {/* Company Name */}
               <div className="center">
-                <h1>RSF</h1>
-                {/* <p className="contact">
-                  Hyderabad, Telangana - 500081
-                  <br />
-                  Phone: +919494288997, +919440011704
-                  <br />
-                  Email: n.vamsikiran4@gmail.com
-                </p> */}
+                <h1 className="company-short">RSF</h1>
+                <h2 className="company-full">Rama Satyanarayana Fisheries</h2>
               </div>
 
+              {/* Address */}
               <div className="address">
-                <strong>Office Address:</strong>
-                <br />
-                NH16,Jio PetrolPump, Golden Ice Factory,Kovuru, Nellore,524366.
+                <strong>Office Address</strong>
+                <p>
+                  NH16, Jio Petrol Pump
+                  <br />
+                  Golden Ice Factory
+                  <br />
+                  Kovuru, Nellore - 524366
+                </p>
               </div>
             </div>
 
@@ -1837,7 +1854,7 @@ export default function ClientBillsPage() {
               {bill?.pendingBalance}
             </div>
             <div className="net-amount-row">
-              <strong>Net Amount :</strong> __________
+              <strong>Net Amount :</strong> {bill?.totalPrice}
             </div>
           </div>
         ))}
