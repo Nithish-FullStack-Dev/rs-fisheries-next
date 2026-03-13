@@ -18,7 +18,7 @@ type FormerLoadingBody = {
   village?: string;
   date?: string;
 
-  // ✅ NEW
+  //  NEW
   useVehicle?: boolean;
 
   vehicleId?: string | null;
@@ -107,7 +107,7 @@ export async function POST(req: Request) {
     const totalTrayKgs = round2(items.reduce((s, i) => s + i.trayKgs, 0));
     const totalKgs = round2(items.reduce((s, i) => s + i.totalKgs, 0));
 
-    // ✅ NET KGS logic like client
+    //  NET KGS logic like client
     const grandTotal = useVeh
       ? Math.round(totalKgs)
       : Math.round(totalKgs * (1 - DEDUCTION_PERCENT / 100));
@@ -129,13 +129,13 @@ export async function POST(req: Request) {
       dispatchChargesTotal: 0,
       packingAmountTotal: 0,
 
-      // ✅ store net kgs
+      //  store net kgs
       grandTotal,
 
       items: { create: items },
     };
 
-    // ✅ attach vehicle ONLY if useVeh true
+    //  attach vehicle ONLY if useVeh true
     if (useVeh && normalizedVehicleId) {
       createData.vehicle = { connect: { id: normalizedVehicleId } };
       createData.vehicleNo = null;
@@ -157,7 +157,7 @@ export async function POST(req: Request) {
       {
         success: false,
         message: "Failed to save farmer loading",
-        prisma: { code: err?.code, meta: err?.meta }, // ✅ debug
+        prisma: { code: err?.code, meta: err?.meta }, //  debug
       },
       { status: 500 }
     );
@@ -243,7 +243,7 @@ export async function GET(req: Request) {
         ...l,
         vehicleNo: l.vehicle?.vehicleNumber ?? l.vehicleNo ?? "",
         dispatchBreakdown: breakdown,
-      }; 
+      };
     });
 
     return NextResponse.json({ success: true, data }, { status: 200 });

@@ -73,7 +73,7 @@ export default function FormerLoading() {
   const [village, setVillage] = useState("");
   const [date, setDate] = useState(todayYMD());
 
-  // ✅ Vehicle toggle like client
+  //  Vehicle toggle like client
   const [useVehicle, setUseVehicle] = useState(false);
   const [vehicleId, setVehicleId] = useState("");
   const [otherVehicleNo, setOtherVehicleNo] = useState("");
@@ -81,7 +81,7 @@ export default function FormerLoading() {
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingBillNo, setEditingBillNo] = useState<string | null>(null);
-  // ✅ local set to hide vehicles without page reload
+  //  local set to hide vehicles without page reload
   const [usedVehicleIds, setUsedVehicleIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -165,7 +165,7 @@ export default function FormerLoading() {
     [items],
   );
 
-  // ✅ Same logic as client:
+  //  Same logic as client:
   // if useVehicle => NO deduction
   // else => 5% deduction
   const netKgs = useMemo(() => {
@@ -174,7 +174,7 @@ export default function FormerLoading() {
     return Math.round(t * (1 - DEDUCTION_PERCENT / 100));
   }, [totalKgs, useVehicle]);
 
-  // ✅ if untick vehicle, clear fields
+  //  if untick vehicle, clear fields
   useEffect(() => {
     if (!useVehicle) {
       setVehicleId("");
@@ -271,7 +271,7 @@ export default function FormerLoading() {
 
     if (!date) return (toast.error("Select Date"), false);
 
-    // ✅ Vehicle validation ONLY if checkbox checked
+    //  Vehicle validation ONLY if checkbox checked
     if (useVehicle) {
       if (isOtherVehicle && !otherVehicleNo.trim()) {
         toast.error("Enter Vehicle Number");
@@ -440,7 +440,7 @@ export default function FormerLoading() {
           />
         </Field>
 
-        {/* ✅ vehicle toggle */}
+        {/*  vehicle toggle */}
         <Field className="sm:col-span-2 md:col-span-1">
           <FieldLabel>Vehicle</FieldLabel>
           <label className="flex items-center gap-2 text-sm text-slate-700 select-none">
@@ -454,7 +454,7 @@ export default function FormerLoading() {
           </label>
         </Field>
 
-        {/* ✅ Vehicle fields only when checkbox checked */}
+        {/*  Vehicle fields only when checkbox checked */}
         {useVehicle && (
           <Field className="sm:col-span-2 md:col-span-1">
             <FieldLabel>Select Vehicle</FieldLabel>

@@ -24,17 +24,17 @@ export const POST = withAuth(async (req: Request) => {
     if (!loadingId)
       return NextResponse.json(
         { message: "loadingId is required" },
-        { status: 400 }
+        { status: 400 },
       );
     if (!varietyCode)
       return NextResponse.json(
         { message: "varietyCode is required" },
-        { status: 400 }
+        { status: 400 },
       );
     if (noTrays <= 0 && loose <= 0)
       return NextResponse.json(
         { message: "Enter trays or loose" },
-        { status: 400 }
+        { status: 400 },
       );
 
     const trayKgs = noTrays * TRAY_KG;
@@ -47,7 +47,7 @@ export const POST = withAuth(async (req: Request) => {
     if (!loading)
       return NextResponse.json({ message: "Bill not found" }, { status: 404 });
 
-    // ✅ stock check for adding
+    //  stock check for adding
     const [formerAgg, agentAgg, usedAgg] = await Promise.all([
       prisma.formerItem.aggregate({
         where: { varietyCode },
@@ -73,14 +73,14 @@ export const POST = withAuth(async (req: Request) => {
       return NextResponse.json(
         {
           message: `Stock exceeded for ${varietyCode}. Available ${available.toFixed(
-            2
+            2,
           )} Kgs`,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    // ✅ transaction: create item + recompute totals
+    //  transaction: create item + recompute totals
     const result = await prisma.$transaction(async (tx) => {
       const created = await tx.clientItem.create({
         data: {
@@ -108,11 +108,11 @@ export const POST = withAuth(async (req: Request) => {
 
       const totalTrays = updatedLoading.items.reduce(
         (s, i) => s + Number(i.noTrays || 0),
-        0
+        0,
       );
       const totalKgsAll = updatedLoading.items.reduce(
         (s, i) => s + Number(i.totalKgs || 0),
-        0
+        0,
       );
 
       const grandTotal = hasVehicle
@@ -133,7 +133,7 @@ export const POST = withAuth(async (req: Request) => {
 
       const totalPrice = updates.reduce(
         (s, u) => s + Number(u.totalPrice || 0),
-        0
+        0,
       );
 
       for (const u of updates) {
@@ -175,13 +175,13 @@ export const POST = withAuth(async (req: Request) => {
 
     return NextResponse.json(
       { success: true, item: result.created },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (e) {
     console.error("Add client bill item error:", e);
     return NextResponse.json(
       { message: "Failed to add item" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 });

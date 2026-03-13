@@ -43,12 +43,12 @@ export async function GET() {
             const outgoing = clientMap[v.code] || 0;
 
             const netKgs = Math.max(0, incoming - outgoing);
-            const netTrays = Math.floor(netKgs / TRAY_KG); // ✅ convert to trays
+            const netTrays = Math.floor(netKgs / TRAY_KG); //  convert to trays
 
             return { ...v, netKgs, netTrays };
         });
 
-        // ✅ only return varieties that have at least 1 tray available
+        //  only return varieties that have at least 1 tray available
         const available = data.filter((x) => x.netTrays > 0);
 
         return NextResponse.json({ success: true, data: available });

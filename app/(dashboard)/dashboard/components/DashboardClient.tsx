@@ -228,7 +228,7 @@ function money(n: number): string {
 
 function qty(n: number): string {
   return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 1 }).format(
-    Number(n || 0)
+    Number(n || 0),
   );
 }
 
@@ -280,8 +280,8 @@ function Spark({ tone = "brand" }: { tone?: "brand" | "green" | "red" }) {
     tone === "green"
       ? "rgba(34,197,94,.12)"
       : tone === "red"
-      ? "rgba(239,68,68,.12)"
-      : "rgba(19,155,195,.12)";
+        ? "rgba(239,68,68,.12)"
+        : "rgba(19,155,195,.12)";
   return (
     <div
       className="h-1 w-10 rounded-full"
@@ -299,21 +299,21 @@ function KpiCard({
   icon,
   tone = "brand",
   sub,
-  variant = "default", // ✅ NEW
+  variant = "default", //  NEW
 }: {
   title: string;
   value: string;
   icon: React.ReactNode;
   tone?: "brand" | "green" | "red";
   sub?: string;
-  variant?: "default" | "danger"; // ✅ NEW
+  variant?: "default" | "danger"; //  NEW
 }) {
   const ring =
     tone === "green"
       ? "rgba(34,197,94,.18)"
       : tone === "red"
-      ? "rgba(239,68,68,.18)"
-      : "rgba(19,155,195,.18)";
+        ? "rgba(239,68,68,.18)"
+        : "rgba(19,155,195,.18)";
 
   const isDanger = variant === "danger";
 
@@ -327,8 +327,8 @@ function KpiCard({
         className={[
           "rounded-2xl border shadow-sm hover:shadow-md transition-shadow",
           isDanger
-            ? "border-red-200 bg-red-50" // ✅ whole card becomes red-ish
-            : "border-slate-200 bg-white", // ✅ normal white
+            ? "border-red-200 bg-red-50" //  whole card becomes red-ish
+            : "border-slate-200 bg-white", //  normal white
         ].join(" ")}
       >
         <CardContent className="p-4 sm:p-5">
@@ -448,7 +448,7 @@ function DateRangePicker({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        {/* ✅ Responsive button */}
+        {/*  Responsive button */}
         <Button variant="outline" className="w-full sm:w-[280px] justify-start">
           <CalendarIcon className="mr-2 h-4 w-4" />
           {formatRange(value)}
@@ -601,7 +601,7 @@ export default function DashboardClient({
       if (isObj(json) && (json as { success?: boolean }).success) {
         setDeleteStatus("success");
         setDeleteMessage(
-          `Variety ${varietyToDelete.code} deleted successfully`
+          `Variety ${varietyToDelete.code} deleted successfully`,
         );
         router.refresh();
         setTimeout(() => {
@@ -631,7 +631,7 @@ export default function DashboardClient({
 
   const [range, setRange] = useState<DateRange>(() => ({
     from: startOfDay(
-      Number.isNaN(safeFrom.getTime()) ? subDays(new Date(), 6) : safeFrom
+      Number.isNaN(safeFrom.getTime()) ? subDays(new Date(), 6) : safeFrom,
     ),
     to: endOfDay(Number.isNaN(safeTo.getTime()) ? new Date() : safeTo),
   }));
@@ -666,7 +666,7 @@ export default function DashboardClient({
     setAgg(newAgg);
   };
 
-  /* ---------------- ✅ Export: Farmer + Agent + Client + Payments ---------------- */
+  /* ----------------  Export: Farmer + Agent + Client + Payments ---------------- */
   const handleExport = async () => {
     try {
       const [farmer, agent, clientLoadings, clientPayments, vendorPayments] =
@@ -702,13 +702,13 @@ export default function DashboardClient({
       wb.creator = "RS Fisheries";
       wb.created = new Date();
 
-      // ✅ Farmer + Agent (same like client style with payments & balance)
+      //  Farmer + Agent (same like client style with payments & balance)
       buildVendorWithPaymentsSheetExcelJS(
         wb,
         farmerRows,
         farmerPay,
         "Farmer Loadings + Payments",
-        "Farmer"
+        "Farmer",
       );
 
       buildVendorWithPaymentsSheetExcelJS(
@@ -716,10 +716,10 @@ export default function DashboardClient({
         agentRows,
         agentPay,
         "Agent Loadings + Payments",
-        "Agent"
+        "Agent",
       );
 
-      // ✅ Client (keep your existing)
+      //  Client (keep your existing)
       buildClientWithPaymentsSheetExcelJS(wb, clientRows, clientPaymentRows);
 
       const buf = await wb.xlsx.writeBuffer();
@@ -728,7 +728,7 @@ export default function DashboardClient({
         new Blob([buf], {
           type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         }),
-        `RS-Fisheries_Loadings_${format(new Date(), "dd-MM-yyyy")}.xlsx`
+        `RS-Fisheries_Loadings_${format(new Date(), "dd-MM-yyyy")}.xlsx`,
       );
     } catch (e) {
       console.error(e);
@@ -744,7 +744,7 @@ export default function DashboardClient({
         purchase: d.purchase,
         sales: d.sales,
       })),
-    [data.weekly]
+    [data.weekly],
   );
 
   const movementData = useMemo(
@@ -754,7 +754,7 @@ export default function DashboardClient({
         purchase: d.purchase,
         sales: d.sales,
       })),
-    [data.movement]
+    [data.movement],
   );
 
   const pieData = useMemo(
@@ -763,12 +763,12 @@ export default function DashboardClient({
         name: v.code,
         value: v.kgs,
       })),
-    [data.topVarieties]
+    [data.topVarieties],
   );
 
   const ageingData = useMemo(
     () => data.outstandingAgeing,
-    [data.outstandingAgeing]
+    [data.outstandingAgeing],
   );
 
   const ageingTotal = ageingData.reduce((s, a) => s + a.amount, 0);
@@ -777,7 +777,7 @@ export default function DashboardClient({
   return (
     <AnimatePresence>
       <div className="space-y-4 sm:space-y-6">
-        {/* ✅ Responsive Header */}
+        {/*  Responsive Header */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -850,7 +850,7 @@ export default function DashboardClient({
                 title="Dispatch"
                 value={money(sales)}
                 tone={salesTone}
-                variant={isLowSales ? "danger" : "default"} // ✅ card background
+                variant={isLowSales ? "danger" : "default"} //  card background
                 icon={
                   isLowSales ? (
                     <TrendingDown className="text-red-600 w-6 h-6" />
@@ -1241,7 +1241,7 @@ function buildSimpleLoadingSheetExcelJS(
   wb: ExcelJS.Workbook,
   loadings: unknown[],
   sheetName: string,
-  type: "farmer" | "agent"
+  type: "farmer" | "agent",
 ) {
   const ws = wb.addWorksheet(sheetName);
 
@@ -1344,7 +1344,7 @@ function buildSimpleLoadingSheetExcelJS(
       moneyCell(row.getCell(9));
     }
 
-    // ✅ Per-bill TOTAL row
+    //  Per-bill TOTAL row
     const totalRow = ws.addRow({
       name: "",
       date: "",
@@ -1378,7 +1378,7 @@ function buildSimpleLoadingSheetExcelJS(
     ws.addRow({});
   }
 
-  // ✅ Final GRAND TOTAL row (bottom)
+  //  Final GRAND TOTAL row (bottom)
   const grandRow = ws.addRow({
     name: "",
     date: "",
@@ -1420,7 +1420,7 @@ function buildVendorWithPaymentsSheetExcelJS(
   loadings: Array<FarmerLoading | AgentLoading>,
   payments: VendorPayment[],
   sheetName: string,
-  vendorLabel: "Farmer" | "Agent"
+  vendorLabel: "Farmer" | "Agent",
 ) {
   const ws = wb.addWorksheet(sheetName);
 
@@ -1578,7 +1578,7 @@ function buildVendorWithPaymentsSheetExcelJS(
       r++;
     }
 
-    // ✅ Bill TOTAL row (only per bill, no grand)
+    //  Bill TOTAL row (only per bill, no grand)
     ws.getCell(`C${r}`).value = "Total";
     ws.getCell(`D${r}`).value = Number(l.totalTrays ?? 0);
     ws.getCell(`E${r}`).value = Number(l.totalLooseKgs ?? 0);
@@ -1642,7 +1642,7 @@ function buildVendorWithPaymentsSheetExcelJS(
       .slice()
       .sort(
         (a, b) =>
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
       );
 
     let paidTotal = 0;
@@ -1663,7 +1663,7 @@ function buildVendorWithPaymentsSheetExcelJS(
         ws.getCell(`D${r}`).value = p.paymentMode ?? "";
         ws.getCell(`E${r}`).value = p.isInstallment ? "Installment" : "Full";
         ws.getCell(`F${r}`).value = p.isInstallment
-          ? p.installmentNumber ?? "-"
+          ? (p.installmentNumber ?? "-")
           : "-";
 
         centerCell(ws.getCell(`B${r}`));
@@ -1718,7 +1718,7 @@ function buildVendorWithPaymentsSheetExcelJS(
 function buildClientWithPaymentsSheetExcelJS(
   wb: ExcelJS.Workbook,
   clientLoadings: ClientLoading[],
-  clientPayments: ClientPayment[]
+  clientPayments: ClientPayment[],
 ) {
   const ws = wb.addWorksheet("Client Loadings + Payments");
 
@@ -1950,7 +1950,7 @@ function buildClientWithPaymentsSheetExcelJS(
         ws.getCell(`D${r}`).value = p.paymentMode ?? "";
         ws.getCell(`E${r}`).value = p.isInstallment ? "Installment" : "Full";
         ws.getCell(`F${r}`).value = p.isInstallment
-          ? p.installmentNumber ?? "-"
+          ? (p.installmentNumber ?? "-")
           : "-";
 
         centerCell(ws.getCell(`B${r}`));

@@ -17,11 +17,11 @@ export async function POST(req: NextRequest) {
       gstPercent = 0,
     } = body;
 
-    // ✅ Strict validation (no defaults)
+    //  Strict validation (no defaults)
     if (!paymentId || !clientId || !clientName || !invoiceNo || !billTo) {
       return NextResponse.json(
         { message: "Missing required fields" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
     if (!description || !String(description).trim()) {
       return NextResponse.json(
         { message: "Description is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     if (!payment) {
       return NextResponse.json(
         { message: "Payment not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
         message: "Failed to save invoice",
         details: err?.message || "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -125,7 +125,7 @@ export async function GET(req: NextRequest) {
     if (!invoice) {
       return NextResponse.json(
         { message: "Invoice not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -142,7 +142,7 @@ export async function GET(req: NextRequest) {
         message: "Failed to fetch invoice",
         details: err?.message || "Unknown error",
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

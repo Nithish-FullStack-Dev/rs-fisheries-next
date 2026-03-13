@@ -79,12 +79,17 @@ export function ClientPayments() {
         if (loadingId) {
           paidMap.set(
             loadingId,
-            (paidMap.get(loadingId) || 0) + Number(p.amount || 0)
+            (paidMap.get(loadingId) || 0) + Number(p.amount || 0),
           );
         }
       });
 
       const result = loadings
+        .filter(
+          (load) =>
+            Number(load.dispatchChargesTotal || 0) > 0 ||
+            Number(load.packingAmountTotal || 0) > 0,
+        )
         .map((load: any) => {
           const loadingId = load.id?.toString();
           const billAmount = Math.round(Number(load.grandTotal || 0)); // Round bill
@@ -92,9 +97,10 @@ export function ClientPayments() {
           const remaining = Math.max(0, billAmount - Math.round(totalPaid)); // Round paid too
 
           const hasCharges =
-            load.dispatchChargesTotal > 0 || load.packingAmountTotal > 0;
+            Number(load.dispatchChargesTotal || 0) > 0 ||
+            Number(load.packingAmountTotal || 0) > 0;
 
-          if (remaining > 0 && (billAmount >= 20000 || hasCharges)) {
+          if (remaining > 0 && hasCharges) {
             return {
               id: loadingId,
               loadingId,
@@ -340,7 +346,7 @@ export function ClientPayments() {
                     const roundedRemaining = Math.round(remaining);
                     if (num > roundedRemaining) {
                       toast.error(
-                        `Cannot exceed ${currency(roundedRemaining)}`
+                        `Cannot exceed ${currency(roundedRemaining)}`,
                       );
                       return;
                     }
@@ -375,8 +381,8 @@ export function ClientPayments() {
                       {m === "ac"
                         ? "A/C Transfer"
                         : m === "upi"
-                        ? "UPI/PhonePe"
-                        : m.charAt(0).toUpperCase() + m.slice(1)}
+                          ? "UPI/PhonePe"
+                          : m.charAt(0).toUpperCase() + m.slice(1)}
                     </Badge>
                   ))}
                 </div>
@@ -411,8 +417,8 @@ export function ClientPayments() {
                       {paymentMode === "upi"
                         ? "UPI Transaction ID"
                         : paymentMode === "cheque"
-                        ? "Cheque Number"
-                        : "Cash Receipt No"}
+                          ? "Cheque Number"
+                          : "Cash Receipt No"}
                     </Label>
                     <Input
                       placeholder={

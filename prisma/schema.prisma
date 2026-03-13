@@ -556,7 +556,7 @@ model ClientPayment {
 
   client ClientLoading @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
-  // ✅ Fix relation (explicit)
+  //  Fix relation (explicit)
   clientInvoice ClientInvoice? @relation("ClientPaymentInvoice")
 
   clientDetailsId String
@@ -576,7 +576,7 @@ model ClientInvoice {
   invoiceDate  DateTime
   billTo       String
   hsn          String
-  description  String? // ✅ now exists
+  description  String? //  now exists
   gstPercent   Float    @default(0)
   taxableValue Float
   gstAmount    Float
@@ -584,7 +584,7 @@ model ClientInvoice {
   isFinalized  Boolean  @default(false)
   createdAt    DateTime @default(now())
 
-  // ✅ Fix relation (explicit)
+  //  Fix relation (explicit)
   payment ClientPayment @relation("ClientPaymentInvoice", fields: [paymentId], references: [id])
 
   @@index([clientId])

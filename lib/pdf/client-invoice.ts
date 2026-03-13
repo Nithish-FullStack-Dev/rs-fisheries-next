@@ -413,7 +413,7 @@ async function renderClientInvoice(
     body: [
       [
         "1",
-        description, // ✅ always non-empty now
+        description, //  always non-empty now
         hsn,
         "1",
         money(taxable),

@@ -38,11 +38,11 @@ function TabsList({
     <div
       role="tablist"
       className={cn(
-        // ✅ Mobile: clean 2x2 grid buttons
+        //  Mobile: clean 2x2 grid buttons
         "w-full grid grid-cols-2 gap-2",
-        // ✅ Desktop: your original segmented pill
+        //  Desktop: your original segmented pill
         "sm:w-auto sm:inline-flex sm:items-center sm:gap-1 sm:rounded-2xl sm:border sm:border-slate-100 sm:bg-gray-200 sm:p-1 sm:shadow-sm sm:backdrop-blur",
-        className
+        className,
       )}
     >
       {children}
@@ -72,30 +72,30 @@ function TabsTrigger({
       aria-selected={isActive}
       onClick={() => onClick(value)}
       className={cn(
-        // ✅ Base
+        //  Base
         "relative w-full rounded-xl px-3 py-2 text-sm font-semibold transition whitespace-nowrap",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#139BC3]/35",
         "disabled:opacity-50 disabled:cursor-not-allowed",
 
-        // ✅ Mobile look (standalone buttons)
+        //  Mobile look (standalone buttons)
         isActive
           ? "bg-white text-[#139BC3] shadow-sm ring-1 ring-[#139BC3]/25"
           : "bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50",
 
-        // ✅ Desktop look (your original segmented style)
+        //  Desktop look (your original segmented style)
         "sm:w-auto sm:px-5 sm:py-2 sm:ring-0 sm:bg-transparent",
         isActive
           ? "sm:bg-white sm:text-[#139BC3] sm:shadow-sm sm:border sm:border-slate-200"
           : "sm:text-slate-600 sm:hover:bg-slate-50",
 
-        className
+        className,
       )}
     >
-      {/* ✅ Underline only on desktop (avoid weird spacing on mobile) */}
+      {/*  Underline only on desktop (avoid weird spacing on mobile) */}
       <span
         className={cn(
           "pointer-events-none absolute inset-x-3 -bottom-[8px] h-[2px] rounded-full transition-opacity hidden sm:block",
-          isActive ? "bg-[#139BC3] opacity-100" : "opacity-0"
+          isActive ? "bg-[#139BC3] opacity-100" : "opacity-0",
         )}
       />
       {children}
@@ -132,7 +132,7 @@ export default function Payments() {
           </p>
         </div>
 
-        {/* ✅ Tabs: mobile grid, desktop pill */}
+        {/*  Tabs: mobile grid, desktop pill */}
         <TabsRoot value={tab} onValueChange={setTab}>
           <TabsList>
             {/* <TabsTrigger value="packing" activeValue={tab} onClick={setTab}>

@@ -328,7 +328,7 @@ export function OwnVehicleTable() {
         </div>
       </div>
 
-      {/* ✅ Mobile Cards */}
+      {/*  Mobile Cards */}
       {/* <div className="grid grid-cols-1 gap-3 md:hidden">
         {vehicles.length === 0 ? (
           <div className="text-center py-10 text-slate-500">
@@ -372,7 +372,7 @@ export function OwnVehicleTable() {
         )}
       </div> */}
 
-      {/* ✅ Desktop Table */}
+      {/*  Desktop Table */}
       <div className=" overflow-x-auto ">
         <DataTable columns={columns} data={vehicles} />
         {data?.meta && (

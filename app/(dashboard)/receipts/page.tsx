@@ -715,7 +715,7 @@ export default function ReceiptsPage() {
       {openClientInvoice && selectedClient ? (
         <ClientInvoiceModal
           open={openClientInvoice}
-          clientDetailsId={(selectedClient as any).clientDetailsId} // ✅ FIX
+          clientDetailsId={(selectedClient as any).clientDetailsId} //  FIX
           clientName={selectedClient.clientName}
           paymentId={selectedClient.id}
           onClose={() => setOpenClientInvoice(false)}

@@ -86,7 +86,7 @@ const columns: ColumnDef<RentVehicle>[] = [
         onError: (err: unknown) => {
           if (err instanceof AxiosError) {
             toast.error(
-              err.response?.data?.message ?? "Error deleting vehicle"
+              err.response?.data?.message ?? "Error deleting vehicle",
             );
           } else {
             toast.error("Error updating vehicle");
@@ -304,7 +304,7 @@ export function RentVehicleTable() {
         </div>
       </div>
 
-      {/* ✅ Mobile Cards */}
+      {/*  Mobile Cards */}
       {/* <div className="grid grid-cols-1 gap-3 md:hidden">
         {vehicles.length === 0 ? (
           <div className="text-center py-10 text-slate-500">
@@ -350,7 +350,7 @@ export function RentVehicleTable() {
         )}
       </div> */}
 
-      {/* ✅ Desktop Table */}
+      {/*  Desktop Table */}
       <div className="overflow-x-auto">
         <DataTable columns={columns} data={vehicles} />
         {data?.meta && (

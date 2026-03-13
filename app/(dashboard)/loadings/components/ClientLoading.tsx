@@ -25,7 +25,7 @@ const DEDUCTION_PERCENT = 5;
 const OTHER_VEHICLE_VALUE = "__OTHER__";
 const OTHER_CLIENT_VALUE = "__CLIENT_OTHER__";
 
-// ✅ Text validation + sanitization
+//  Text validation + sanitization
 // const CLIENT_NAME_REGEX = /^[A-Za-z][A-Za-z .'-]*$/;
 // address allows numbers, commas, slash, hyphen etc.
 // const ADDRESS_REGEX = /^[A-Za-z0-9][A-Za-z0-9 ,./#()-]*$/;
@@ -101,7 +101,7 @@ export default function ClientLoadingForm() {
   // manual entry (only when "Other")
   const [clientName, setClientName] = useState("");
 
-  // ✅ NEW: vehicle toggle checkbox
+  //  NEW: vehicle toggle checkbox
   const [useVehicle, setUseVehicle] = useState(false);
   const [vehicleId, setVehicleId] = useState("");
   const [otherVehicleNo, setOtherVehicleNo] = useState("");
@@ -110,7 +110,7 @@ export default function ClientLoadingForm() {
   const [grandTotal, setGrandTotal] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  // ✅ hide used vehicles without reload
+  //  hide used vehicles without reload
   const [usedVehicleIds, setUsedVehicleIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -132,7 +132,7 @@ export default function ClientLoadingForm() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ Clients list
+  //  Clients list
   const {
     data: clients = [],
     isLoading: clientsLoading,
@@ -180,7 +180,7 @@ export default function ClientLoadingForm() {
     if (clientsError) toast.error("Failed to load clients");
   }, [clientsError]);
 
-  // ✅ Available varieties (make it robust)
+  //  Available varieties (make it robust)
   const {
     data: availableVarieties = [],
     isError: varietiesError,
@@ -202,7 +202,7 @@ export default function ClientLoadingForm() {
     if (varietiesError) toast.error("Failed to load varieties");
   }, [varietiesError]);
 
-  // ✅ Vehicles
+  //  Vehicles
   const { data: vehicles = [] } = useQuery<VehicleRow[]>({
     queryKey: ["assigned-vehicles"],
     queryFn: async () => {
@@ -223,7 +223,7 @@ export default function ClientLoadingForm() {
     });
   }, [vehicles, usedVehicleIds, vehicleId]);
 
-  // ✅ Bill No
+  //  Bill No
   const {
     data: billData,
     isLoading: billLoading,
@@ -334,7 +334,7 @@ export default function ClientLoadingForm() {
     return { trays, loose };
   };
 
-  // ✅ Grand total:
+  //  Grand total:
   useEffect(() => {
     const total = items.reduce((a, b) => a + safeNum(b.totalKgs), 0);
     if (useVehicle) {
@@ -345,7 +345,7 @@ export default function ClientLoadingForm() {
     }
   }, [items, useVehicle]);
 
-  // ✅ if user unticks checkbox, clear vehicle fields immediately
+  //  if user unticks checkbox, clear vehicle fields immediately
   useEffect(() => {
     if (!useVehicle) {
       setVehicleId("");
@@ -580,7 +580,7 @@ export default function ClientLoadingForm() {
             />
           </Field>
 
-          {/* ✅ CLIENT DROPDOWN */}
+          {/*  CLIENT DROPDOWN */}
           <Field>
             <FieldLabel>Client *</FieldLabel>
             <Select
@@ -652,7 +652,7 @@ export default function ClientLoadingForm() {
             />
           </Field>
 
-          {/* ✅ Vehicle checkbox */}
+          {/*  Vehicle checkbox */}
           <Field className="sm:col-span-2 md:col-span-1">
             <FieldLabel>Vehicle</FieldLabel>
             <label className="flex items-center gap-2 text-sm text-slate-700 select-none">
@@ -707,7 +707,7 @@ export default function ClientLoadingForm() {
           )}
         </div>
 
-        {/* ✅ MOBILE CARDS */}
+        {/*  MOBILE CARDS */}
         <div className="grid grid-cols-1 gap-3 md:hidden">
           {items.map((row, index) => (
             <div
@@ -824,7 +824,7 @@ export default function ClientLoadingForm() {
           </Button>
         </div>
 
-        {/* ✅ DESKTOP TABLE */}
+        {/*  DESKTOP TABLE */}
         <div className="hidden md:block overflow-x-auto rounded-2xl border border-[#139BC3]/15">
           <table className="w-full text-sm min-w-[900px]">
             <thead>

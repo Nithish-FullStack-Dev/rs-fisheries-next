@@ -99,7 +99,7 @@ export async function POST(req: Request) {
     const totalTrayKgs = round2(items.reduce((s, i) => s + i.trayKgs, 0));
     const totalKgs = round2(items.reduce((s, i) => s + i.totalKgs, 0));
 
-    // ✅ WEIGHT-BASED GRAND TOTAL
+    //  WEIGHT-BASED GRAND TOTAL
     const grandTotal = useVehicle
       ? Math.round(totalKgs)
       : Math.round(totalKgs * (1 - DEDUCTION_PERCENT / 100));
@@ -126,7 +126,7 @@ export async function POST(req: Request) {
       items: { create: items },
     };
 
-    // ✅ VEHICLE HANDLING (SAFE)
+    //  VEHICLE HANDLING (SAFE)
     if (useVehicle && vehicleId) {
       createData.vehicle = { connect: { id: vehicleId } };
       createData.vehicleNo = null;
