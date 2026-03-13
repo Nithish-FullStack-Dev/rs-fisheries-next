@@ -70,6 +70,8 @@ interface ClientRecord {
   totalKgs?: number;
   grandTotal?: number;
   totalPrice?: number;
+  dispatchChargesTotal?: number;
+  packingAmountTotal?: number;
   pendingBalance?: number;
 }
 
@@ -96,7 +98,7 @@ type BillRow = {
 
   varietyCount: number;
   uniqueVarietyCount: number;
-  totalPrice: number; // ✅ ALWAYS SUM OF ITEMS
+  totalPrice: number; //  ALWAYS SUM OF ITEMS
   pendingBalance?: number;
 };
 
@@ -110,7 +112,7 @@ function n(v: unknown): number {
   return Number.isFinite(num) ? num : 0;
 }
 
-// ✅ backend matching rule
+//  backend matching rule
 function calcItemTotalPrice(
   totalKgs: number,
   pricePerKg: number,
@@ -172,7 +174,6 @@ export default function ClientBillsPage() {
   const refreshRecords = useCallback(async () => {
     const data = await fetchClientLoadings();
     setRecords(data);
-    await fetchClientBalances(data);
   }, []);
 
   const {
@@ -253,7 +254,7 @@ export default function ClientBillsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [records.length]);
 
-  // ✅ Build bill rows (ONE ROW PER BILL)
+  //  Build bill rows (ONE ROW PER BILL)
   const bills: BillRow[] = useMemo(() => {
     const base: BillRow[] = records.map((rec) => {
       const hasVehicle =
@@ -265,7 +266,7 @@ export default function ClientBillsPage() {
         const totalKgs = n(it.totalKgs);
         const pricePerKg = n(it.pricePerKg);
 
-        // ✅ ensure UI uses correct totalPrice if backend didn't send it
+        //  ensure UI uses correct totalPrice if backend didn't send it
         const fixedTotalPrice =
           it.totalPrice !== undefined && it.totalPrice !== null
             ? n(it.totalPrice)
@@ -284,7 +285,7 @@ export default function ClientBillsPage() {
         };
       });
 
-      // ✅ ALWAYS SUM ITEMS (this fixes your mismatch)
+      //  ALWAYS SUM ITEMS (this fixes your mismatch)
       const computedTotal = Number(
         items.reduce((sum, it) => sum + n(it.totalPrice), 0).toFixed(2),
       );
@@ -337,7 +338,7 @@ export default function ClientBillsPage() {
     return filtered;
   }, [records, clientBalances, searchTerm, sortOrder, fromDate, toDate]);
 
-  // ✅ map itemId -> item for preview calculations
+  //  map itemId -> item for preview calculations
   const itemById = useMemo(() => {
     const map = new Map<string, UIItem>();
     for (const bill of bills) {
@@ -386,7 +387,7 @@ export default function ClientBillsPage() {
     });
   }, []);
 
-  // ✅ recompute preview based on backend formula
+  //  recompute preview based on backend formula
   const recomputePreviewPrice = useCallback(
     (
       id: string,
@@ -398,7 +399,7 @@ export default function ClientBillsPage() {
       const price = n(
         next.pricePerKg ?? editing[id]?.pricePerKg ?? item.pricePerKg,
       );
-      const totalKgs = n(item.totalKgs); // ✅ use totalKgs (not grandTotal logic)
+      const totalKgs = n(item.totalKgs); //  use totalKgs (not grandTotal logic)
       const totalPrice = calcItemTotalPrice(totalKgs, price, item.hasVehicle);
 
       setEditing((prev) => ({
@@ -440,7 +441,7 @@ export default function ClientBillsPage() {
       });
 
       await refreshRecords();
-      toast.success("Updated ✅");
+      toast.success("Updated ");
       cancelEdit(item.id);
     } catch (e: any) {
       console.error(e);
@@ -774,7 +775,7 @@ export default function ClientBillsPage() {
         loadingId: addLoadingId,
       });
 
-      toast.success("Variety added to bill ✅");
+      toast.success("Variety added to bill ");
       await refreshRecords();
       refetchVarieties();
 
@@ -790,7 +791,43 @@ export default function ClientBillsPage() {
       setAddingItem(false);
     }
   };
+  function calculatePreviousPending(
+    clientId: string,
+    currentBillId: string,
+    records: ClientRecord[],
+    payments: any[], // pass payments here
+  ) {
+    const clientBills = records
+      .filter((r) => r.clientId === clientId)
+      .sort(
+        (a, b) =>
+          new Date(a.createdAt || a.date || "").getTime() -
+          new Date(b.createdAt || b.date || "").getTime(),
+      );
 
+    let totalLoadings = 0;
+
+    for (const bill of clientBills) {
+      if (bill.id === currentBillId) break;
+
+      const itemTotal = Number(bill.totalPrice || 0);
+      const dispatch = Number(bill.dispatchChargesTotal || 0);
+      const packing = Number(bill.packingAmountTotal || 0);
+
+      if (dispatch > 0 || packing > 0) {
+        totalLoadings += itemTotal + dispatch + packing;
+      } else {
+        totalLoadings += itemTotal;
+      }
+    }
+
+    const totalPayments = payments.reduce(
+      (sum, p) => sum + Number(p.amount || 0),
+      0,
+    );
+
+    return Math.max(0, totalLoadings - totalPayments);
+  }
   return (
     <div className="p-3 sm:p-4 md:p-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
@@ -917,7 +954,7 @@ export default function ClientBillsPage() {
             </div>
           ) : (
             <>
-              {/* ✅ Mobile */}
+              {/*  Mobile */}
               <div className="mt-6 grid grid-cols-1 gap-4 md:hidden">
                 {paginatedBills.map((bill) => {
                   const open = !!expandedBills[bill.id];
@@ -1161,7 +1198,7 @@ export default function ClientBillsPage() {
                 })}
               </div>
 
-              {/* ✅ Desktop */}
+              {/*  Desktop */}
               <div className="mt-6 hidden md:block overflow-x-auto">
                 <table className="w-full min-w-[900px] table-auto">
                   <thead className="bg-gray-100 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
@@ -1708,66 +1745,67 @@ export default function ClientBillsPage() {
       />
       {/* ── Hidden printable content ── */}
       <div className="hidden">
-        {bills.map((bill) => (
-          <div
-            key={bill.id}
-            id={`print-bill-${bill.id}`}
-            className="print-container"
-          >
-            {/* Header */}
-            <div className="header">
-              {/* Logo */}
-              <div className="logo">
-                <img
-                  src="/assets/printlogo.jpeg"
-                  alt="RS Fisheries Logo"
-                  className="logo-img"
-                />
+        {bills.map((bill) => {
+          return (
+            <div
+              key={bill.id}
+              id={`print-bill-${bill.id}`}
+              className="print-container"
+            >
+              {/* Header */}
+              <div className="header">
+                {/* Logo */}
+                <div className="logo">
+                  <img
+                    src="/assets/printlogo.jpeg"
+                    alt="RS Fisheries Logo"
+                    className="logo-img"
+                  />
+                </div>
+
+                {/* Company Name */}
+                <div className="center">
+                  <h1 className="company-short">RSF</h1>
+                  <h2 className="company-full">Rama Satyanarayana Fisheries</h2>
+                </div>
+
+                {/* Address */}
+                <div className="address">
+                  <strong>Office Address</strong>
+                  <p>
+                    NH16, Jio Petrol Pump
+                    <br />
+                    Golden Ice Factory
+                    <br />
+                    Kovuru, Nellore - 524366
+                  </p>
+                </div>
               </div>
 
-              {/* Company Name */}
-              <div className="center">
-                <h1 className="company-short">RSF</h1>
-                <h2 className="company-full">Rama Satyanarayana Fisheries</h2>
+              <hr />
+              <div className="bill-header-row">
+                <div className="bill-left">
+                  <strong>Bill No:</strong> {bill.billNo || "—"}
+                </div>
+
+                <div className="bill-title">ESTIMATION BILLING</div>
+
+                <div className="bill-right">
+                  <strong>Date:</strong>{" "}
+                  {bill.date
+                    ? new Date(bill.date).toLocaleDateString("en-IN", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                      })
+                    : ""}
+                </div>
               </div>
+              <hr />
+              {/* <div className="title">Estimation Billing</div> */}
 
-              {/* Address */}
-              <div className="address">
-                <strong>Office Address</strong>
-                <p>
-                  NH16, Jio Petrol Pump
-                  <br />
-                  Golden Ice Factory
-                  <br />
-                  Kovuru, Nellore - 524366
-                </p>
-              </div>
-            </div>
-
-            <hr />
-            <div className="bill-header-row">
-              <div className="bill-left">
-                <strong>Bill No:</strong> {bill.billNo || "—"}
-              </div>
-
-              <div className="bill-title">ESTIMATION BILLING</div>
-
-              <div className="bill-right">
-                <strong>Date:</strong>{" "}
-                {bill.date
-                  ? new Date(bill.date).toLocaleDateString("en-IN", {
-                      day: "2-digit",
-                      month: "short",
-                      year: "numeric",
-                    })
-                  : ""}
-              </div>
-            </div>
-            <hr />
-            {/* <div className="title">Estimation Billing</div> */}
-
-            <div className="meta">
-              {/* <div className="meta-row">
+              <div className="meta">
+                {/* <div className="meta-row">
                 <div>
                   <strong>Bill No:</strong> {bill.billNo || "—"}
                 </div>
@@ -1786,78 +1824,85 @@ export default function ClientBillsPage() {
                       })}
                 </div>
               </div> */}
-              <div className="farmer-row">
-                <div className="farmer-row-left">
-                  <strong>Party:</strong> {bill.clientName || "—"}
-                </div>
+                <div className="farmer-row">
+                  <div className="farmer-row-left">
+                    <strong>Party:</strong> {bill.clientName || "—"}
+                  </div>
 
-                <div className="farmer-row-center">
-                  <strong>Village:</strong> {bill.village}
-                </div>
+                  <div className="farmer-row-center">
+                    <strong>Village:</strong> {bill.village}
+                  </div>
 
-                <div className="farmer-row-right"></div>
-              </div>
-              {/* <div>
+                  <div className="farmer-row-right"></div>
+                </div>
+                {/* <div>
                 <strong>Party:</strong> {bill.clientName || "—"}
                 {bill.village && ` • Village: ${bill.village}`}
                 {bill.vehicleNo && ` • Vehicle: ${bill.vehicleNo}`}
               </div> */}
-            </div>
+              </div>
 
-            <table className="items-table">
-              <thead>
-                <tr>
-                  <th>S.No</th>
-                  <th>Variety</th>
-                  <th>Trays</th>
-                  <th>Loose (kg)</th>
-                  <th>Price/Kg</th>
-                  <th>Total (₹)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {bill.items.map((item, index) => (
-                  <tr key={item.id}>
-                    <td>{index + 1}</td>
-                    <td>{item.varietyCode || "—"}</td>
-                    <td>{n(item.noTrays)}</td>
-                    <td>{n(item.loose).toFixed(1)}</td>
-                    <td>{n(item.pricePerKg).toFixed(2)}</td>
-                    <td>{n(item.totalPrice).toFixed(2)}</td>
+              <table className="items-table">
+                <thead>
+                  <tr>
+                    <th>S.No</th>
+                    <th>Variety</th>
+                    <th>Trays</th>
+                    <th>Loose (kg)</th>
+                    <th>Price/Kg</th>
+                    <th>Total (₹)</th>
                   </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  {/* Total trays label */}
-                  <td></td>
-                  <td className="text-right font-semibold">Total Trays :</td>
+                </thead>
+                <tbody>
+                  {bill.items.map((item, index) => (
+                    <tr key={item.id}>
+                      <td>{index + 1}</td>
+                      <td>{item.varietyCode || "—"}</td>
+                      <td>{n(item.noTrays)}</td>
+                      <td>{n(item.loose).toFixed(1)}</td>
+                      <td>{n(item.pricePerKg).toFixed(2)}</td>
+                      <td>{n(item.totalPrice).toFixed(2)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    {/* Total trays label */}
+                    <td></td>
+                    <td className="text-right font-semibold">Total Trays :</td>
 
-                  <td className="text-center font-semibold">
-                    {bill.items.reduce((sum, it) => sum + (it.noTrays || 0), 0)}
-                  </td>
-                  <td></td>
+                    <td className="text-center font-semibold">
+                      {bill.items.reduce(
+                        (sum, it) => sum + (it.noTrays || 0),
+                        0,
+                      )}
+                    </td>
+                    <td></td>
 
-                  {/* bill label */}
-                  <td className="text-right font-semibold">Bill Amount :</td>
+                    {/* bill label */}
+                    <td className="text-right font-semibold">Bill Amount :</td>
 
-                  {/* bill value */}
-                  <td className="text-right font-semibold">
-                    {n(bill.totalPrice).toFixed(2)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-            <div className="balance-row">
-              <strong>Pending Balance :</strong> ₹
-              {/* {bill?.pendingBalance.toLocaleString()} */}
-              {bill?.pendingBalance}
+                    {/* bill value */}
+                    <td className="text-right font-semibold">
+                      {n(bill.totalPrice).toFixed(2)}
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+              <div className="balance-row">
+                <strong>Pending Balance :</strong> ₹
+                {Math.max(
+                  0,
+                  (bill?.pendingBalance ?? 0) - (bill?.totalPrice ?? 0),
+                ).toLocaleString("en-IN")}
+              </div>
+              <div className="net-amount-row">
+                <strong>Net Amount :</strong> ₹
+                {n(bill?.totalPrice).toLocaleString("en-IN")}
+              </div>
             </div>
-            <div className="net-amount-row">
-              <strong>Net Amount :</strong> {bill?.totalPrice}
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

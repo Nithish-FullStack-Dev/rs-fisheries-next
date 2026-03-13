@@ -58,7 +58,7 @@ export const POST = withAuth(
         village?: string;
         fishCode?: string;
         clientId?: string;
-        useVehicle?: boolean; // ✅ checkbox flag
+        useVehicle?: boolean; //  checkbox flag
         vehicleId?: string | null;
         vehicleNo?: string | null;
 
@@ -150,7 +150,7 @@ export const POST = withAuth(
       const totalTrayKgs = processedItems.reduce((sum, i) => sum + i.trayKgs, 0);
       const totalKgs = processedItems.reduce((sum, i) => sum + i.totalKgs, 0);
 
-      // ✅ GRAND TOTAL RULE
+      //  GRAND TOTAL RULE
       const grandTotal = useVehicle
         ? Number(totalKgs.toFixed(2))
         : Number((totalKgs * (1 - DEDUCTION_PERCENT / 100)).toFixed(2));
@@ -169,7 +169,7 @@ export const POST = withAuth(
         grandTotal,
         clientId,
 
-        // ✅ IMPORTANT: to avoid DB null violation, keep vehicleNo always string
+        //  IMPORTANT: to avoid DB null violation, keep vehicleNo always string
         vehicleNo: "",
         items: {
           create: processedItems.map((i) => ({
@@ -187,7 +187,7 @@ export const POST = withAuth(
       // vehicle attach only if useVehicle
       if (useVehicle) {
         if (normalizedVehicleId) {
-          createData.vehicleId = normalizedVehicleId; // ✅ FIX
+          createData.vehicleId = normalizedVehicleId; //  FIX
           createData.vehicleNo = normalizedVehicleNo || "";
         } else {
           createData.vehicleNo = normalizedVehicleNo || "";
@@ -199,7 +199,7 @@ export const POST = withAuth(
         data: createData,
         include: {
           items: true,
-          vehicle: { select: { vehicleNumber: true } }, // ✅ works for reading
+          vehicle: { select: { vehicleNumber: true } }, //  works for reading
         },
       });
 
@@ -223,7 +223,7 @@ export async function GET(req: NextRequest) {
 
     const whereClause: any = {};
 
-    // ✅ Stage filters
+    //  Stage filters
     if (stage === "PACKING_PENDING") {
       // packing not done yet
       whereClause.packingAmounts = { none: {} };

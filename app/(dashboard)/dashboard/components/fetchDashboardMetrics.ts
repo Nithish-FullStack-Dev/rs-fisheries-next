@@ -71,7 +71,7 @@ function last7Days() {
 }
 
 /**
- * ✅ Money total (₹):
+ *  Money total (₹):
  * Uses sum(items.totalPrice) first.
  * Never uses grandTotal/totalKgs (kgs), so your lakhs display correctly.
  */
@@ -85,7 +85,7 @@ function totalMoney(r: BillRow): number {
 }
 
 async function getBaseUrl() {
-    const h = await headers(); // ✅ FIX: headers() is Promise in Next 16
+    const h = await headers(); //  FIX: headers() is Promise in Next 16
     const host = h.get("host") || "localhost:3000";
     const proto =
         h.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https");
@@ -99,7 +99,7 @@ async function safeFetchJson<T>(url: string): Promise<T> {
 }
 
 export async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
-    const base = await getBaseUrl(); // ✅ now async
+    const base = await getBaseUrl(); //  now async
 
     const [
         formerJson,
@@ -205,7 +205,7 @@ export async function fetchDashboardMetrics(): Promise<DashboardMetrics> {
             outstanding,
         },
         weekly,
-        movement: weekly, // ✅ required by DashboardMetrics
+        movement: weekly, //  required by DashboardMetrics
         topVarieties,
         outstandingAgeing,
         fishVarieties: fishVarieties.map((v) => ({ code: v.code, name: v.name })),

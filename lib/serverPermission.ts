@@ -5,7 +5,7 @@ export async function hasServerPermission(
     permission: string,
     userId?: string
 ) {
-    // ✅ ADMIN FULL ACCESS
+    //  ADMIN FULL ACCESS
     if (role === "admin") return true;
 
     // ❌ NO DEFAULT ACCESS FOR OTHERS

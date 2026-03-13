@@ -21,7 +21,7 @@ import { useSidebar } from "@/components/ui/sidebar";
 
 const BRAND = "#139BC3";
 
-/* ✅ Match /api/me response */
+/*  Match /api/me response */
 type AuthUser = {
   id: string;
   email: string;

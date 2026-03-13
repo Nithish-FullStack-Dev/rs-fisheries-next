@@ -158,7 +158,7 @@ export const DispatchPayment = () => {
     if (!selectedLoading) return false;
     return Boolean(
       (selectedLoading.vehicleId && selectedLoading.vehicleId.trim()) ||
-        (selectedLoading.vehicleNo && selectedLoading.vehicleNo.trim())
+      (selectedLoading.vehicleNo && selectedLoading.vehicleNo.trim()),
     );
   }, [selectedLoading]);
 
@@ -192,7 +192,7 @@ export const DispatchPayment = () => {
     const items = selectedLoading?.items || [];
     return items.reduce(
       (s: number, it: LoadingItem) => s + safeNum(it.totalPrice),
-      0
+      0,
     );
   }, [selectedLoading]);
 
@@ -242,7 +242,7 @@ export const DispatchPayment = () => {
       });
     }
 
-    // ✅ Only allow TRANSPORT if vehicle exists
+    //  Only allow TRANSPORT if vehicle exists
     if (transportAmount) {
       if (!hasVehicle) {
         toast.error("Transport charge not allowed", {
@@ -487,8 +487,8 @@ export const DispatchPayment = () => {
                     paymentMode === "UPI"
                       ? "UPI Transaction ID"
                       : paymentMode === "CHEQUE"
-                      ? "Cheque Number"
-                      : "Bank Reference / UTR"
+                        ? "Cheque Number"
+                        : "Bank Reference / UTR"
                   }
                   className="h-11"
                 />
@@ -660,7 +660,7 @@ export const DispatchPayment = () => {
                   />
                 </div>
 
-                {/* ✅ Transport only if vehicle exists */}
+                {/*  Transport only if vehicle exists */}
                 {hasVehicle && (
                   <div className="space-y-3">
                     <div className="flex items-center gap-3">

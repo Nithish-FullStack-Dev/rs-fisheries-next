@@ -31,7 +31,7 @@ interface Props {
   defaultValues?: { employeeId: string; email: string } | null;
   isLoading: boolean;
 
-  // ✅ NEW: existing users list
+  //  NEW: existing users list
   users: User[];
 }
 
@@ -54,7 +54,7 @@ export default function UserDialog({
   });
 
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(
-    null
+    null,
   );
 
   const {
@@ -63,12 +63,12 @@ export default function UserDialog({
     isError: isEmployeeError,
   } = useEmployeeDropDown();
 
-  // ✅ Build a set of employeeIds that already have users
+  //  Build a set of employeeIds that already have users
   const assignedEmployeeIds = useMemo(() => {
     return new Set(users?.map((u) => u.employeeId).filter(Boolean));
   }, [users]);
 
-  // ✅ Dropdown list: remove employees that already have users (only in add mode)
+  //  Dropdown list: remove employees that already have users (only in add mode)
   const employeeOptions = useMemo(() => {
     const list = res?.data ?? [];
 

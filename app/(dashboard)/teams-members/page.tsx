@@ -57,7 +57,7 @@ export default function UserPage() {
       if (axios.isAxiosError(error)) {
         toast.error(
           error?.response?.data?.message ||
-            "please fill all the required fileds"
+            "please fill all the required fileds",
         );
       } else {
         toast.error(error?.message || "please fill all the required fileds");
@@ -86,7 +86,7 @@ export default function UserPage() {
       if (axios.isAxiosError(error)) {
         toast.error(
           error?.response?.data?.message ||
-            "please fill all the required fileds"
+            "please fill all the required fileds",
         );
       } else {
         toast.error(error?.message || "please fill all the required fileds");
@@ -171,7 +171,7 @@ export default function UserPage() {
             </div>
           ) : (
             <>
-              {/* ✅ Mobile Cards */}
+              {/*  Mobile Cards */}
               <div className="grid grid-cols-1 gap-3 md:hidden">
                 {users &&
                   users.length > 0 &&
@@ -236,7 +236,7 @@ export default function UserPage() {
                   ))}
               </div>
 
-              {/* ✅ Desktop Table */}
+              {/*  Desktop Table */}
               <div className="hidden md:block overflow-x-auto rounded-2xl border border-slate-200">
                 <Table>
                   <TableHeader>
@@ -334,7 +334,7 @@ export default function UserPage() {
         isLoading={
           mode === "add" ? createMutation.isPending : updateMutation.isPending
         }
-        users={users} // ✅ PASS USERS
+        users={users} //  PASS USERS
         defaultValues={
           mode === "edit" && selectedUser
             ? { employeeId: selectedUser.employeeId, email: selectedUser.email }

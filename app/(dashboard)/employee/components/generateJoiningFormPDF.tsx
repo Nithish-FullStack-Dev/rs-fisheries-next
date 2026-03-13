@@ -93,7 +93,7 @@ export const generateJoiningFormPDF = () => {
         logoX,
         logoY,
         logoSize,
-        logoSize
+        logoSize,
       );
     } catch {
       doc.setDrawColor(ACCENT.r, ACCENT.g, ACCENT.b);
@@ -129,7 +129,7 @@ export const generateJoiningFormPDF = () => {
       `Ph: ${company.phone ?? ""} | Email: ${company.email ?? ""}`,
       pageW - marginR,
       cy,
-      { align: "right" }
+      { align: "right" },
     );
 
     // Title Strip
@@ -249,7 +249,7 @@ export const generateJoiningFormPDF = () => {
   // ===== BUILD FORM =====
   drawHeader();
 
-  // ✅ PERSONAL INFORMATION
+  //  PERSONAL INFORMATION
   sectionCard("Personal Information");
 
   // Passport photo box
@@ -290,22 +290,22 @@ export const generateJoiningFormPDF = () => {
   row3("Aadhaar Number", "PAN Number", "Marital Status (Optional)");
   row3("Mobile", "Alternate Mobile (Optional)", "Email");
 
-  // ✅ Nationality should be SINGLE field (no blank extra box)
+  //  Nationality should be SINGLE field (no blank extra box)
   fullWidth("Nationality (Optional)", 9);
 
   fullWidth("Current Address", 14);
   fullWidth("Permanent Address", 14);
 
-  // ✅ BANK DETAILS must start on NEW PAGE
+  //  BANK DETAILS must start on NEW PAGE
   newPage();
 
   sectionCard("Bank Details");
   row2("Bank Name", "Branch Name");
 
-  // ✅ Only 2 fields (no third blank box)
+  //  Only 2 fields (no third blank box)
   row2("Account Number", "IFSC Code");
 
-  // ✅ DECLARATION
+  //  DECLARATION
   sectionCard("Declaration");
   ensureSpace(60);
 
@@ -317,7 +317,7 @@ export const generateJoiningFormPDF = () => {
   doc.text(
     "I hereby declare that the information provided is true and correct.",
     marginL + 5,
-    y + 12
+    y + 12,
   );
   doc.setTextColor(0);
 

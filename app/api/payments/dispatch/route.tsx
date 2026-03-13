@@ -19,7 +19,7 @@ async function computeBaseTotalPrice(clientLoadingId: string): Promise<number> {
     where: { id: clientLoadingId },
     select: {
       totalPrice: true,
-      items: { select: { totalPrice: true } }, // ✅ fallback if totalPrice is 0
+      items: { select: { totalPrice: true } }, //  fallback if totalPrice is 0
     },
   });
 
@@ -30,7 +30,7 @@ async function computeBaseTotalPrice(clientLoadingId: string): Promise<number> {
 
   const itemsSum = (loading.items || []).reduce(
     (s, it) => s + Number(it.totalPrice || 0),
-    0
+    0,
   );
 
   return Number.isFinite(itemsSum) ? itemsSum : 0;
@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
     if (!sourceRecordId) {
       return NextResponse.json(
         { error: "sourceRecordId is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -64,18 +64,18 @@ export async function POST(req: NextRequest) {
     if (amount === null) {
       return NextResponse.json(
         { error: "Valid positive amount required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
     if (type === "OTHER" && !label) {
       return NextResponse.json(
         { error: "Label required for OTHER" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    // ✅ Verify loading exists (Client only)
+    //  Verify loading exists (Client only)
     const loadingExists = await prisma.clientLoading.findUnique({
       where: { id: sourceRecordId },
       select: { id: true, vehicleId: true, vehicleNo: true },
@@ -84,25 +84,25 @@ export async function POST(req: NextRequest) {
     if (!loadingExists) {
       return NextResponse.json(
         { error: "Loading record not found" },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
-    // ✅ Enforce: TRANSPORT allowed only if vehicle exists
+    //  Enforce: TRANSPORT allowed only if vehicle exists
     if (type === "TRANSPORT") {
       const hasVehicle = Boolean(
         (loadingExists.vehicleId && loadingExists.vehicleId.trim()) ||
-          (loadingExists.vehicleNo && loadingExists.vehicleNo.trim())
+        (loadingExists.vehicleNo && loadingExists.vehicleNo.trim()),
       );
       if (!hasVehicle) {
         return NextResponse.json(
           { error: "Transport charge not allowed: vehicle not assigned" },
-          { status: 400 }
+          { status: 400 },
         );
       }
     }
 
-    // ✅ Create DispatchCharge (Client only relation)
+    //  Create DispatchCharge (Client only relation)
     const dispatchCharge = await prisma.dispatchCharge.create({
       data: {
         sourceRecordId,
@@ -114,7 +114,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // ✅ Recalculate totals
+    //  Recalculate totals
     const [dispatchSum, packingSum, baseTotalPrice] = await Promise.all([
       prisma.dispatchCharge.aggregate({
         where: { clientLoadingId: sourceRecordId },
@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
     const newPackingTotal = packingSum._sum.totalAmount || 0;
     const newGrandTotal = baseTotalPrice + newDispatchTotal + newPackingTotal;
 
-    // ✅ Update parent
+    //  Update parent
     await prisma.clientLoading.update({
       where: { id: sourceRecordId },
       data: {
@@ -143,13 +143,13 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(
       { success: true, data: dispatchCharge },
-      { status: 201 }
+      { status: 201 },
     );
   } catch (error: any) {
     console.error("DispatchCharge POST error:", error);
     return NextResponse.json(
       { error: "Failed to save dispatch charge", details: error.message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
@@ -179,13 +179,13 @@ export async function GET(req: NextRequest) {
 
     return NextResponse.json(
       { success: true, data: dispatchCharges },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error: any) {
     console.error("DispatchCharge GET error:", error);
     return NextResponse.json(
       { error: "Failed to fetch dispatch charges", details: error.message },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

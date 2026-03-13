@@ -14,7 +14,7 @@ export const GET = apiHandler(async (req: Request) => {
   const fromDateParam = searchParams.get("fromDate");
   const toDateParam = searchParams.get("toDate");
 
-  // ✅ if exportAll=1 => return all matching rows (no pagination)
+  //  if exportAll=1 => return all matching rows (no pagination)
   const exportAll = searchParams.get("exportAll") === "1";
 
   const skip = (page - 1) * limit;
@@ -45,7 +45,7 @@ export const GET = apiHandler(async (req: Request) => {
       orderBy: { createdAt: "desc" },
       ...(exportAll ? {} : { skip, take: limit }),
     }),
-    prisma.auditLog.count({ where }), // ✅ count must respect filters
+    prisma.auditLog.count({ where }), //  count must respect filters
   ]);
 
   return NextResponse.json(

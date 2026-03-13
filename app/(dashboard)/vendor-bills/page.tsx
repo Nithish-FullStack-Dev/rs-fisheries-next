@@ -267,7 +267,7 @@ export default function VendorBillsPage() {
     setPage(1);
   };
 
-  // ✅ master fish list options
+  //  master fish list options
   const fishVarietyOptions = useMemo(() => {
     const cleaned = fishVarieties
       .map((v) => ({
@@ -342,7 +342,7 @@ export default function VendorBillsPage() {
     }
   };
 
-  // ✅ Correct row recalculation using perTrayKgs
+  //  Correct row recalculation using perTrayKgs
   const recalcRow = (
     row: Pick<EditingRow, "noTrays" | "loose" | "pricePerKg" | "perTrayKgs">,
   ) => {
@@ -358,7 +358,7 @@ export default function VendorBillsPage() {
     return { trayKgsTotal, totalKgs, totalPrice };
   };
 
-  // ✅ Build bill rows (one row per bill)
+  //  Build bill rows (one row per bill)
   const bills: BillRow[] = useMemo(() => {
     const rows = records
       .filter((r) => r.source === activeTab)
@@ -470,7 +470,7 @@ export default function VendorBillsPage() {
     setExpandedBills((prev) => ({ ...prev, [billId]: !prev[billId] }));
   };
 
-  // ✅ Start edit: compute perTrayKgs correctly from backend values
+  //  Start edit: compute perTrayKgs correctly from backend values
   const startEdit = useCallback((item: VendorItem) => {
     const noTrays = n(item.noTrays);
     const trayKgsTotal = n(item.trayKgs);
@@ -534,7 +534,7 @@ export default function VendorBillsPage() {
     [],
   );
 
-  // ✅ Save: send trayKgs as TOTAL tray kgs (perTrayKgs * noTrays)
+  //  Save: send trayKgs as TOTAL tray kgs (perTrayKgs * noTrays)
   const saveRow = async (item: VendorItem) => {
     const edits = editing[item.id];
     if (!edits || savingIds[item.id]) return;
@@ -602,7 +602,7 @@ export default function VendorBillsPage() {
       await refreshRecords();
 
       if (res.data?.deletedBill) {
-        toast.success("Item deleted ✅ Bill also removed (last item)");
+        toast.success("Item deleted  Bill also removed (last item)");
       } else {
         toast.success("Item deleted");
       }

@@ -6,7 +6,7 @@ import { verifyToken } from "@/lib/jwt";
 
 export async function GET() {
   try {
-    // ✅ Next 15 correct way
+    //  Next 15 correct way
     const cookieStore = await cookies();
     const token = cookieStore.get("session")?.value;
 

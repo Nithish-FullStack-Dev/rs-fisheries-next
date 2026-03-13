@@ -26,7 +26,7 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({ error: "Invoice not found" }, { status: 404 });
         }
 
-        // ✅ Use DB values first (new invoices)
+        //  Use DB values first (new invoices)
         const source = (inv.source || searchParams.get("source") || "") as SourceType;
         const sourceRecordId =
             (inv as any).sourceRecordId || searchParams.get("sourceRecordId") || "";
@@ -74,8 +74,8 @@ export async function GET(req: NextRequest) {
             const name = (nameMap.get(code) || "").trim();
 
             return {
-                varietyCode: code,                 // ✅ always
-                varietyName: name || code,         // ✅ fallback to code
+                varietyCode: code,                 //  always
+                varietyName: name || code,         //  fallback to code
                 qty: i.qty ?? i.totalKgs ?? 0,
                 uom: i.uom ?? "KGS",
                 amount: i.amount ?? i.totalPrice ?? 0,
@@ -89,7 +89,7 @@ export async function GET(req: NextRequest) {
             process.env.APP_URL ||
             `https://${req.headers.get("host")}`;
 
-        // ✅ include source + sourceRecordId so old invoices also work
+        //  include source + sourceRecordId so old invoices also work
         const qrUrl =
             `${appUrl}/api/invoices/pdf?invoiceNo=${encodeURIComponent(invoiceNo)}` +
             (source ? `&source=${encodeURIComponent(source)}` : "") +
@@ -123,12 +123,12 @@ export async function GET(req: NextRequest) {
             bankBranch: "",
 
             items: enrichedItems,
-            qrText: qrUrl, // ✅ THIS is what QR will encode
+            qrText: qrUrl, //  THIS is what QR will encode
         };
 
         const pdfArrayBuffer = await buildVendorInvoicePDF(jsPDF as any, data as any);
 
-        // ✅ Use Buffer to avoid BodyInit TS issues everywhere
+        //  Use Buffer to avoid BodyInit TS issues everywhere
         const pdfBuffer = Buffer.from(pdfArrayBuffer);
 
         return new NextResponse(pdfBuffer, {

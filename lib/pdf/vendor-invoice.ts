@@ -18,7 +18,7 @@ export interface VendorInvoiceData {
     gstAmount: number;
     totalAmount: number;
 
-    // ✅ Payment block
+    //  Payment block
     paymentMode?: string;
     referenceNo?: string;
     paymentRef?: string;

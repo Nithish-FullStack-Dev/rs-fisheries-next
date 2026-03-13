@@ -32,7 +32,7 @@ const todayYMD = () => {
   return `${yyyy}-${mm}-${dd}`;
 };
 
-// ✅ Text rules
+//  Text rules
 const AGENT_NAME_REGEX = /^[A-Za-z][A-Za-z .'-]*$/; // letters + space + . ' -
 const VILLAGE_REGEX = /^[A-Za-z][A-Za-z ]*$/; // letters + space
 
@@ -76,7 +76,7 @@ export default function AgentLoading() {
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingBillNo, setEditingBillNo] = useState<string | null>(null);
-  // ✅ hide used vehicles without reload
+  //  hide used vehicles without reload
   const [usedVehicleIds, setUsedVehicleIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -170,7 +170,7 @@ export default function AgentLoading() {
 
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-  // ✅ Vehicles filtered (hide used instantly; keep selected visible)
+  //  Vehicles filtered (hide used instantly; keep selected visible)
   const availableVehicles = useMemo(() => {
     return (vehicles ?? []).filter((v: any) => {
       if (!v?.id) return false;
@@ -179,7 +179,7 @@ export default function AgentLoading() {
     });
   }, [vehicles, usedVehicleIds, vehicleId]);
 
-  // ✅ safer row update (no negatives, stable totals)
+  //  safer row update (no negatives, stable totals)
   const updateRow = (id: string, field: keyof ItemRow, value: any) => {
     setItems((prev) =>
       prev.map((row) => {
@@ -204,7 +204,7 @@ export default function AgentLoading() {
         }
 
         if (field === "noTrays" || field === "loose") {
-          const n = Math.max(0, safeNum(value)); // ✅ clamp no negative
+          const n = Math.max(0, safeNum(value)); //  clamp no negative
           const next = { ...row, [field]: n } as ItemRow;
           const trayKgs = safeNum(next.noTrays) * TRAY_WEIGHT;
           const totalKgs = trayKgs + safeNum(next.loose);
@@ -281,7 +281,7 @@ export default function AgentLoading() {
     queryClient.invalidateQueries({ queryKey: ["agent-bill-no"] });
   };
 
-  // ✅ VALIDATION
+  //  VALIDATION
   const validateForm = () => {
     if (billLoading || billError || !billNo) {
       toast.error("Bill number not available");
@@ -365,12 +365,12 @@ export default function AgentLoading() {
 
     try {
       if (editingId) {
-        // ✅ UPDATE EXISTING
+        //  UPDATE EXISTING
         await axios.put(`/api/agent-loading/${editingId}`, payload);
 
         toast.success("Agent loading updated successfully!");
       } else {
-        // ✅ CREATE NEW
+        //  CREATE NEW
         await axios.post("/api/agent-loading", {
           ...payload,
           billNo,
@@ -506,7 +506,7 @@ export default function AgentLoading() {
           )}
         </div>
 
-        {/* ✅ MOBILE CARDS */}
+        {/*  MOBILE CARDS */}
         <div className="grid grid-cols-1 gap-3 md:hidden">
           {items.map((row, index) => (
             <div
@@ -615,7 +615,7 @@ export default function AgentLoading() {
           </Button>
         </div>
 
-        {/* ✅ DESKTOP TABLE */}
+        {/*  DESKTOP TABLE */}
         <div className="hidden md:block mt-2 overflow-x-auto rounded-2xl border border-[#139BC3]/15">
           <table className="w-full text-sm min-w-[900px]">
             <thead>

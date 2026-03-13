@@ -50,7 +50,10 @@ const descriptionOptions = [
   { value: "Supply of Fish Fillets", label: "Supply of Fish Fillets" },
   { value: "Supply of Prawns/Shrimps", label: "Supply of Prawns/Shrimps" },
   { value: "Supply of Squid/Cuttlefish", label: "Supply of Squid/Cuttlefish" },
-  { value: "Supply of Processed Seafood", label: "Supply of Processed Seafood" },
+  {
+    value: "Supply of Processed Seafood",
+    label: "Supply of Processed Seafood",
+  },
   { value: "other", label: "Other (Custom Description)" },
 ];
 
@@ -94,7 +97,9 @@ export function ClientInvoiceModal({
   const [billTo, setBillTo] = useState("");
 
   const [saving, setSaving] = useState(false);
-  const [existingInvoiceNo, setExistingInvoiceNo] = useState<string | null>(null);
+  const [existingInvoiceNo, setExistingInvoiceNo] = useState<string | null>(
+    null,
+  );
 
   const isHsnOther = hsn === "other";
   const isDescriptionOther = description === "other";
@@ -142,7 +147,7 @@ export function ClientInvoiceModal({
       // 2) fetch invoice by payment
       try {
         const res = await axios.get(
-          `/api/invoices/client/by-payment?paymentId=${paymentId}`
+          `/api/invoices/client/by-payment?paymentId=${paymentId}`,
         );
 
         if (cancelled) return;
@@ -152,10 +157,10 @@ export function ClientInvoiceModal({
         setInvoiceNo(inv.invoiceNo);
         setExistingInvoiceNo(inv.invoiceNo);
 
-        // ✅ HSN: map to option or custom
+        //  HSN: map to option or custom
         const savedHsn = String(inv.hsn || "").trim();
         const hsnMatch = hsnOptions.find(
-          (o) => o.value !== "other" && o.value === savedHsn
+          (o) => o.value !== "other" && o.value === savedHsn,
         );
         if (hsnMatch) {
           setHsn(hsnMatch.value);
@@ -164,10 +169,10 @@ export function ClientInvoiceModal({
           setCustomHsn(savedHsn);
         }
 
-        // ✅ Description: map to option or custom
+        //  Description: map to option or custom
         const savedDesc = String(inv.description || "").trim();
         const descMatch = descriptionOptions.find(
-          (o) => o.value !== "other" && o.value === savedDesc
+          (o) => o.value !== "other" && o.value === savedDesc,
         );
         if (descMatch) {
           setDescription(descMatch.value);
@@ -176,11 +181,15 @@ export function ClientInvoiceModal({
           setCustomDescription(savedDesc);
         }
 
-        const autoBillTo = client ? buildBillToFromClient(client, clientName) : clientName;
+        const autoBillTo = client
+          ? buildBillToFromClient(client, clientName)
+          : clientName;
         const savedBillTo = String(inv.billTo || "").trim();
 
         setBillTo(
-          savedBillTo && !looksLikeOnlyName(savedBillTo) ? savedBillTo : autoBillTo
+          savedBillTo && !looksLikeOnlyName(savedBillTo)
+            ? savedBillTo
+            : autoBillTo,
         );
       } catch (err: any) {
         if (cancelled) return;
@@ -188,13 +197,17 @@ export function ClientInvoiceModal({
         // invoice not found -> create next number + auto billTo
         if (err?.response?.status === 404) {
           try {
-            const next = await axios.get("/api/invoices/next-number?type=client");
+            const next = await axios.get(
+              "/api/invoices/next-number?type=client",
+            );
             setInvoiceNo(next.data.invoiceNumber);
           } catch {
             setInvoiceNo("Error loading number");
           }
 
-          const autoBillTo = client ? buildBillToFromClient(client, clientName) : clientName;
+          const autoBillTo = client
+            ? buildBillToFromClient(client, clientName)
+            : clientName;
           setBillTo(autoBillTo);
         } else {
           console.error(err);
@@ -296,7 +309,7 @@ export function ClientInvoiceModal({
             )}
           </div>
 
-          {/* ✅ Description (fixed) */}
+          {/*  Description (fixed) */}
           <div>
             <Label>Description of Supply</Label>
             <Select value={description} onValueChange={setDescription}>
@@ -352,12 +365,17 @@ export function ClientInvoiceModal({
         </div>
 
         <div className="mt-8">
-          <Button onClick={saveInvoice} disabled={!canSave} className="w-full" size="lg">
+          <Button
+            onClick={saveInvoice}
+            disabled={!canSave}
+            className="w-full"
+            size="lg"
+          >
             {saving
               ? "Saving..."
               : existingInvoiceNo
-              ? "Update Invoice"
-              : "Save & Finalize Invoice"}
+                ? "Update Invoice"
+                : "Save & Finalize Invoice"}
           </Button>
         </div>
       </DialogContent>
