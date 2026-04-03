@@ -127,7 +127,8 @@ type BillRow = {
 
   items: VendorItem[];
 
-  varietyCount: number; // number of items (varieties)
+  varietyCount: number;
+  totalTrays: number;
   uniqueVarietyCount: number; // unique codes count
   totalPrice: number; // sum of item.totalPrice
 };
@@ -374,7 +375,7 @@ export default function VendorBillsPage() {
         const totalPrice =
           n(rec.grandTotal) ||
           items.reduce((sum, it) => sum + n(it.totalPrice), 0);
-
+        const totalTrays = items.reduce((sum, it) => sum + n(it.noTrays), 0);
         const varietyCount = items.length;
         const uniqueVarietyCount = new Set(
           items.map((it) => (it.varietyCode || "").trim().toUpperCase()),
@@ -391,6 +392,7 @@ export default function VendorBillsPage() {
           items,
           varietyCount,
           uniqueVarietyCount,
+          totalTrays,
           totalPrice,
         };
       });
@@ -1041,6 +1043,7 @@ export default function VendorBillsPage() {
                   <thead className="bg-gray-100 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                     <tr>
                       <th className="p-4">Bill No / Name</th>
+                      <th className="p-4 text-right">Trays</th>
                       <th className="p-4 text-right">Variety</th>
                       <th className="p-4 text-right">Total</th>
                       <th className="p-4 text-center">Open</th>
@@ -1079,14 +1082,15 @@ export default function VendorBillsPage() {
                                 </div>
                               </div>
                             </td>
-
+                            <td className="p-4 text-right">
+                              <div className="font-semibold text-gray-900">
+                                {bill.totalTrays}
+                              </div>
+                            </td>
                             <td className="p-4 text-right">
                               <div className="font-semibold text-gray-900">
                                 {bill.varietyCount}
                               </div>
-                              {/* <div className="text-xs text-gray-500">
-                                Unique: {bill.uniqueVarietyCount}
-                              </div> */}
                             </td>
 
                             <td className="p-4 text-right font-semibold text-green-600">
@@ -1125,8 +1129,8 @@ export default function VendorBillsPage() {
                           {/* Expanded content */}
                           {open && (
                             <tr className="bg-white">
-                              <td colSpan={4} className="p-4">
-                                <div className="rounded-xl border border-gray-200 overflow-hidden">
+                              <td colSpan={5} className="p-4">
+                                <div className="w-full overflow-hidden rounded-xl border border-gray-200 transition-all duration-300">
                                   <div className="px-4 py-3 bg-gray-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                                     <div className="text-sm text-gray-700">
                                       <span className="font-semibold text-gray-900">
