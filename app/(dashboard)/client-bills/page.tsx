@@ -98,6 +98,7 @@ type BillRow = {
 
   varietyCount: number;
   uniqueVarietyCount: number;
+  totalTrays: number;
   totalPrice: number; //  ALWAYS SUM OF ITEMS
   pendingBalance?: number;
 };
@@ -265,7 +266,6 @@ export default function ClientBillsPage() {
       const items: UIItem[] = (rec.items || []).map((it) => {
         const totalKgs = n(it.totalKgs);
         const pricePerKg = n(it.pricePerKg);
-
         //  ensure UI uses correct totalPrice if backend didn't send it
         const fixedTotalPrice =
           it.totalPrice !== undefined && it.totalPrice !== null
@@ -290,6 +290,7 @@ export default function ClientBillsPage() {
         items.reduce((sum, it) => sum + n(it.totalPrice), 0).toFixed(2),
       );
 
+      const totalTrays = items.reduce((sum, it) => sum + n(it.noTrays), 0);
       const varietyCount = items.length;
       const uniqueVarietyCount = new Set(
         items.map((it) => (it.varietyCode || "").trim().toUpperCase()),
@@ -307,6 +308,8 @@ export default function ClientBillsPage() {
         items,
         varietyCount,
         uniqueVarietyCount,
+        totalTrays,
+        totalKgs: n(rec.totalKgs),
         totalPrice: computedTotal,
         pendingBalance,
       };
@@ -987,6 +990,12 @@ export default function ClientBillsPage() {
 
                         <div className="flex items-center gap-3">
                           <div className="text-right">
+                            <div className="text-xs text-gray-500">Trays</div>
+                            <div className="font-semibold text-gray-900">
+                              {bill.totalTrays}
+                            </div>
+                          </div>
+                          <div className="text-right">
                             <div className="text-xs text-gray-500">
                               Varieties
                             </div>
@@ -1204,6 +1213,7 @@ export default function ClientBillsPage() {
                   <thead className="bg-gray-100 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
                     <tr>
                       <th className="p-4">Bill No / Client</th>
+                      <th className="p-4 text-right">Trays</th>
                       <th className="p-4 text-right">Variety</th>
                       <th className="p-4 text-right">Total</th>
                       <th className="p-4 text-center">Open</th>
@@ -1243,17 +1253,17 @@ export default function ClientBillsPage() {
                                 </div>
                               </div>
                             </td>
-
+                            <td className="p-4 text-right font-semibold text-gray-900">
+                              {bill.totalTrays}
+                            </td>{" "}
                             <td className="p-4 text-right">
                               <div className="font-semibold text-gray-900">
                                 {bill.varietyCount}
                               </div>
                             </td>
-
                             <td className="p-4 text-right font-bold text-green-600">
                               {n(bill.totalPrice).toFixed(2)}
                             </td>
-
                             <td className="p-4 text-center">
                               <div className="flex items-center justify-center gap-2">
                                 <Button
@@ -1285,7 +1295,7 @@ export default function ClientBillsPage() {
 
                           {open && (
                             <tr className="bg-white">
-                              <td colSpan={4} className="p-4">
+                              <td colSpan={5} className="p-4">
                                 <div className="rounded-xl border border-gray-200 overflow-hidden">
                                   <div className="px-4 py-3 bg-gray-50 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                                     <div className="text-sm text-gray-700">
