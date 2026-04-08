@@ -141,7 +141,7 @@ export default function ClientLoadingForm() {
   } = useQuery<ClientRow[]>({
     queryKey: ["clients"],
     queryFn: async () => {
-      const res = await axios.get("/api/client");
+      const res = await axios.get("/api/client?limit=1000");
       return res.data?.data || [];
     },
     staleTime: 0,
