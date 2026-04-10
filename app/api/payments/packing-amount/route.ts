@@ -176,7 +176,6 @@ export async function POST(req: NextRequest) {
     }
 }
 
-// app/api/payments/packing-amount/route.ts
 export async function GET(req: NextRequest) {
     try {
         const { searchParams } = new URL(req.url);
