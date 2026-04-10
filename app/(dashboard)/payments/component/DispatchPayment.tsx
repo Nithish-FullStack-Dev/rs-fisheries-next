@@ -103,16 +103,33 @@ export const DispatchPayment = () => {
   // Inputs
   const [iceAmount, setIceAmount] = useState<string>("");
   const [transportAmount, setTransportAmount] = useState<string>("");
-  const [otherLabel, setOtherLabel] = useState<string>("");
-  const [otherAmount, setOtherAmount] = useState<string>("");
+  type OtherChargeInput = {
+    id: string;
+    label: string;
+    amount: string;
+  };
+
+  const [otherCharges, setOtherCharges] = useState<OtherChargeInput[]>([
+    {
+      id: crypto.randomUUID(),
+      label: "",
+      amount: "",
+    },
+  ]);
   const [notes, setNotes] = useState<string>("");
 
   const resetForm = () => {
     setIceAmount("");
     setTransportAmount("");
-    setOtherLabel("");
-    setOtherAmount("");
     setNotes("");
+
+    setOtherCharges([
+      {
+        id: crypto.randomUUID(),
+        label: "",
+        amount: "",
+      },
+    ]);
   };
 
   /**
@@ -214,7 +231,42 @@ export const DispatchPayment = () => {
       notes?: string | null;
     }) => axios.post("/api/payments/dispatch", payload),
   });
+  const addOtherCharge = () => {
+    setOtherCharges((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        label: "",
+        amount: "",
+      },
+    ]);
+  };
 
+  const removeOtherCharge = (id: string) => {
+    setOtherCharges((prev) => {
+      if (prev.length === 1) {
+        return [
+          {
+            id: crypto.randomUUID(),
+            label: "",
+            amount: "",
+          },
+        ];
+      }
+
+      return prev.filter((item) => item.id !== id);
+    });
+  };
+
+  const updateOtherCharge = (
+    id: string,
+    field: "label" | "amount",
+    value: string,
+  ) => {
+    setOtherCharges((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)),
+    );
+  };
   const handleSaveAll = async () => {
     if (!sourceRecordId) return toast.error("Select a loading");
 
@@ -258,16 +310,27 @@ export const DispatchPayment = () => {
       });
     }
 
-    if (otherAmount || otherLabel.trim()) {
-      if (!otherLabel.trim()) return toast.error("Other label required");
-      if (!otherAmount) return toast.error("Other amount required");
-      charges.push({
-        sourceRecordId,
-        type: "OTHER",
-        label: otherLabel.trim(),
-        amount: safeNum(otherAmount),
-        notes: notes.trim() || null,
-      });
+    for (const other of otherCharges) {
+      const hasLabel = other.label.trim();
+      const hasAmount = other.amount.trim();
+
+      if (hasLabel || hasAmount) {
+        if (!hasLabel) {
+          return toast.error("Other charge label required");
+        }
+
+        if (!hasAmount) {
+          return toast.error("Other charge amount required");
+        }
+
+        charges.push({
+          sourceRecordId,
+          type: "OTHER",
+          label: other.label.trim(),
+          amount: safeNum(other.amount),
+          notes: notes.trim() || null,
+        });
+      }
     }
 
     if (charges.length === 0) return toast.error("Enter at least one charge");
@@ -688,27 +751,69 @@ export const DispatchPayment = () => {
                 )}
 
                 {/* Other */}
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <Package className="w-6 h-6 text-purple-600" />
-                    <Label className="text-lg font-medium">Other Charge</Label>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Package className="w-6 h-6 text-purple-600" />
+                      <Label className="text-lg font-medium">
+                        Other Charges
+                      </Label>
+                    </div>
+
+                    <Button
+                      type="button"
+                      size="icon"
+                      variant="outline"
+                      onClick={addOtherCharge}
+                      className="rounded-full"
+                    >
+                      +
+                    </Button>
                   </div>
-                  <Input
-                    placeholder="Label (e.g. Hamali, Toll)"
-                    value={otherLabel}
-                    onChange={(e) => setOtherLabel(e.target.value)}
-                    className="h-12"
-                  />
-                  <Input
-                    type="text"
-                    placeholder="Enter amount"
-                    value={otherAmount}
-                    onChange={(e) =>
-                      isNumericInput(e.target.value) &&
-                      setOtherAmount(e.target.value)
-                    }
-                    className="h-12 text-lg font-mono mt-3"
-                  />
+
+                  <div className="space-y-4">
+                    {otherCharges.map((other, index) => (
+                      <div
+                        key={other.id}
+                        className="grid grid-cols-1 sm:grid-cols-[1fr_180px_auto] gap-3"
+                      >
+                        <Input
+                          placeholder="Label (e.g. Hamali, Toll)"
+                          value={other.label}
+                          onChange={(e) =>
+                            updateOtherCharge(other.id, "label", e.target.value)
+                          }
+                          className="h-12"
+                        />
+
+                        <Input
+                          type="text"
+                          placeholder="Enter amount"
+                          value={other.amount}
+                          onChange={(e) =>
+                            isNumericInput(e.target.value) &&
+                            updateOtherCharge(
+                              other.id,
+                              "amount",
+                              e.target.value,
+                            )
+                          }
+                          className="h-12 text-lg font-mono"
+                        />
+
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="outline"
+                          onClick={() => removeOtherCharge(other.id)}
+                          disabled={otherCharges.length === 1}
+                          className="h-12 w-12 rounded-xl border-red-200 text-red-600 hover:bg-red-50"
+                        >
+                          -
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 

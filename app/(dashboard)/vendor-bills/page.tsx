@@ -676,7 +676,7 @@ export default function VendorBillsPage() {
 }
 
 .company-short {
-  font-family: "Cinzel Decorative", serif;
+  font-family: "Fraunces", serif;
   font-size: 34px;
   font-weight: 700;
   letter-spacing: 4px;
@@ -685,8 +685,8 @@ export default function VendorBillsPage() {
 }
 
 .company-full {
-  font-family: "Cinzel", serif;
-  font-size: 18px;
+  font-family: "Fraunces", serif;
+  font-size: 14px;
   font-weight: 400;
   letter-spacing: 1px;
   text-transform: uppercase;
@@ -741,17 +741,18 @@ export default function VendorBillsPage() {
           th {
             background: #f3f4f6;
             font-weight: bold;
-            text-align: left;
+            text-align: center;
           }
           td {
-            text-align: right;
+            text-align: center;
           }
-          td:first-child {
-            text-align: left;
+          td:last-child {
+            text-align: right;
           }
           tfoot td {
             background: #f9fafb;
             font-weight: bold;
+            text-align: right;
           }
 .bill-header-row{
   display:flex;
@@ -1873,7 +1874,7 @@ export default function VendorBillsPage() {
                 <strong>Bill No:</strong> {bill.billNo || "—"}
               </div>
 
-              <div className="bill-title">ESTIMATION BILLING</div>
+              <div className="bill-title">ESTIMATION / BILLING</div>
 
               <div className="bill-right">
                 <strong>Date:</strong>{" "}
@@ -1921,7 +1922,12 @@ export default function VendorBillsPage() {
                     <td>{item.noTrays}</td>
                     <td>{(item.loose || 0).toFixed(2)}</td>
                     <td>{(item.pricePerKg || 0).toFixed(2)}</td>
-                    <td>{(item.totalPrice || 0).toFixed(2)}</td>
+                    <td>
+                      {(item.totalPrice || 0).toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -1947,7 +1953,11 @@ export default function VendorBillsPage() {
               </tfoot>
             </table>
             <div className="net-amount-row">
-              <strong>Net Amount :</strong> {bill?.totalPrice}
+              <strong>Net Amount :</strong>{" "}
+              {bill?.totalPrice.toLocaleString("en-IN", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
             </div>
           </div>
         ))}

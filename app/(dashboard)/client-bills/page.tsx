@@ -67,12 +67,35 @@ interface ClientRecord {
   village?: string;
   items: ClientItem[];
   createdAt?: string;
+
   totalKgs?: number;
-  grandTotal?: number;
   totalPrice?: number;
+  grandTotal?: number;
+
   dispatchChargesTotal?: number;
   packingAmountTotal?: number;
   pendingBalance?: number;
+
+  dispatchCharges?: {
+    type: string;
+    label?: string | null;
+    amount: number;
+  }[];
+
+  packingAmounts?: {
+    id: string;
+    totalAmount: number;
+  }[];
+
+  dispatchBreakdown?: {
+    iceCooling: number;
+    transportCharges: number;
+    otherCharges: {
+      label?: string;
+      amount: number;
+    }[];
+    dispatchChargesTotal: number;
+  };
 }
 
 type UIItem = ClientItem & {
@@ -85,7 +108,7 @@ type UIItem = ClientItem & {
 };
 
 type BillRow = {
-  id: string; // loadingId
+  id: string;
   billNo: string;
   clientName: string;
   date: string;
@@ -93,14 +116,40 @@ type BillRow = {
   vehicleNo?: string;
   village?: string;
   hasVehicle: boolean;
-
+  clientId?: string;
   items: UIItem[];
 
   varietyCount: number;
   uniqueVarietyCount: number;
   totalTrays: number;
-  totalPrice: number; //  ALWAYS SUM OF ITEMS
+  totalPrice: number;
   pendingBalance?: number;
+
+  dispatchChargesTotal?: number;
+  packingAmountTotal?: number;
+
+  dispatchCharges?: {
+    type: string;
+    label?: string | null;
+    amount: number;
+  }[];
+
+  packingAmounts?: {
+    id: string;
+    totalAmount: number;
+  }[];
+
+  dispatchBreakdown: {
+    iceCooling: number;
+    transportCharges: number;
+    otherCharges: {
+      label?: string;
+      amount: number;
+    }[];
+    dispatchChargesTotal: number;
+  };
+
+  grandTotal?: number;
 };
 
 const fetchClientLoadings = async (): Promise<ClientRecord[]> => {
@@ -127,7 +176,7 @@ function calcItemTotalPrice(
 export default function ClientBillsPage() {
   const [loading, setLoading] = useState(true);
   const [records, setRecords] = useState<ClientRecord[]>([]);
-
+  const [payments, setPayments] = useState<any[]>([]);
   const [editing, setEditing] = useState<
     Record<
       string,
@@ -199,7 +248,11 @@ export default function ClientBillsPage() {
     const loadData = async () => {
       try {
         setLoading(true);
+        const paymentsRes = await axios.get("/api/payments/client");
 
+        if (mounted) {
+          setPayments(paymentsRes.data?.data ?? []);
+        }
         const data = await fetchClientLoadings();
         if (!mounted) return;
 
@@ -298,6 +351,7 @@ export default function ClientBillsPage() {
 
       return {
         id: rec.id,
+        clientId: rec.clientId,
         billNo: rec.billNo || "-",
         clientName: rec.clientName || "Unknown",
         date: rec.date?.split("T")[0] || "",
@@ -305,13 +359,31 @@ export default function ClientBillsPage() {
         vehicleNo: rec.vehicleNo,
         village: rec.village,
         hasVehicle,
+
         items,
+
         varietyCount,
         uniqueVarietyCount,
         totalTrays,
+
         totalKgs: n(rec.totalKgs),
         totalPrice: computedTotal,
+
         pendingBalance,
+
+        dispatchChargesTotal: n(rec.dispatchChargesTotal),
+        packingAmountTotal: n(rec.packingAmountTotal),
+        grandTotal: n(rec.grandTotal),
+
+        dispatchCharges: rec.dispatchCharges || [],
+        packingAmounts: rec.packingAmounts || [],
+
+        dispatchBreakdown: rec.dispatchBreakdown || {
+          iceCooling: 0,
+          transportCharges: 0,
+          otherCharges: [],
+          dispatchChargesTotal: 0,
+        },
       };
     });
 
@@ -584,7 +656,7 @@ export default function ClientBillsPage() {
           }
 
        .company-short {
-  font-family: "Cinzel Decorative", serif;
+  font-family: "Fraunces", serif;
   font-size: 34px;
   font-weight: 700;
   letter-spacing: 4px;
@@ -593,8 +665,8 @@ export default function ClientBillsPage() {
 }
 
 .company-full {
-  font-family: "Cinzel", serif;
-  font-size: 18px;
+  font-family: "Fraunces", serif;
+  font-size: 14px;
   font-weight: 400;
   letter-spacing: 1px;
   text-transform: uppercase;
@@ -646,17 +718,18 @@ export default function ClientBillsPage() {
           th {
             background: #f3f4f6;
             font-weight: bold;
-            text-align: left;
+            text-align: center;
           }
           td {
-            text-align: right;
+            text-align: center;
           }
-          td:first-child {
-            text-align: left;
+          td:last-child {
+            text-align: right;
           }
           tfoot td {
             background: #f9fafb;
             font-weight: bold;
+             text-align: right;
           }
             .bill-header-row{
   display:flex;
@@ -713,8 +786,21 @@ export default function ClientBillsPage() {
 
 .items-table th{
   background:#f3f4f6;
+  
+}
+.net-amount-row {
+  font-size: 14px;
+  font-weight: 600;
+  text-align: right;
 }
 
+.grand-total {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111;
+  border-top: 2px solid #000;
+  padding-top: 8px;
+}
 .totals-section{
   display:flex;
   justify-content:space-between;
@@ -735,6 +821,7 @@ export default function ClientBillsPage() {
   margin-top:8px;
   font-size:14px;
   font-weight:bold;
+  margin-right:8px;
 }
         </style>
       </head>
@@ -831,6 +918,22 @@ export default function ClientBillsPage() {
 
     return Math.max(0, totalLoadings - totalPayments);
   }
+  const sortOtherCharges = (
+    charges: { label?: string; amount: number }[] = [],
+  ) => {
+    const priority: Record<string, number> = {
+      "Local transport": 1,
+      Commission: 2,
+      "Other charges": 3,
+    };
+
+    return [...charges].sort((a, b) => {
+      const aPriority = priority[a.label || ""] ?? 999;
+      const bPriority = priority[b.label || ""] ?? 999;
+
+      return aPriority - bPriority;
+    });
+  };
   return (
     <div className="p-3 sm:p-4 md:p-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
@@ -1798,7 +1901,7 @@ export default function ClientBillsPage() {
                   <strong>Bill No:</strong> {bill.billNo || "—"}
                 </div>
 
-                <div className="bill-title">ESTIMATION BILLING</div>
+                <div className="bill-title">ESTIMATION / BILLING</div>
 
                 <div className="bill-right">
                   <strong>Date:</strong>{" "}
@@ -1871,7 +1974,14 @@ export default function ClientBillsPage() {
                       <td>{n(item.noTrays)}</td>
                       <td>{n(item.loose).toFixed(1)}</td>
                       <td>{n(item.pricePerKg).toFixed(2)}</td>
-                      <td>{n(item.totalPrice).toFixed(2)}</td>
+                      {/* <td>{n(item.totalPrice).toFixed(2)}</td>
+                       */}
+                      <td>
+                        {n(item.totalPrice).toLocaleString("en-IN", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1894,21 +2004,78 @@ export default function ClientBillsPage() {
 
                     {/* bill value */}
                     <td className="text-right font-semibold">
-                      {n(bill.totalPrice).toFixed(2)}
+                      {n(bill.totalPrice).toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
                     </td>
                   </tr>
                 </tfoot>
               </table>
-              <div className="balance-row">
-                <strong>Pending Balance :</strong> ₹
-                {Math.max(
-                  0,
-                  (bill?.pendingBalance ?? 0) - (bill?.totalPrice ?? 0),
-                ).toLocaleString("en-IN")}
-              </div>
-              <div className="net-amount-row">
-                <strong>Net Amount :</strong> ₹
-                {n(bill?.totalPrice).toLocaleString("en-IN")}
+
+              {/* Charges Summary */}
+              <div className="pr-4  text-sm">
+                {n(bill.packingAmountTotal) > 0 && (
+                  <div className="net-amount-row">
+                    <strong>Ice:</strong> ₹
+                    {n(bill.packingAmountTotal).toLocaleString("en-IN")}
+                  </div>
+                )}
+
+                {bill.dispatchBreakdown?.iceCooling > 0 && (
+                  <div className="net-amount-row">
+                    <strong>Packing Charges :</strong> ₹
+                    {n(bill.dispatchBreakdown.iceCooling).toLocaleString(
+                      "en-IN",
+                    )}
+                  </div>
+                )}
+
+                {bill.dispatchBreakdown?.transportCharges > 0 && (
+                  <div className="net-amount-row">
+                    <strong>Transport Charges :</strong> ₹
+                    {n(bill.dispatchBreakdown.transportCharges).toLocaleString(
+                      "en-IN",
+                    )}
+                  </div>
+                )}
+
+                {sortOtherCharges(bill.dispatchBreakdown?.otherCharges).map(
+                  (
+                    charge: { label?: string; amount: number },
+                    index: number,
+                  ) => (
+                    <div key={index} className="net-amount-row">
+                      <strong>{charge.label || "Other Charges"} :</strong> ₹
+                      {n(charge.amount).toLocaleString("en-IN")}
+                    </div>
+                  ),
+                )}
+
+                {n(bill.dispatchChargesTotal) > 0 && (
+                  <div className="net-amount-row">
+                    <strong>Total Dispatch Charges :</strong> ₹
+                    {n(bill.dispatchChargesTotal).toLocaleString("en-IN")}
+                  </div>
+                )}
+                <div className="balance-row">
+                  <strong>Pending Balance :</strong> ₹
+                  {calculatePreviousPending(
+                    bill.clientId!,
+                    bill.id,
+                    records,
+                    payments,
+                  ).toLocaleString("en-IN")}
+                </div>
+                <div className="net-amount-row border-t pt-2 mt-2">
+                  <strong>Grand Total :</strong> ₹
+                  {n(
+                    bill.grandTotal ||
+                      n(bill.totalPrice) +
+                        n(bill.dispatchChargesTotal) +
+                        n(bill.packingAmountTotal),
+                  ).toLocaleString("en-IN")}
+                </div>
               </div>
             </div>
           );
