@@ -687,7 +687,7 @@ font-family: 'Cinzel', cursive;
 .company-full {
 font-family: 'Cinzel', cursive;
   font-size: 14px;
-  font-weight: 400;
+  font-weight: 700;
   letter-spacing: 1px;
   text-transform: uppercase;
   margin: 0;
