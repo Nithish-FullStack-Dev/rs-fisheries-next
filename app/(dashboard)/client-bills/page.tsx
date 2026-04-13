@@ -342,7 +342,18 @@ export default function ClientBillsPage() {
       const computedTotal = Number(
         items.reduce((sum, it) => sum + n(it.totalPrice), 0).toFixed(2),
       );
+      const pending = calculatePreviousPending(
+        rec.clientId!,
+        rec.id,
+        records,
+        payments,
+      );
 
+      const grandTotal =
+        computedTotal +
+        n(rec.dispatchChargesTotal) +
+        n(rec.packingAmountTotal) +
+        n(pending);
       const totalTrays = items.reduce((sum, it) => sum + n(it.noTrays), 0);
       const varietyCount = items.length;
       const uniqueVarietyCount = new Set(
@@ -373,7 +384,7 @@ export default function ClientBillsPage() {
 
         dispatchChargesTotal: n(rec.dispatchChargesTotal),
         packingAmountTotal: n(rec.packingAmountTotal),
-        grandTotal: n(rec.grandTotal),
+        grandTotal,
 
         dispatchCharges: rec.dispatchCharges || [],
         packingAmounts: rec.packingAmounts || [],
@@ -633,39 +644,48 @@ export default function ClientBillsPage() {
             color: #111;
             font-size: 13px;
           }
-          .header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-          }
+    .header {
+  display: flex;
+  align-items: center;
+}
 
-          /* Logo */
-          .logo {
-            width: 120px;
-          }
+/* Left */
+.logo {
+  width: 120px;
+}
 
-          .logo img {
-            width: 100%;
-            height: auto;
-          }
+.logo img {
+  width: 100%;
+  height: auto;
+}
 
-          /* Center Section */
-          .center {
-            flex: 1;
-            text-align: center;
-          }
+/* Center */
+.center {
+  flex: 1;
+  text-align: center;
+}
 
-       .company-short {
-  font-family: "Fraunces", serif;
+/* Right */
+.address {
+  flex: 0 0 200px; /* same as left */
+  text-align: right;
+  font-size: 12px;
+  line-height: 1.5;
+}
+   .address strong {
+            font-size: 13px;
+          }
+.company-short {
+font-family: 'Cinzel', cursive;
   font-size: 34px;
   font-weight: 700;
-  letter-spacing: 4px;
+  letter-spacing: 1px;
   color: #1f5f8b;
   margin: 0;
 }
 
 .company-full {
-  font-family: "Fraunces", serif;
+font-family: 'Cinzel', cursive;
   font-size: 14px;
   font-weight: 400;
   letter-spacing: 1px;
@@ -673,17 +693,8 @@ export default function ClientBillsPage() {
   margin: 0;
 }
 
-          /* Address */
-          .address {
-            width: 220px;
-            text-align: right;
-            font-size: 12px;
-            line-height: 1.5;
-          }
-
-          .address strong {
-            font-size: 13px;
-          }
+      
+         
           hr {
             border: none;
             border-top: 1.5px solid #000;
@@ -731,6 +742,10 @@ export default function ClientBillsPage() {
             font-weight: bold;
              text-align: right;
           }
+             tfoot td:nth-child(3) {
+             text-align: center;
+             }
+
             .bill-header-row{
   display:flex;
   align-items:center;
@@ -754,24 +769,28 @@ export default function ClientBillsPage() {
   text-align:right;
 }
 
-.farmer-row{
-  display:grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  align-items:center;
-  margin-bottom:12px;
-  font-size:13px;
+.farmer-row {
+  display: grid;
+  grid-template-columns: 1.2fr 2fr 1.2fr; /* 👈 address gets more space */
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  font-size: 13px;
 }
 
-.farmer-row-left{
-  text-align:left;
+.farmer-row-left {
+  text-align: left;
 }
 
-.farmer-row-center{
-  text-align:center;
+.farmer-row-center {
+  text-align: left;
+  word-break: break-word; /* 👈 prevents overflow */
 }
 
-.farmer-row-right{
-  text-align:right;
+.farmer-row-right {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .items-table{
   width:100%;
@@ -811,7 +830,57 @@ export default function ClientBillsPage() {
 .amounts{
   text-align:right;
 }
+.charges-wrapper {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+  padding-right: 40px; /* 👈 gives little right gap like your image */
+}
 
+.amount-section {
+  width: 320px; /* 👈 controls how tight it looks */
+}
+.amount-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  margin: 2px 0;
+}
+
+.right {
+  display: grid;
+  grid-template-columns: 10px 110px; /* 👈 fixed alignment */
+  align-items: center;
+}
+
+.value {
+  text-align: right;
+}
+
+
+.amount-row span:nth-child(3) {
+  text-align: center;
+}
+
+.amount-row span:nth-child(4) {
+  text-align: right;
+}
+
+.grand-total {
+  font-size: 15px;
+  font-weight: 700;
+  border-top: 2px solid #000;
+  padding-top: 6px;
+  margin-top: 6px;
+}
+.vehicle-line {
+  display: inline-block;
+  width: 150px; 
+  border-bottom: 1.5px solid #000;
+  margin-left: 8px;
+  height: 12px;
+}
 .net-amount{
   margin-top:6px;
 }
@@ -823,11 +892,40 @@ export default function ClientBillsPage() {
   font-weight:bold;
   margin-right:8px;
 }
+  .print-wrapper {
+  position: relative;
+  z-index: 1;
+}
+
+.bill-body {
+  position: relative;
+  padding-top: 10px;
+}
+
+/* Watermark */
+.watermark {
+  position: absolute;
+  top: 45%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 380px;
+  opacity: 0.1;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Keep content above watermark */
+.bill-body > * {
+ 
+  z-index: 2;
+}
         </style>
       </head>
-      <body>
-        ${printContent.innerHTML}
-      </body>
+  <body>
+  <div class="print-wrapper">
+    ${printContent.innerHTML}
+  </div>
+</body>
     </html>
   `);
 
@@ -1917,164 +2015,189 @@ export default function ClientBillsPage() {
               <hr />
               {/* <div className="title">Estimation Billing</div> */}
 
-              <div className="meta">
-                {/* <div className="meta-row">
-                <div>
-                  <strong>Bill No:</strong> {bill.billNo || "—"}
-                </div>
-                <div>
-                  <strong>Date:</strong>{" "}
-                  {bill.date
-                    ? new Date(bill.date).toLocaleDateString("en-IN", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })
-                    : new Date().toLocaleDateString("en-IN", {
-                        day: "2-digit",
-                        month: "short",
-                        year: "numeric",
-                      })}
-                </div>
-              </div> */}
-                <div className="farmer-row">
-                  <div className="farmer-row-left">
-                    <strong>Party:</strong> {bill.clientName || "—"}
-                  </div>
+              <div className="bill-body">
+                <div className="meta">
+                  <div className="farmer-row">
+                    <div className="farmer-row-left">
+                      <strong>Client:</strong> {bill.clientName || "—"}
+                    </div>
 
-                  <div className="farmer-row-center">
-                    <strong>Village:</strong> {bill.village}
-                  </div>
+                    <div className="farmer-row-center">
+                      <strong>Address:</strong> {bill.village}
+                    </div>
 
-                  <div className="farmer-row-right"></div>
-                </div>
-                {/* <div>
+                    <div className="farmer-row-right">
+                      <strong>Vehicle No:</strong>
+                      {/* <span className="vehicle-line"></span> */}
+                    </div>
+                  </div>
+                  {/* <div>
                 <strong>Party:</strong> {bill.clientName || "—"}
                 {bill.village && ` • Village: ${bill.village}`}
                 {bill.vehicleNo && ` • Vehicle: ${bill.vehicleNo}`}
               </div> */}
-              </div>
+                </div>
+                <img src="/assets/bg-fish.png" className="watermark" />
+                <table className="items-table">
+                  <thead>
+                    <tr>
+                      <th>S.No</th>
+                      <th>Variety</th>
+                      <th>Trays</th>
+                      <th>Loose (kg)</th>
+                      <th>Price/Kg</th>
+                      <th>Total (₹)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bill.items.map((item, index) => (
+                      <tr key={item.id}>
+                        <td>{index + 1}</td>
+                        <td>{item.varietyCode || "—"}</td>
+                        <td>{n(item.noTrays)}</td>
+                        <td>{n(item.loose).toFixed(1)}</td>
+                        <td>{n(item.pricePerKg).toFixed(2)}</td>
+                        {/* <td>{n(item.totalPrice).toFixed(2)}</td>
+                         */}
+                        <td>
+                          {n(item.totalPrice).toLocaleString("en-IN", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      {/* Total trays label */}
+                      <td></td>
+                      <td className="text-right font-semibold">
+                        Total Trays :
+                      </td>
 
-              <table className="items-table">
-                <thead>
-                  <tr>
-                    <th>S.No</th>
-                    <th>Variety</th>
-                    <th>Trays</th>
-                    <th>Loose (kg)</th>
-                    <th>Price/Kg</th>
-                    <th>Total (₹)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bill.items.map((item, index) => (
-                    <tr key={item.id}>
-                      <td>{index + 1}</td>
-                      <td>{item.varietyCode || "—"}</td>
-                      <td>{n(item.noTrays)}</td>
-                      <td>{n(item.loose).toFixed(1)}</td>
-                      <td>{n(item.pricePerKg).toFixed(2)}</td>
-                      {/* <td>{n(item.totalPrice).toFixed(2)}</td>
-                       */}
-                      <td>
-                        {n(item.totalPrice).toLocaleString("en-IN", {
+                      <td className="text-center font-semibold">
+                        {bill.items.reduce(
+                          (sum, it) => sum + (it.noTrays || 0),
+                          0,
+                        )}
+                      </td>
+                      <td></td>
+
+                      {/* bill label */}
+                      <td className="text-right font-semibold">
+                        Bill Amount :
+                      </td>
+
+                      {/* bill value */}
+                      <td className="text-right font-semibold">
+                        {n(bill.totalPrice).toLocaleString("en-IN", {
                           minimumFractionDigits: 2,
                           maximumFractionDigits: 2,
                         })}
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    {/* Total trays label */}
-                    <td></td>
-                    <td className="text-right font-semibold">Total Trays :</td>
+                  </tfoot>
+                </table>
 
-                    <td className="text-center font-semibold">
-                      {bill.items.reduce(
-                        (sum, it) => sum + (it.noTrays || 0),
-                        0,
-                      )}
-                    </td>
-                    <td></td>
-
-                    {/* bill label */}
-                    <td className="text-right font-semibold">Bill Amount :</td>
-
-                    {/* bill value */}
-                    <td className="text-right font-semibold">
-                      {n(bill.totalPrice).toLocaleString("en-IN", {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2,
-                      })}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-
-              {/* Charges Summary */}
-              <div className="pr-4  text-sm">
-                {n(bill.packingAmountTotal) > 0 && (
-                  <div className="net-amount-row">
-                    <strong>Ice:</strong> ₹
-                    {n(bill.packingAmountTotal).toLocaleString("en-IN")}
-                  </div>
-                )}
-
-                {bill.dispatchBreakdown?.iceCooling > 0 && (
-                  <div className="net-amount-row">
-                    <strong>Packing Charges :</strong> ₹
-                    {n(bill.dispatchBreakdown.iceCooling).toLocaleString(
-                      "en-IN",
+                {/* Charges Summary */}
+                <div className="charges-wrapper">
+                  <div className="amount-section pr-4 text-sm">
+                    {bill.grandTotal !== bill.totalPrice && (
+                      <div className="amount-row">
+                        <span>Bill Amount</span>
+                        <div className="right">
+                          <span>:</span>
+                          <span className="value">
+                            {n(bill.totalPrice).toLocaleString("en-IN")}
+                          </span>
+                        </div>
+                      </div>
                     )}
-                  </div>
-                )}
-
-                {bill.dispatchBreakdown?.transportCharges > 0 && (
-                  <div className="net-amount-row">
-                    <strong>Transport Charges :</strong> ₹
-                    {n(bill.dispatchBreakdown.transportCharges).toLocaleString(
-                      "en-IN",
+                    {n(bill.packingAmountTotal) > 0 && (
+                      <div className="amount-row">
+                        <span>Ice</span>
+                        <div className="right">
+                          <span>:</span>
+                          <span className="value">
+                            {n(bill.packingAmountTotal).toLocaleString("en-IN")}
+                          </span>
+                        </div>
+                      </div>
                     )}
-                  </div>
-                )}
 
-                {sortOtherCharges(bill.dispatchBreakdown?.otherCharges).map(
-                  (
-                    charge: { label?: string; amount: number },
-                    index: number,
-                  ) => (
-                    <div key={index} className="net-amount-row">
-                      <strong>{charge.label || "Other Charges"} :</strong> ₹
-                      {n(charge.amount).toLocaleString("en-IN")}
+                    {bill.dispatchBreakdown?.iceCooling > 0 && (
+                      <div className="amount-row">
+                        <span>Packing Charges</span>
+                        <div className="right">
+                          <span>:</span>
+                          {/* <span>₹</span> */}
+                          <span className="value">
+                            {n(
+                              bill.dispatchBreakdown.iceCooling,
+                            ).toLocaleString("en-IN")}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {bill.dispatchBreakdown?.transportCharges > 0 && (
+                      <div className="amount-row">
+                        <span>Local Transport</span>
+                        <div className="right">
+                          <span>:</span>
+                          {/* <span>₹</span> */}
+                          <span className="value">
+                            {n(
+                              bill.dispatchBreakdown.transportCharges,
+                            ).toLocaleString("en-IN")}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {sortOtherCharges(bill.dispatchBreakdown?.otherCharges).map(
+                      (charge, index) => (
+                        <div key={index} className="amount-row">
+                          <span>{charge.label || "Other Charges"}</span>
+                          <div className="right">
+                            <span>:</span>
+                            {/* <span>₹</span> */}
+                            <span className="value">
+                              {n(charge.amount).toLocaleString("en-IN")}
+                            </span>
+                          </div>
+                        </div>
+                      ),
+                    )}
+
+                    <div className="amount-row">
+                      <span>Old Balance</span>
+                      <div className="right">
+                        <span>:</span>
+                        {/* <span>₹</span> */}
+                        <span className="value">
+                          {calculatePreviousPending(
+                            bill.clientId!,
+                            bill.id,
+                            records,
+                            payments,
+                          ).toLocaleString("en-IN")}
+                        </span>
+                      </div>
                     </div>
-                  ),
-                )}
 
-                {n(bill.dispatchChargesTotal) > 0 && (
-                  <div className="net-amount-row">
-                    <strong>Total Dispatch Charges :</strong> ₹
-                    {n(bill.dispatchChargesTotal).toLocaleString("en-IN")}
+                    <div className="amount-row grand-total">
+                      <span>Grand Total</span>
+                      <div className="right">
+                        <span>:</span>
+                        {/* <span>₹</span> */}
+                        <span className="value">
+                          {n(bill.grandTotal).toLocaleString("en-IN")}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                )}
-                <div className="balance-row">
-                  <strong>Pending Balance :</strong> ₹
-                  {calculatePreviousPending(
-                    bill.clientId!,
-                    bill.id,
-                    records,
-                    payments,
-                  ).toLocaleString("en-IN")}
-                </div>
-                <div className="net-amount-row border-t pt-2 mt-2">
-                  <strong>Grand Total :</strong> ₹
-                  {n(
-                    bill.grandTotal ||
-                      n(bill.totalPrice) +
-                        n(bill.dispatchChargesTotal) +
-                        n(bill.packingAmountTotal),
-                  ).toLocaleString("en-IN")}
                 </div>
               </div>
             </div>
