@@ -602,9 +602,9 @@ export default function ClientLoadingForm() {
                   </SelectItem>
                 ))}
 
-                <SelectItem value={OTHER_CLIENT_VALUE}>
+                {/* <SelectItem value={OTHER_CLIENT_VALUE}>
                   Other / New Client
-                </SelectItem>
+                </SelectItem> */}
               </SelectContent>
             </Select>
           </Field>

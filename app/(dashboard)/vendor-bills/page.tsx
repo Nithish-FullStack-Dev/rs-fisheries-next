@@ -676,16 +676,16 @@ export default function VendorBillsPage() {
 }
 
 .company-short {
-  font-family: "Fraunces", serif;
+font-family: 'Cinzel', cursive;
   font-size: 34px;
   font-weight: 700;
-  letter-spacing: 4px;
+  letter-spacing: 1px;
   color: #1f5f8b;
   margin: 0;
 }
 
 .company-full {
-  font-family: "Fraunces", serif;
+font-family: 'Cinzel', cursive;
   font-size: 14px;
   font-weight: 400;
   letter-spacing: 1px;
@@ -754,6 +754,9 @@ export default function VendorBillsPage() {
             font-weight: bold;
             text-align: right;
           }
+         tfoot td:nth-child(3) {
+             text-align: center;
+             }
 .bill-header-row{
   display:flex;
   align-items:center;
@@ -777,24 +780,37 @@ export default function VendorBillsPage() {
   text-align:right;
 }
 
-.farmer-row{
-  display:grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  align-items:center;
-  margin-bottom:12px;
-  font-size:13px;
+.farmer-row {
+  display: grid;
+    grid-template-columns: 1.2fr 2fr 1.2fr;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
-.farmer-row-left{
-  text-align:left;
+.farmer-row-left {
+  text-align: left;
 }
 
-.farmer-row-center{
-  text-align:center;
+.farmer-row-center {
+  text-align: left;
+  word-break: break-word;
 }
 
-.farmer-row-right{
-  text-align:right;
+
+
+.farmer-row-right {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.vehicle-line {
+  display: inline-block;
+  width: 150px; 
+  border-bottom: 1.5px solid #000;
+  margin-left: 8px;
+  height: 12px;
 }
 .items-table{
   width:100%;
@@ -832,11 +848,38 @@ export default function VendorBillsPage() {
   font-size:14px;
   font-weight:bold;
 }
+  .print-wrapper {
+  position: relative;
+  z-index: 1;
+}
+.bill-body {
+  position: relative;
+  padding-top: 10px;
+}
+
+/* Watermark */
+.watermark {
+  position: absolute;
+  top: 45%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 380px;
+  opacity: 0.1;
+  z-index: 0;
+  pointer-events: none;
+}
+
+/* Ensure all content stays above */
+.bill-body * {
+  z-index: 2;
+}
         </style>
       </head>
-      <body>
-        ${printContent.innerHTML}
-      </body>
+   <body>
+  <div class="print-wrapper">
+    ${printContent.innerHTML}
+  </div>
+</body>
     </html>
   `);
 
@@ -1889,75 +1932,88 @@ export default function VendorBillsPage() {
             </div>
 
             <hr className="separator" />
-            <div className="farmer-row">
-              <div className="farmer-row-left">
-                <strong>{activeTab === "farmer" ? "Farmer" : "Agent"}:</strong>{" "}
-                {bill.name || "—"}
+            <div className="bill-body">
+              <div className="farmer-row">
+                <div className="farmer-row-left">
+                  <strong>
+                    {activeTab === "farmer" ? "Farmer" : "Agent"}:
+                  </strong>{" "}
+                  {bill.name || "—"}
+                </div>
+
+                <div className="farmer-row-center">
+                  <strong>Address:</strong> {bill.village || "—"}
+                </div>
+
+                <div className="farmer-row-right">
+                  <strong>Vehicle:</strong>
+                  <span className="vehicle-line"></span>
+                </div>
               </div>
+              <img src="/assets/bg-fish.png" className="watermark" />
+              <table className="items-table">
+                <thead>
+                  <tr>
+                    <th>S.No</th>
+                    <th>Variety</th>
+                    <th>Trays</th>
+                    <th>Loose (kg)</th>
+                    <th>Price/Kg</th>
+                    <th>Total (₹)</th>
+                  </tr>
+                </thead>
 
-              <div className="farmer-row-center">
-                <strong>Village:</strong> {bill.village || "—"}
-              </div>
+                <tbody>
+                  {bill.items.map((item, index) => (
+                    <tr key={item.id}>
+                      <td>{index + 1}</td>
+                      <td>{item.varietyCode}</td>
+                      <td>{item.noTrays}</td>
+                      <td>{(item.loose || 0).toFixed(2)}</td>
+                      <td>{(item.pricePerKg || 0).toFixed(2)}</td>
+                      <td>
+                        {(item.totalPrice || 0).toLocaleString("en-IN", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    {/* Total trays label */}
+                    <td></td>
+                    <td className="text-right font-semibold">Total Trays :</td>
 
-              {/* <div className="farmer-row-right"></div> */}
-            </div>
+                    <td className="text-center font-semibold">
+                      {bill.items.reduce(
+                        (sum, it) => sum + (it.noTrays || 0),
+                        0,
+                      )}
+                    </td>
+                    <td></td>
 
-            <table className="items-table">
-              <thead>
-                <tr>
-                  <th>S.No</th>
-                  <th>Variety</th>
-                  <th>Trays</th>
-                  <th>Loose (kg)</th>
-                  <th>Price/Kg</th>
-                  <th>Total (₹)</th>
-                </tr>
-              </thead>
+                    {/* bill label */}
+                    <td className="text-right font-semibold">Bill Amount :</td>
 
-              <tbody>
-                {bill.items.map((item, index) => (
-                  <tr key={item.id}>
-                    <td>{index + 1}</td>
-                    <td>{item.varietyCode}</td>
-                    <td>{item.noTrays}</td>
-                    <td>{(item.loose || 0).toFixed(2)}</td>
-                    <td>{(item.pricePerKg || 0).toFixed(2)}</td>
-                    <td>
-                      {(item.totalPrice || 0).toLocaleString("en-IN", {
+                    {/* bill value */}
+                    <td className="text-right font-semibold">
+                      {n(bill.totalPrice).toLocaleString("en-IN", {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
                       })}
                     </td>
                   </tr>
-                ))}
-              </tbody>
-              <tfoot>
-                <tr>
-                  {/* Total trays label */}
-                  <td></td>
-                  <td className="text-right font-semibold">Total Trays :</td>
-
-                  <td className="text-center font-semibold">
-                    {bill.items.reduce((sum, it) => sum + (it.noTrays || 0), 0)}
-                  </td>
-                  <td></td>
-
-                  {/* bill label */}
-                  <td className="text-right font-semibold">Bill Amount :</td>
-
-                  {/* bill value */}
-                  <td className="text-right font-semibold">
-                    {n(bill.totalPrice).toFixed(2)}
-                  </td>
-                </tr>
-              </tfoot>
-            </table>
-            <div className="net-amount-row">
-              <strong>Net Amount :</strong>{" "}
-              {bill?.totalPrice.toLocaleString("en-IN", {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-              })}
+                </tfoot>
+              </table>
+              <div className="net-amount-row">
+                <strong>Net Amount :</strong>{" "}
+                {bill?.totalPrice.toLocaleString("en-IN", {
+                  minimumFractionDigits: 2,
+                  maximumFractionDigits: 2,
+                })}
+              </div>
             </div>
           </div>
         ))}
