@@ -801,7 +801,7 @@ font-family: 'Cinzel', cursive;
 
 .farmer-row-right {
   display: flex;
-  justify-content: flex-end;
+  justify-content: center;
   align-items: center;
 }
 
@@ -1138,7 +1138,10 @@ font-family: 'Cinzel', cursive;
                             </td>
 
                             <td className="p-4 text-right font-semibold text-green-600">
-                              {n(bill.totalPrice).toFixed(2)}
+                              {n(bill.totalPrice).toLocaleString("en-IN", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
                             </td>
 
                             <td className="p-4 text-center">
@@ -1204,7 +1207,10 @@ font-family: 'Cinzel', cursive;
                                     </div>
 
                                     <div className="text-sm font-semibold text-green-700">
-                                      Total: {n(bill.totalPrice).toFixed(2)}
+                                      Total: {n(bill.totalPrice).toLocaleString("en-IN", {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                      })}
                                     </div>
                                   </div>
 
@@ -1325,7 +1331,10 @@ font-family: 'Cinzel', cursive;
                                                     className="w-40 text-right bg-green-50"
                                                   />
                                                 ) : (
-                                                  n(it.totalPrice).toFixed(2)
+                                                  n(it.totalPrice).toLocaleString("en-IN", {
+                                                    minimumFractionDigits: 2,
+                                                    maximumFractionDigits: 2,
+                                                  })
                                                 )}
                                               </td>
 
@@ -1452,7 +1461,10 @@ font-family: 'Cinzel', cursive;
                         <div>
                           <div className="text-xs text-gray-500">Total</div>
                           <div className="text-lg font-bold text-green-600">
-                            {n(bill.totalPrice).toFixed(2)}
+                            {n(bill.totalPrice).toLocaleString("en-IN", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
                           </div>
                         </div>
 
@@ -1501,8 +1513,14 @@ font-family: 'Cinzel', cursive;
                                         Total:{" "}
                                         <span className="font-semibold text-green-700">
                                           {isEditing
-                                            ? n(edit.totalPrice).toFixed(2)
-                                            : n(it.totalPrice).toFixed(2)}
+                                            ? n(edit.totalPrice).toLocaleString("en-IN", {
+                                                minimumFractionDigits: 2,
+                                                maximumFractionDigits: 2,
+                                              })
+                                            : n(it.totalPrice).toLocaleString("en-IN", {
+                                                minimumFractionDigits: 2,
+                                                maximumFractionDigits: 2,
+                                              })}
                                         </span>
                                       </div>
                                     </div>
@@ -1946,8 +1964,8 @@ font-family: 'Cinzel', cursive;
                 </div>
 
                 <div className="farmer-row-right">
-                  <strong>Vehicle:</strong>
-                  <span className="vehicle-line"></span>
+                  <strong>Vehicle No:</strong>
+                  {/* <span className="vehicle-line"></span> */}
                 </div>
               </div>
               <img src="/assets/bg-fish.png" className="watermark" />
