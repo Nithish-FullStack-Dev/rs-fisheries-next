@@ -1218,7 +1218,10 @@ font-family: 'Cinzel', cursive;
                         <div>
                           <div className="text-xs text-gray-500">Total</div>
                           <div className="text-lg font-bold text-green-600">
-                            {n(bill.totalPrice).toFixed(2)}
+                            {n(bill.totalPrice).toLocaleString("en-IN", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
                           </div>
                         </div>
 
@@ -1265,8 +1268,20 @@ font-family: 'Cinzel', cursive;
                                         Total:{" "}
                                         <span className="font-semibold text-green-700">
                                           {isEditing
-                                            ? n(edit.totalPrice).toFixed(2)
-                                            : n(it.totalPrice).toFixed(2)}
+                                            ? n(edit.totalPrice).toLocaleString(
+                                                "en-IN",
+                                                {
+                                                  minimumFractionDigits: 2,
+                                                  maximumFractionDigits: 2,
+                                                },
+                                              )
+                                            : n(it.totalPrice).toLocaleString(
+                                                "en-IN",
+                                                {
+                                                  minimumFractionDigits: 2,
+                                                  maximumFractionDigits: 2,
+                                                },
+                                              )}
                                         </span>
                                       </div>
                                     </div>
@@ -1463,7 +1478,10 @@ font-family: 'Cinzel', cursive;
                               </div>
                             </td>
                             <td className="p-4 text-right font-bold text-green-600">
-                              {n(bill.totalPrice).toFixed(2)}
+                              {n(bill.totalPrice).toLocaleString("en-IN", {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
                             </td>
                             <td className="p-4 text-center">
                               <div className="flex items-center justify-center gap-2">
@@ -1687,7 +1705,12 @@ font-family: 'Cinzel', cursive;
                                                     className="w-32 text-right bg-green-50 font-bold"
                                                   />
                                                 ) : (
-                                                  n(it.totalPrice).toFixed(2)
+                                                  n(
+                                                    it.totalPrice,
+                                                  ).toLocaleString("en-IN", {
+                                                    minimumFractionDigits: 2,
+                                                    maximumFractionDigits: 2,
+                                                  })
                                                 )}
                                               </td>
 
