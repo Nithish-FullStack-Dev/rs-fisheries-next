@@ -32,28 +32,57 @@ interface Props {
 }
 
 const hsnOptions = [
-  { value: "0302", label: "0302 - Fresh or Chilled Fish" },
-  { value: "0303", label: "0303 - Frozen Fish" },
-  { value: "0304", label: "0304 - Fish Fillets & Other Fish Meat" },
-  { value: "0305", label: "0305 - Dried, Salted or Smoked Fish" },
-  { value: "0306", label: "0306 - Crustaceans (Prawns, Shrimps)" },
-  { value: "0307", label: "0307 - Molluscs (Squid, Cuttlefish)" },
-  { value: "1604", label: "1604 - Prepared or Preserved Fish" },
-  { value: "1605", label: "1605 - Prepared Crustaceans & Molluscs" },
+  // --- RAW FISH & SEAFOOD ---
+  { value: "0301", label: "0301 - Live Fish" },
+  { value: "0302", label: "0302 - Fresh or Chilled Fish (Raw)" },
+  { value: "0303", label: "0303 - Frozen Fish (Raw)" },
+  { value: "0304", label: "0304 - Fish Fillets & Other Fish Meat (Raw)" },
+  { value: "0306", label: "0306 - Crustaceans (Prawns, Shrimps, Crabs)" },
+  { value: "0307", label: "0307 - Molluscs (Squid, Cuttlefish, Octopus)" },
+
+  // --- PROCESSED FISH & SEAFOOD ---
+  { value: "0305", label: "0305 - Dried, Salted, or Smoked Fish" },
+  {
+    value: "1604",
+    label: "1604 - Prepared or Preserved Fish (Canned/Processed)",
+  },
+  { value: "1605", label: "1605 - Prepared/Preserved Crustaceans & Molluscs" },
+
+  // --- CUSTOM ---
   { value: "other", label: "Other (Custom HSN)" },
 ];
 
 const descriptionOptions = [
-  { value: "Supply of Fresh Fish", label: "Supply of Fresh Fish" },
-  { value: "Supply of Chilled Fish", label: "Supply of Chilled Fish" },
-  { value: "Supply of Frozen Fish", label: "Supply of Frozen Fish" },
-  { value: "Supply of Fish Fillets", label: "Supply of Fish Fillets" },
-  { value: "Supply of Prawns/Shrimps", label: "Supply of Prawns/Shrimps" },
-  { value: "Supply of Squid/Cuttlefish", label: "Supply of Squid/Cuttlefish" },
+  // --- RAW FISH DESCRIPTIONS ---
+  { value: "Supply of Fresh Raw Fish", label: "Supply of Fresh Raw Fish" },
+  { value: "Supply of Chilled Raw Fish", label: "Supply of Chilled Raw Fish" },
+  { value: "Supply of Frozen Raw Fish", label: "Supply of Frozen Raw Fish" },
+  { value: "Supply of Raw Fish Fillets", label: "Supply of Raw Fish Fillets" },
+  {
+    value: "Supply of Raw Prawns/Shrimps",
+    label: "Supply of Raw Prawns/Shrimps",
+  },
+  {
+    value: "Supply of Raw Squid/Cuttlefish",
+    label: "Supply of Raw Squid/Cuttlefish",
+  },
+
+  // --- PROCESSED FISH DESCRIPTIONS ---
+  {
+    value: "Supply of Dried/Salted Fish",
+    label: "Supply of Dried/Salted Fish",
+  },
+  { value: "Supply of Smoked Fish", label: "Supply of Smoked Fish" },
+  {
+    value: "Supply of Canned/Preserved Fish",
+    label: "Supply of Canned/Preserved Fish",
+  },
   {
     value: "Supply of Processed Seafood",
     label: "Supply of Processed Seafood",
   },
+
+  // --- CUSTOM ---
   { value: "other", label: "Other (Custom Description)" },
 ];
 

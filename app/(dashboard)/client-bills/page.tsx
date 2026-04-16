@@ -65,6 +65,7 @@ interface ClientRecord {
   vehicleNo?: string;
   vehicleId?: string | null;
   village?: string;
+  localVehicle?: string;
   items: ClientItem[];
   createdAt?: string;
 
@@ -115,6 +116,7 @@ type BillRow = {
   createdAt: string;
   vehicleNo?: string;
   village?: string;
+  localVehicle?: string;
   hasVehicle: boolean;
   clientId?: string;
   items: UIItem[];
@@ -369,6 +371,7 @@ export default function ClientBillsPage() {
         createdAt: rec.createdAt || rec.date || "",
         vehicleNo: rec.vehicleNo,
         village: rec.village,
+        localVehicle: rec.localVehicle,
         hasVehicle,
 
         items,
@@ -408,7 +411,10 @@ export default function ClientBillsPage() {
         const varietyMatch = b.items.some((it) =>
           (it.varietyCode || "").toLowerCase().includes(term),
         );
-        return billMatch || nameMatch || varietyMatch;
+        const localVehicleMatch = (b.localVehicle || "")
+          .toLowerCase()
+          .includes(term);
+        return billMatch || nameMatch || varietyMatch || localVehicleMatch;
       });
     }
 
@@ -769,29 +775,47 @@ font-family: 'Cinzel', cursive;
   text-align:right;
 }
 
+
 .farmer-row {
-  display: grid;
-  grid-template-columns: 1.2fr 2fr 1.2fr; /* 👈 address gets more space */
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  width: 100%;
+  flex-wrap: nowrap;
+}
+
+.farmer-row-left,
+.farmer-row-center,
+.farmer-row-right {
+  min-width: 0;
   font-size: 13px;
+  line-height: 1.35;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .farmer-row-left {
+  flex: 1.2;
   text-align: left;
 }
 
 .farmer-row-center {
+  flex: 2;
   text-align: left;
-  word-break: break-word; /* 👈 prevents overflow */
 }
 
 .farmer-row-right {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  flex: 1;
+  text-align: left;
+  white-space: normal;
 }
+
+.farmer-row-right strong {
+  margin-right: 4px;
+}
+
 .items-table{
   width:100%;
   border-collapse:collapse;
@@ -908,7 +932,7 @@ font-family: 'Cinzel', cursive;
   top: 45%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 380px;
+  width: 60%;
   opacity: 0.1;
   z-index: 0;
   pointer-events: none;
@@ -1244,6 +1268,9 @@ font-family: 'Cinzel', cursive;
                             {bill.vehicleNo && (
                               <>Vehicle: {bill.vehicleNo} • </>
                             )}
+                            {bill.localVehicle && (
+                              <>Local Vehicle: {bill.localVehicle} • </>
+                            )}
                             {bill.village && <>Address: {bill.village}</>}
                           </div>
 
@@ -1531,6 +1558,15 @@ font-family: 'Cinzel', cursive;
                                             •
                                           </span>{" "}
                                           Vehicle: {bill.vehicleNo}
+                                        </>
+                                      ) : null}
+                                      {bill.localVehicle ? (
+                                        <>
+                                          {" "}
+                                          <span className="text-gray-400">
+                                            •
+                                          </span>{" "}
+                                          Local Vehicle: {bill.localVehicle}
                                         </>
                                       ) : null}
                                       {bill.village ? (
@@ -2050,8 +2086,8 @@ font-family: 'Cinzel', cursive;
                     </div>
 
                     <div className="farmer-row-right">
-                      <strong>Vehicle No:</strong>
-                      {/* <span className="vehicle-line"></span> */}
+                      <strong>Vehicle No:</strong>{" "}
+                      <span>{bill.localVehicle || " "}</span>
                     </div>
                   </div>
                   {/* <div>

@@ -566,7 +566,7 @@ export const DispatchPayment = () => {
                 size="lg"
               >
                 <Save className="h-5 w-5 mr-2" />
-                {saving ? "Saving..." : "Save Ice Amount"}
+                {saving ? "Saving..." : "Save"}
               </Button>
 
               <Button

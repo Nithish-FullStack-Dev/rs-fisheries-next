@@ -17,6 +17,7 @@ import {
   User2,
   IdCard,
   Logs,
+  UserCheck,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -77,6 +78,7 @@ const menuItems: any[] = [
 
   { href: "/vehicles", label: "Vehicles", icon: Car, perm: "vehicles.view" },
   { href: "/client", label: "Clients", icon: IdCard, perm: "clients.view" },
+  { href: "/agent", label: "Agents", icon: UserCheck, perm: "agents.view" },
   { href: "/employee", label: "Employee", icon: User2, perm: "employees.view" },
 
   {

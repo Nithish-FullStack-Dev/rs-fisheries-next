@@ -14,12 +14,14 @@ type AgentItemInput = {
 type AgentLoadingBody = {
   fishCode?: string;
   agentName: string;
+  agentId?: string | null;
   billNo: string;
   village?: string;
   date?: string;
   useVehicle?: boolean;
   vehicleId?: string | null;
   vehicleNo?: string | null;
+  localVehicle?: string | null;
   items: AgentItemInput[];
 };
 
@@ -105,13 +107,13 @@ export async function POST(req: Request) {
       : Math.round(totalKgs * (1 - DEDUCTION_PERCENT / 100));
 
     /* ---------- CREATE DATA ---------- */
-    const createData: Parameters<typeof prisma.agentLoading.create>[0]["data"] =
-    {
+    const createData: any = {
       fishCode: asTrim(body.fishCode) || "NA",
       agentName,
       billNo,
       village: asTrim(body.village) || "",
       date: loadingDate,
+      localVehicle: asTrim(body.localVehicle) || null,
 
       totalTrays,
       totalLooseKgs,
@@ -136,6 +138,10 @@ export async function POST(req: Request) {
       createData.vehicleNo = null;
     }
 
+    if (body.agentId && body.agentId.trim() !== "") {
+      createData.agent = { connect: { id: body.agentId } };
+    }
+
     const saved = await prisma.agentLoading.create({
       data: createData,
       include: {
@@ -147,12 +153,14 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true, data: saved }, { status: 201 });
   } catch (err: any) {
     console.error("AgentLoading POST error:", err);
+    if (err.code === "P2002") {
+      return NextResponse.json(
+        { success: false, message: `A loading record with Bill No ${asTrim(err?.meta?.target?.[0] || 'Unknown')} already exists` },
+        { status: 400 }
+      );
+    }
     return NextResponse.json(
-      {
-        success: false,
-        message: "Failed to save agent loading",
-        prisma: { code: err?.code, meta: err?.meta },
-      },
+      { success: false, message: "Failed to save agent loading", error: err.message },
       { status: 500 }
     );
   }
@@ -232,10 +240,13 @@ export async function GET(req: Request) {
           breakdown.otherCharges.push({ label: c.label, amount: amt });
       });
 
+      const itemTotal = l.items.reduce(
+        (sum, item) => sum + Number(item.totalPrice || 0),
+        0,
+      );
+
       const grandTotal = round2(
-        l.grandTotal +
-        breakdown.dispatchChargesTotal +
-        toNum(l.packingAmountTotal)
+        itemTotal + breakdown.dispatchChargesTotal + toNum(l.packingAmountTotal),
       );
 
       return {

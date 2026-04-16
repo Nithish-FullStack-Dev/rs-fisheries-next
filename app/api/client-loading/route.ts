@@ -61,6 +61,7 @@ export const POST = withAuth(
         useVehicle?: boolean; //  checkbox flag
         vehicleId?: string | null;
         vehicleNo?: string | null;
+        localVehicle?: string | null;
 
         items?: CreateItemInput[];
       };
@@ -168,6 +169,7 @@ export const POST = withAuth(
         totalPrice: 0,
         grandTotal,
         clientId,
+        localVehicle: body.localVehicle?.trim() || null,
 
         //  IMPORTANT: to avoid DB null violation, keep vehicleNo always string
         vehicleNo: "",

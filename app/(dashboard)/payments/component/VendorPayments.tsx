@@ -22,12 +22,13 @@ type PaymentMode = "cash" | "ac" | "upi" | "cheque";
 
 type VendorRow = {
   id: string;
+  loadingId: string;
+  billNo: string;
   name: string;
   source: "farmer" | "agent";
   totalDue: number;
   totalPaid: number;
   remaining: number;
-  latestLoadingId: string;
   accountNumber?: string;
   ifsc?: string;
   bankName?: string;
@@ -78,51 +79,6 @@ export function VendorPayments() {
 
       if (allLoadings.length === 0) return [];
 
-      const vendorMap = new Map<
-        string,
-        {
-          name: string;
-          source: "farmer" | "agent";
-          loadingIds: string[];
-          latestLoadingId: string;
-          totalDue: number;
-          accountNumber?: string;
-          ifsc?: string;
-          bankName?: string;
-          bankAddress?: string;
-        }
-      >();
-
-      allLoadings.forEach((load: any) => {
-        const name = (load.FarmerName || load.agentName || "").trim();
-        if (!name) return;
-
-        const source: "farmer" | "agent" = load.FarmerName ? "farmer" : "agent";
-        const loadingId = load.id;
-        const due = Number(load.grandTotal || 0);
-
-        const key = `${source}:${name.toLowerCase()}`;
-
-        if (!vendorMap.has(key)) {
-          vendorMap.set(key, {
-            name,
-            source,
-            loadingIds: [loadingId],
-            latestLoadingId: loadingId,
-            totalDue: due,
-            accountNumber: load.accountNumber || undefined,
-            ifsc: load.ifsc || undefined,
-            bankName: load.bankName || undefined,
-            bankAddress: load.bankAddress || undefined,
-          });
-        } else {
-          const existing = vendorMap.get(key)!;
-          existing.totalDue += due;
-          existing.loadingIds.push(loadingId);
-          existing.latestLoadingId = loadingId;
-        }
-      });
-
       const paidMap = new Map<string, number>();
       payments.forEach((p: any) => {
         const vid = p.vendorId;
@@ -131,36 +87,39 @@ export function VendorPayments() {
         }
       });
 
-      const vendorPaidMap = new Map<string, number>();
-      for (const [key, vendor] of vendorMap) {
-        let totalPaid = 0;
-        for (const lid of vendor.loadingIds) {
-          totalPaid += paidMap.get(`${vendor.source}:${lid}`) || 0;
-        }
-        vendorPaidMap.set(key, totalPaid);
-      }
+      const result: VendorRow[] = allLoadings
+        .map((load: any) => {
+          const name = (load.FarmerName || load.agentName || "").trim();
+          if (!name) return null;
 
-      const result: VendorRow[] = [];
-      for (const [key, vendor] of vendorMap) {
-        const totalPaid = vendorPaidMap.get(key) || 0;
-        const remaining = vendor.totalDue - totalPaid;
+          const source: "farmer" | "agent" = load.FarmerName
+            ? "farmer"
+            : "agent";
+          const loadingId = load.id;
+          const totalDue = Number(load.grandTotal || 0);
+          const billNo = String(load.billNo || "").trim() || loadingId;
+          const vendorId = `${source}:${loadingId}`;
+          const totalPaid = paidMap.get(vendorId) || 0;
+          const remaining = totalDue - totalPaid;
 
-        if (remaining > 0) {
-          result.push({
-            id: `${vendor.source}:${vendor.latestLoadingId}`,
-            name: vendor.name,
-            source: vendor.source,
-            totalDue: vendor.totalDue,
+          if (remaining <= 0) return null;
+
+          return {
+            id: vendorId,
+            loadingId,
+            billNo,
+            name,
+            source,
+            totalDue,
             totalPaid,
             remaining,
-            latestLoadingId: vendor.latestLoadingId,
-            accountNumber: vendor.accountNumber,
-            ifsc: vendor.ifsc,
-            bankName: vendor.bankName,
-            bankAddress: vendor.bankAddress,
-          });
-        }
-      }
+            accountNumber: load.accountNumber || undefined,
+            ifsc: load.ifsc || undefined,
+            bankName: load.bankName || undefined,
+            bankAddress: load.bankAddress || undefined,
+          };
+        })
+        .filter((row): row is VendorRow => row !== null);
 
       return result.sort((a, b) => a.name.localeCompare(b.name));
     },
@@ -229,7 +188,8 @@ export function VendorPayments() {
 
     const payload = {
       source: selectedVendor.source,
-      sourceRecordId: selectedVendor.latestLoadingId,
+      sourceRecordId: selectedVendor.loadingId,
+      billNo: selectedVendor.billNo,
       vendorName: selectedVendor.name,
       date,
       amount: Number(amount),
@@ -329,7 +289,7 @@ export function VendorPayments() {
                         <SelectItem key={v.id} value={v.id} className="py-3">
                           <div className="flex items-center justify-between w-full gap-3 min-w-0">
                             <span className="font-medium text-slate-800 truncate">
-                              {v.name}
+                              {v.name} . {v.billNo}
                             </span>
 
                             <Badge
@@ -399,8 +359,8 @@ export function VendorPayments() {
                     if (selectedVendor && num > remaining) {
                       toast.error(
                         `Amount cannot exceed remaining due of ${currency(
-                          remaining
-                        )}`
+                          remaining,
+                        )}`,
                       );
                       return;
                     }
@@ -432,8 +392,8 @@ export function VendorPayments() {
                       {m === "ac"
                         ? "A/C Transfer"
                         : m === "upi"
-                        ? "UPI/PhonePe"
-                        : m.charAt(0).toUpperCase() + m.slice(1)}
+                          ? "UPI/PhonePe"
+                          : m.charAt(0).toUpperCase() + m.slice(1)}
                     </Badge>
                   ))}
                 </div>
@@ -469,8 +429,8 @@ export function VendorPayments() {
                       {paymentMode === "upi"
                         ? "UPI Transaction ID (Optional)"
                         : paymentMode === "cheque"
-                        ? "Cheque Number (Optional)"
-                        : "Cash Receipt No (Optional)"}
+                          ? "Cheque Number (Optional)"
+                          : "Cash Receipt No (Optional)"}
                     </Label>
                     <Input
                       placeholder={

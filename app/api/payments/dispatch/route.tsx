@@ -14,14 +14,37 @@ function asPositiveNumber(value: unknown): number | null {
   return Number.isFinite(num) && num > 0 ? num : null;
 }
 
-async function computeBaseTotalPrice(clientLoadingId: string): Promise<number> {
-  const loading = await prisma.clientLoading.findUnique({
-    where: { id: clientLoadingId },
-    select: {
-      totalPrice: true,
-      items: { select: { totalPrice: true } }, //  fallback if totalPrice is 0
-    },
-  });
+async function computeBaseTotalPrice(
+  sourceRecordId: string,
+  sourceType: "CLIENT" | "AGENT" | "FORMER",
+): Promise<number> {
+  let loading: any;
+
+  if (sourceType === "CLIENT") {
+    loading = await prisma.clientLoading.findUnique({
+      where: { id: sourceRecordId },
+      select: {
+        totalPrice: true,
+        items: { select: { totalPrice: true } },
+      },
+    });
+  } else if (sourceType === "AGENT") {
+    loading = await prisma.agentLoading.findUnique({
+      where: { id: sourceRecordId },
+      select: {
+        totalPrice: true,
+        items: { select: { totalPrice: true } },
+      },
+    });
+  } else if (sourceType === "FORMER") {
+    loading = await prisma.formerLoading.findUnique({
+      where: { id: sourceRecordId },
+      select: {
+        totalPrice: true,
+        items: { select: { totalPrice: true } },
+      },
+    });
+  }
 
   if (!loading) return 0;
 
@@ -29,7 +52,7 @@ async function computeBaseTotalPrice(clientLoadingId: string): Promise<number> {
   if (apiTotal > 0) return apiTotal;
 
   const itemsSum = (loading.items || []).reduce(
-    (s, it) => s + Number(it.totalPrice || 0),
+    (s: number, it: any) => s + Number(it.totalPrice || 0),
     0,
   );
 
@@ -41,6 +64,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     const sourceRecordId = asString(body.sourceRecordId);
+    const sourceTypeRaw = asString(body.sourceType) || "CLIENT";
     const typeRaw = body.type;
     const label = asString(body.label) || null;
     const notes = asString(body.notes) || null;
@@ -52,6 +76,13 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
+
+    if (
+      !["CLIENT", "AGENT", "FORMER"].includes(sourceTypeRaw)
+    ) {
+      return NextResponse.json({ error: "Invalid sourceType" }, { status: 400 });
+    }
+    const sourceType = sourceTypeRaw as "CLIENT" | "AGENT" | "FORMER";
 
     if (
       !typeRaw ||
@@ -75,11 +106,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    //  Verify loading exists (Client only)
-    const loadingExists = await prisma.clientLoading.findUnique({
-      where: { id: sourceRecordId },
-      select: { id: true, vehicleId: true, vehicleNo: true },
-    });
+    //  Verify loading exists
+    let loadingExists: any;
+    if (sourceType === "CLIENT") {
+      loadingExists = await prisma.clientLoading.findUnique({
+        where: { id: sourceRecordId },
+        select: { id: true, vehicleId: true, vehicleNo: true },
+      });
+    } else if (sourceType === "AGENT") {
+      loadingExists = await prisma.agentLoading.findUnique({
+        where: { id: sourceRecordId },
+        select: { id: true, vehicleId: true, vehicleNo: true },
+      });
+    } else if (sourceType === "FORMER") {
+      loadingExists = await prisma.formerLoading.findUnique({
+        where: { id: sourceRecordId },
+        select: { id: true, vehicleId: true, vehicleNo: true },
+      });
+    }
 
     if (!loadingExists) {
       return NextResponse.json(
@@ -102,7 +146,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    //  Create DispatchCharge (Client only relation)
+    //  Create DispatchCharge
     const dispatchCharge = await prisma.dispatchCharge.create({
       data: {
         sourceRecordId,
@@ -110,21 +154,31 @@ export async function POST(req: NextRequest) {
         label,
         amount,
         notes,
-        clientLoadingId: sourceRecordId,
+        clientLoadingId: sourceType === "CLIENT" ? sourceRecordId : null,
+        agentLoadingId: sourceType === "AGENT" ? sourceRecordId : null,
+        formerLoadingId: sourceType === "FORMER" ? sourceRecordId : null,
       },
     });
 
     //  Recalculate totals
     const [dispatchSum, packingSum, baseTotalPrice] = await Promise.all([
       prisma.dispatchCharge.aggregate({
-        where: { clientLoadingId: sourceRecordId },
+        where: {
+          clientLoadingId: sourceType === "CLIENT" ? sourceRecordId : null,
+          agentLoadingId: sourceType === "AGENT" ? sourceRecordId : null,
+          formerLoadingId: sourceType === "FORMER" ? sourceRecordId : null,
+        },
         _sum: { amount: true },
       }),
       prisma.packingAmount.aggregate({
-        where: { clientLoadingId: sourceRecordId },
+        where: {
+          clientLoadingId: sourceType === "CLIENT" ? sourceRecordId : null,
+          agentLoadingId: sourceType === "AGENT" ? sourceRecordId : null,
+          formerLoadingId: sourceType === "FORMER" ? sourceRecordId : null,
+        },
         _sum: { totalAmount: true },
       }),
-      computeBaseTotalPrice(sourceRecordId),
+      computeBaseTotalPrice(sourceRecordId, sourceType),
     ]);
 
     const newDispatchTotal = dispatchSum._sum.amount || 0;
@@ -132,19 +186,40 @@ export async function POST(req: NextRequest) {
     const newGrandTotal = baseTotalPrice + newDispatchTotal + newPackingTotal;
 
     //  Update parent
-    await prisma.clientLoading.update({
-      where: { id: sourceRecordId },
-      data: {
-        dispatchChargesTotal: newDispatchTotal,
-        packingAmountTotal: newPackingTotal,
-        grandTotal: newGrandTotal,
-      },
-    });
+    if (sourceType === "CLIENT") {
+      await prisma.clientLoading.update({
+        where: { id: sourceRecordId },
+        data: {
+          dispatchChargesTotal: newDispatchTotal,
+          packingAmountTotal: newPackingTotal,
+          grandTotal: newGrandTotal,
+        },
+      });
+    } else if (sourceType === "AGENT") {
+      await prisma.agentLoading.update({
+        where: { id: sourceRecordId },
+        data: {
+          dispatchChargesTotal: newDispatchTotal,
+          packingAmountTotal: newPackingTotal,
+          grandTotal: newGrandTotal,
+        },
+      });
+    } else if (sourceType === "FORMER") {
+      await prisma.formerLoading.update({
+        where: { id: sourceRecordId },
+        data: {
+          dispatchChargesTotal: newDispatchTotal,
+          packingAmountTotal: newPackingTotal,
+          grandTotal: newGrandTotal,
+        },
+      });
+    }
 
     return NextResponse.json(
       { success: true, data: dispatchCharge },
       { status: 201 },
     );
+
   } catch (error: any) {
     console.error("DispatchCharge POST error:", error);
     return NextResponse.json(

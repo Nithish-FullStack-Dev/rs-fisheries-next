@@ -23,6 +23,7 @@ type FormerLoadingBody = {
 
   vehicleId?: string | null;
   vehicleNo?: string | null;
+  localVehicle?: string | null;
 
   items: FormerItemInput[];
 };
@@ -119,6 +120,7 @@ export async function POST(req: Request) {
       FarmerName: farmerName, // keep string (not null)
       village: asTrim(body.village) || "", // avoid null
       date: loadingDate,
+      localVehicle: asTrim(body.localVehicle) || null,
 
       totalTrays,
       totalLooseKgs,
