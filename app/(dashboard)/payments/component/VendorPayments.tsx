@@ -87,39 +87,37 @@ export function VendorPayments() {
         }
       });
 
-      const result: VendorRow[] = allLoadings
-        .map((load: any) => {
-          const name = (load.FarmerName || load.agentName || "").trim();
-          if (!name) return null;
+      const rows = allLoadings.map((load: any): VendorRow | null => {
+        const name = (load.FarmerName || load.agentName || "").trim();
+        if (!name) return null;
 
-          const source: "farmer" | "agent" = load.FarmerName
-            ? "farmer"
-            : "agent";
-          const loadingId = load.id;
-          const totalDue = Number(load.grandTotal || 0);
-          const billNo = String(load.billNo || "").trim() || loadingId;
-          const vendorId = `${source}:${loadingId}`;
-          const totalPaid = paidMap.get(vendorId) || 0;
-          const remaining = totalDue - totalPaid;
+        const source: "farmer" | "agent" = load.FarmerName ? "farmer" : "agent";
+        const loadingId = load.id;
+        const totalDue = Number(load.grandTotal || 0);
+        const billNo = String(load.billNo || "").trim() || loadingId;
+        const vendorId = `${source}:${loadingId}`;
+        const totalPaid = paidMap.get(vendorId) || 0;
+        const remaining = totalDue - totalPaid;
 
-          if (remaining <= 0) return null;
+        if (remaining <= 0) return null;
 
-          return {
-            id: vendorId,
-            loadingId,
-            billNo,
-            name,
-            source,
-            totalDue,
-            totalPaid,
-            remaining,
-            accountNumber: load.accountNumber || undefined,
-            ifsc: load.ifsc || undefined,
-            bankName: load.bankName || undefined,
-            bankAddress: load.bankAddress || undefined,
-          };
-        })
-        .filter((row): row is VendorRow => row !== null);
+        return {
+          id: vendorId,
+          loadingId,
+          billNo,
+          name,
+          source,
+          totalDue,
+          totalPaid,
+          remaining,
+          accountNumber: load.accountNumber || undefined,
+          ifsc: load.ifsc || undefined,
+          bankName: load.bankName || undefined,
+          bankAddress: load.bankAddress || undefined,
+        };
+      });
+
+      const result = rows.filter((row): row is VendorRow => row !== null);
 
       return result.sort((a, b) => a.name.localeCompare(b.name));
     },
