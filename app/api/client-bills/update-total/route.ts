@@ -1,11 +1,13 @@
 // app/api/client-bills/update-total/route.ts
 
 import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/lib/auditLogger";
+import { withAuth } from "@/lib/withAuth";
 import { NextResponse } from "next/server";
 
 const DEDUCTION_PERCENT = 5;
 
-export async function POST(req: Request) {
+export const POST = withAuth(async (req: Request) => {
     try {
         const body = (await req.json()) as { loadingId?: string };
         const loadingId = (body.loadingId || "").trim();
@@ -77,6 +79,15 @@ export async function POST(req: Request) {
 
         const grandTotal = itemsTotal + dispatch + packing;
 
+        const oldTotals = {
+            totalTrays: loading.totalTrays,
+            totalKgs: loading.totalKgs,
+            totalPrice: loading.totalPrice,
+            grandTotal: loading.grandTotal,
+            dispatchChargesTotal: Number(loading.dispatchChargesTotal || 0),
+            packingAmountTotal: Number(loading.packingAmountTotal || 0),
+        };
+
         await prisma.$transaction(async (tx) => {
             for (const u of updates) {
                 await tx.clientItem.update({
@@ -95,6 +106,32 @@ export async function POST(req: Request) {
                 },
             });
         });
+
+        const newTotals = {
+            totalTrays,
+            totalKgs,
+            totalPrice: itemsTotal,
+            grandTotal,
+            dispatchChargesTotal: Number(loading.dispatchChargesTotal || 0),
+            packingAmountTotal: Number(loading.packingAmountTotal || 0),
+        };
+
+        const hasUpdateChanges = Object.keys(oldTotals).some(
+            (key) => oldTotals[key as keyof typeof oldTotals] !== newTotals[key as keyof typeof newTotals]
+        );
+
+        if (hasUpdateChanges) {
+            await logAudit({
+                user: (req as any).user,
+                action: "UPDATE",
+                module: "Client Bills",
+                recordId: loadingId,
+                request: req,
+                label: `Client loading totals updated: ${loading.billNo}`,
+                oldValues: oldTotals,
+                newValues: newTotals,
+            });
+        }
 
         return NextResponse.json({
             success: true,
@@ -117,3 +154,4 @@ export async function POST(req: Request) {
         );
     }
 }
+);

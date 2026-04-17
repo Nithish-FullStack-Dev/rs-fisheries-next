@@ -27,6 +27,8 @@ export const GET = apiHandler(async (req: Request) => {
       { userRole: { contains: search, mode: "insensitive" } },
       { action: { contains: search, mode: "insensitive" } },
       { module: { contains: search, mode: "insensitive" } },
+      { recordId: { contains: search, mode: "insensitive" } },
+      { label: { contains: search, mode: "insensitive" } },
     ];
   }
 

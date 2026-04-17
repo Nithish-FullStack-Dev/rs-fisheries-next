@@ -16,8 +16,29 @@ export const agentSchema = z.object({
 
 export type AgentFormValues = z.infer<typeof agentSchema>;
 
+export interface AgentLoadingRecord {
+  id: string;
+  billNo: string;
+  date: string;
+  grandTotal: number;
+  tripStatus: string;
+  vehicle?: {
+    vehicleNumber?: string;
+  };
+  vehicleNo?: string;
+  totalTrays: number;
+  totalKgs: number;
+  items: {
+    varietyCode: string;
+    noTrays: number;
+    loose: number;
+    totalKgs: number;
+  }[];
+}
+
 export interface Agent extends AgentFormValues {
   id: string;
   createdAt: string;
   updatedAt?: string;
+  agentLoadings?: AgentLoadingRecord[];
 }

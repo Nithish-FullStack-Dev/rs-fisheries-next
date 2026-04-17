@@ -2768,6 +2768,16 @@ font-family: 'Cinzel', cursive;
               {/* Charges Summary */}
               <div className="charges-wrapper">
                 <div className="amount-section">
+                  <div className="amount-row">
+                    <span>Bill Amount :</span>
+                    <span>:</span>
+                    <span className="value">
+                      {n(bill.totalPrice).toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
                   {bill.dispatchBreakdown?.otherCharges?.map(
                     (charge, index) => (
                       <div key={index} className="amount-row">

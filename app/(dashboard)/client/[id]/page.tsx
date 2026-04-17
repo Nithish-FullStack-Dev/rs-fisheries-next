@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import axios, { AxiosError } from "axios";
@@ -14,14 +14,15 @@ import {
   Phone,
   Mail,
   Banknote,
-  ExternalLink,
   ShieldCheck,
   TrendingUp,
   TrendingDown,
   Calendar,
   Truck,
   Package,
+  Download,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -52,10 +53,80 @@ const ClientViewPage = () => {
     enabled: !!id,
   });
 
+  const loadings = data?.loadings ?? [];
+  const payments = data?.payments ?? [];
+
+  const lastLoading = useMemo(() => {
+    return [...loadings].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+    )[0];
+  }, [loadings]);
+
+  const ledgerRows = useMemo(() => {
+    const rows = new Map<
+      string,
+      {
+        date: string;
+        billAmount: number;
+        paymentAmount: number;
+        loadingCount: number;
+        paymentCount: number;
+      }
+    >();
+
+    const normalizeDate = (value: string) =>
+      new Date(value).toISOString().slice(0, 10);
+
+    loadings.forEach((loading) => {
+      const dateKey = normalizeDate(loading.date);
+      const existing = rows.get(dateKey) ?? {
+        date: dateKey,
+        billAmount: 0,
+        paymentAmount: 0,
+        loadingCount: 0,
+        paymentCount: 0,
+      };
+      existing.billAmount += Number(loading.grandTotal || 0);
+      existing.loadingCount += 1;
+      rows.set(dateKey, existing);
+    });
+
+    payments.forEach((payment) => {
+      const dateKey = normalizeDate(payment.date);
+      const existing = rows.get(dateKey) ?? {
+        date: dateKey,
+        billAmount: 0,
+        paymentAmount: 0,
+        loadingCount: 0,
+        paymentCount: 0,
+      };
+      existing.paymentAmount += Number(payment.amount || 0);
+      existing.paymentCount += 1;
+      rows.set(dateKey, existing);
+    });
+
+    return Array.from(rows.values()).sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+    );
+  }, [loadings, payments]);
+
   if (isLoading) return <LoadingSkeleton />;
   if (isError) return <ErrorState error={error} />;
 
   const client = data!;
+
+  const totalLedgerBillAmount = ledgerRows.reduce(
+    (sum, row) => sum + row.billAmount,
+    0,
+  );
+  const totalLedgerPaymentAmount = ledgerRows.reduce(
+    (sum, row) => sum + row.paymentAmount,
+    0,
+  );
+  const totalLedgerPending = Math.max(
+    0,
+    totalLedgerBillAmount - totalLedgerPaymentAmount,
+  );
 
   // Formatting helpers
   const formatCurrency = (val: number) =>
@@ -71,6 +142,39 @@ const ClientViewPage = () => {
       month: "short",
       year: "numeric",
     });
+  };
+
+  const handleDownloadLedger = () => {
+    const sheetData = ledgerRows.map((row) => ({
+      Date: formatDate(row.date),
+      "Bill Amount": row.billAmount,
+      "Payment Amount": row.paymentAmount,
+      Balance: Math.max(0, row.billAmount - row.paymentAmount),
+      "Loading Count": row.loadingCount,
+      "Payment Count": row.paymentCount,
+    }));
+
+    sheetData.push({
+      Date: "TOTAL",
+      "Bill Amount": totalLedgerBillAmount,
+      "Payment Amount": totalLedgerPaymentAmount,
+      Balance: totalLedgerPending,
+      "Loading Count": client.loadings?.length ?? 0,
+      "Payment Count": client.payments?.length ?? 0,
+    });
+
+    const ws = XLSX.utils.json_to_sheet(sheetData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Client Ledger");
+
+    const safeName = (client.partyName || "client")
+      .replace(/[^a-zA-Z0-9]+/g, "_")
+      .slice(0, 40);
+
+    XLSX.writeFile(
+      wb,
+      `ledger_${safeName}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+    );
   };
 
   return (
@@ -109,11 +213,11 @@ const ClientViewPage = () => {
       {/* Quick Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <StatCard
-          title="Current Balance"
-          value={formatCurrency(client.openingBalance)}
-          subText={client.balanceType}
+          title="Pending Balance"
+          value={formatCurrency(client.pendingBalance ?? 0)}
+          subText="Pending Balance"
           icon={
-            client.balanceType === "PAYABLE" ? (
+            client.pendingBalance && client.pendingBalance > 0 ? (
               <TrendingDown className="text-red-500" />
             ) : (
               <TrendingUp className="text-green-500" />
@@ -121,20 +225,22 @@ const ClientViewPage = () => {
           }
         />
         <StatCard
-          title="Credit Limit"
-          value={formatCurrency(client.creditLimit || 0)}
-          subText="Maximum Allowed"
+          title="Total Loadings"
+          value={String(client.loadings?.length ?? 0)}
+          subText="Recorded counts"
           icon={<CreditCard className="text-blue-500" />}
         />
         <StatCard
-          title="GST Status"
-          value={client.gstType}
-          subText={client.gstin || "N/A"}
+          title="Last Loading"
+          // value={lastLoading?.billNo ?? "No loadings"}
+          // subText={lastLoading ? formatDate(lastLoading.date) : "Not available"}
+          value={lastLoading ? formatDate(lastLoading.date) : "Not available"}
+          subText={lastLoading ? `Bill #${lastLoading.billNo}` : "No loadings"}
           icon={<ShieldCheck className="text-purple-500" />}
         />
         <StatCard
           title="Contact"
-          value={client.phone}
+          value={client.phone || "No phone"}
           subText={client.email || "No email provided"}
           icon={<Phone className="text-orange-500" />}
         />
@@ -145,7 +251,7 @@ const ClientViewPage = () => {
         <TabsList className="grid w-full md:w-[400px] grid-cols-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="banking">Banking</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
+          {/* <TabsTrigger value="ledger">Ledger</TabsTrigger> */}
           <TabsTrigger value="loadings">Loadings</TabsTrigger>
         </TabsList>
 
@@ -166,6 +272,14 @@ const ClientViewPage = () => {
                   icon={<MapPin className="h-4 w-4" />}
                 />
                 <DetailItem label="State" value={client.state} />
+                <DetailItem
+                  label="Credit Limit"
+                  value={formatCurrency(client.creditLimit || 0)}
+                />
+                <DetailItem
+                  label="Opening Balance"
+                  value={formatCurrency(client.openingBalance)}
+                />
                 <DetailItem label="Reference No" value={client.referenceNo} />
                 <DetailItem
                   label="Payment Terms"
@@ -227,82 +341,114 @@ const ClientViewPage = () => {
           </Card>
         </TabsContent>
 
-        {/* History Tab (Placeholder for relations) */}
-        <TabsContent value="history" className="space-y-4">
+        {/* Ledger Tab */}
+        <TabsContent value="ledger" className="space-y-4">
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <History className="h-5 w-5" /> Payment History
-              </CardTitle>
-              <CardDescription>
-                Recent payment records and transactions
-              </CardDescription>
+            <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <History className="h-5 w-5" /> Ledger
+                </CardTitle>
+                <CardDescription>
+                  Date-wise bill totals, payments and pending balances.
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleDownloadLedger}
+              >
+                <Download className="w-4 h-4 mr-2" /> Download Ledger
+              </Button>
             </CardHeader>
-            <CardContent>
-              {client.payments && client.payments.length > 0 ? (
-                <div className="rounded-md border">
+            <CardContent className="space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card className="bg-muted/30">
+                  <CardContent>
+                    <p className="text-xs uppercase text-muted-foreground">
+                      Grand Total
+                    </p>
+                    <p className="text-2xl font-bold">
+                      {formatCurrency(totalLedgerBillAmount)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-muted/30">
+                  <CardContent>
+                    <p className="text-xs uppercase text-muted-foreground">
+                      Paid
+                    </p>
+                    <p className="text-2xl font-bold text-emerald-600">
+                      {formatCurrency(totalLedgerPaymentAmount)}
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-muted/30">
+                  <CardContent>
+                    <p className="text-xs uppercase text-muted-foreground">
+                      Pending
+                    </p>
+                    <p className="text-2xl font-bold text-red-600">
+                      {formatCurrency(totalLedgerPending)}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {ledgerRows.length > 0 ? (
+                <div className="rounded-md border overflow-hidden">
                   <table className="w-full text-sm text-left">
                     <thead className="text-xs text-muted-foreground uppercase bg-muted/50">
                       <tr>
-                        <th className="px-4 py-3 font-medium">Bill No</th>
                         <th className="px-4 py-3 font-medium">Date</th>
-                        <th className="px-4 py-3 font-medium">Payment Mode</th>
-                        {/* <th className="px-4 py-3 font-medium">Type</th> */}
                         <th className="px-4 py-3 font-medium text-right">
-                          Amount
+                          Bill Amount
+                        </th>
+                        <th className="px-4 py-3 font-medium text-right">
+                          Payments
+                        </th>
+                        <th className="px-4 py-3 font-medium text-right">
+                          Balance
+                        </th>
+                        <th className="px-4 py-3 font-medium text-right">
+                          Loads
+                        </th>
+                        <th className="px-4 py-3 font-medium text-right">
+                          Payments
                         </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {client &&
-                        client.payments &&
-                        client.payments.map(
-                          (payment: ClientPayment, idx: number) => (
-                            <tr key={idx} className="hover:bg-muted/10">
-                              <td className="px-4 py-3">
-                                <div className="flex items-center gap-2">
-                                  {payment.client.billNo}
-                                </div>
-                              </td>
-                              <td className="px-4 py-3">
-                                <div className="flex items-center gap-2">
-                                  <Calendar className="h-3 w-3 text-muted-foreground" />
-                                  {formatDate(payment.date)}
-                                </div>
-                              </td>
-                              <td className="px-4 py-3">
-                                <Badge variant="outline">
-                                  {payment.paymentMode}
-                                </Badge>
-                              </td>
-                              {/* <td className="px-4 py-3">
-                                {payment.isInstallment ? (
-                                  <Badge
-                                    variant="secondary"
-                                    className="text-xs h-5"
-                                  >
-                                    Installment
-                                  </Badge>
-                                ) : (
-                                  <span className="text-muted-foreground text-xs">
-                                    Full Payment
-                                  </span>
-                                )}
-                              </td> */}
-                              <td className="px-4 py-3 text-right font-medium text-green-600">
-                                {formatCurrency(payment.amount)}
-                              </td>
-                            </tr>
-                          ),
-                        )}
+                      {ledgerRows.map((row) => (
+                        <tr key={row.date} className="hover:bg-muted/10">
+                          <td className="px-4 py-3">{formatDate(row.date)}</td>
+                          <td className="px-4 py-3 text-right font-medium">
+                            {formatCurrency(row.billAmount)}
+                          </td>
+                          <td className="px-4 py-3 text-right text-emerald-600 font-medium">
+                            {formatCurrency(row.paymentAmount)}
+                          </td>
+                          <td className="px-4 py-3 text-right font-medium">
+                            {formatCurrency(
+                              Math.max(0, row.billAmount - row.paymentAmount),
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {row.loadingCount}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {row.paymentCount}
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
               ) : (
                 <EmptyState
-                  icon={<CreditCard className="h-10 w-10" />}
-                  title="No Payments Recorded"
-                  desc="No payment history found for this client."
+                  icon={<Package className="h-10 w-10" />}
+                  title="No Ledger Entries"
+                  desc="No loadings or payments exist yet for this client."
                 />
               )}
             </CardContent>

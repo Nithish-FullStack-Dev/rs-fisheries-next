@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import axios, { AxiosError } from "axios";
@@ -15,7 +15,9 @@ import {
   Package,
   History,
   FileText,
+  Download,
 } from "lucide-react";
+import * as XLSX from "xlsx";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -23,7 +25,6 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  CardDescription,
   CardFooter,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -37,7 +38,7 @@ const AgentViewPage = () => {
   const { id } = useParams();
   const router = useRouter();
 
-  const { data, isLoading, isError, error } = useQuery({
+  const { data, isLoading, isError, error } = useQuery<Agent, AxiosError>({
     queryKey: ["agent", id],
     queryFn: async () => {
       const { data } = await axios.get(`/api/agent/${id}`);
@@ -46,10 +47,7 @@ const AgentViewPage = () => {
     enabled: !!id,
   });
 
-  if (isLoading) return <LoadingSkeleton />;
-  if (isError) return <ErrorState error={error} />;
-
-  const agent = data!;
+  const agentLoadings = data?.agentLoadings || [];
 
   // Formatting helpers
   const formatCurrency = (val: number) =>
@@ -67,8 +65,97 @@ const AgentViewPage = () => {
     });
   };
 
+  const ledgerRows = useMemo(() => {
+    const rows = new Map<
+      string,
+      {
+        date: string;
+        billAmount: number;
+        paymentAmount: number;
+        balance: number;
+        loads: number;
+        payments: number;
+      }
+    >();
+
+    agentLoadings.forEach((loading: any) => {
+      const dateKey = formatDate(loading.date);
+      const billAmount = Number(loading.grandTotal || 0);
+      const existing = rows.get(dateKey);
+
+      if (existing) {
+        existing.billAmount += billAmount;
+        existing.balance += billAmount;
+        existing.loads += 1;
+      } else {
+        rows.set(dateKey, {
+          date: dateKey,
+          billAmount,
+          paymentAmount: 0,
+          balance: billAmount,
+          loads: 1,
+          payments: 0,
+        });
+      }
+    });
+
+    return Array.from(rows.values());
+  }, [agentLoadings]);
+
+  const totalLedgerBillAmount = ledgerRows.reduce(
+    (sum, row) => sum + row.billAmount,
+    0,
+  );
+  const totalLedgerPaymentAmount = ledgerRows.reduce(
+    (sum, row) => sum + row.paymentAmount,
+    0,
+  );
+  const totalLedgerPending = Math.max(
+    0,
+    totalLedgerBillAmount - totalLedgerPaymentAmount,
+  );
+
+  if (isLoading) return <LoadingSkeleton />;
+  if (isError) return <ErrorState error={error} />;
+
+  const agent = data!;
   const totalLoadings = agent.agentLoadings?.length || 0;
-  const lastLoadingDate = totalLoadings > 0 ? agent.agentLoadings[0].date : null;
+  const lastLoadingDate = totalLoadings > 0 ? agentLoadings[0].date : null;
+
+  const handleDownloadLedger = () => {
+    const sheetData = ledgerRows.map((row) => ({
+      Date: row.date,
+      "Bill Amount": row.billAmount,
+      "Payment Amount": row.paymentAmount,
+      Balance: row.balance,
+      Loads: row.loads,
+      Payments: row.payments,
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(sheetData);
+    const summaryRow = {
+      Date: "TOTAL",
+      "Bill Amount": totalLedgerBillAmount,
+      "Payment Amount": totalLedgerPaymentAmount,
+      Balance: totalLedgerPending,
+      Loads: ledgerRows.reduce((sum, row) => sum + row.loads, 0),
+      Payments: ledgerRows.reduce((sum, row) => sum + row.payments, 0),
+    };
+
+    XLSX.utils.sheet_add_json(ws, [summaryRow], {
+      origin: -1,
+      skipHeader: true,
+    });
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Agent Ledger");
+
+    const safeName = agent.name.replace(/[^a-z0-9]/gi, "_").toLowerCase();
+    XLSX.writeFile(
+      wb,
+      `agent_ledger_${safeName}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+    );
+  };
 
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
@@ -87,9 +174,7 @@ const AgentViewPage = () => {
                 {agent.isActive ? "Active" : "Inactive"}
               </Badge>
             </div>
-            <p className="text-muted-foreground">
-              Agent Registry Information
-            </p>
+            <p className="text-muted-foreground">Agent Registry Information</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -132,8 +217,9 @@ const AgentViewPage = () => {
 
       {/* Main Content Tabs */}
       <Tabs defaultValue="overview" className="w-full">
-        <TabsList className="grid w-full md:w-[300px] grid-cols-2">
+        <TabsList className="grid w-full md:w-[300px] grid-cols-3">
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          {/* <TabsTrigger value="ledger">Ledger</TabsTrigger> */}
           <TabsTrigger value="loadings">Loadings</TabsTrigger>
         </TabsList>
 
@@ -156,7 +242,10 @@ const AgentViewPage = () => {
                 <Separator />
                 <div className="grid grid-cols-2 gap-4">
                   <DetailItem label="Phone" value={agent.phone} />
-                  <DetailItem label="Registered At" value={formatDate(agent.createdAt)} />
+                  <DetailItem
+                    label="Registered At"
+                    value={formatDate(agent.createdAt)}
+                  />
                 </div>
               </CardContent>
             </Card>
@@ -164,23 +253,122 @@ const AgentViewPage = () => {
             <Card>
               <CardHeader>
                 <CardTitle className="text-lg text-primary flex items-center gap-2">
-                    <FileText className="h-5 w-5" /> Summary
+                  <FileText className="h-5 w-5" /> Summary
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="p-4 bg-muted/50 rounded-lg space-y-2">
-                    <p className="text-sm font-medium">Activity Snapshot</p>
-                    <p className="text-xs text-muted-foreground">
-                        This agent has handled {totalLoadings} loadings to date. 
-                        They are currently marked as {agent.isActive ? 'Active' : 'Inactive'}.
-                    </p>
+                  <p className="text-sm font-medium">Activity Snapshot</p>
+                  <p className="text-xs text-muted-foreground">
+                    This agent has handled {totalLoadings} loadings to date.
+                    They are currently marked as{" "}
+                    {agent.isActive ? "Active" : "Inactive"}.
+                  </p>
                 </div>
                 <div className="text-xs text-muted-foreground flex items-center justify-between">
                   <span>Last Profile Update</span>
-                  <span>{agent.updatedAt ? formatDate(agent.updatedAt) : 'N/A'}</span>
+                  <span>
+                    {agent.updatedAt ? formatDate(agent.updatedAt) : "N/A"}
+                  </span>
                 </div>
               </CardContent>
             </Card>
+          </div>
+        </TabsContent>
+
+        {/* Ledger Tab */}
+        <TabsContent value="ledger" className="space-y-4">
+          <div className="grid gap-4">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <History className="h-5 w-5" /> Ledger
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  Date-wise bill totals, payments and pending balances.
+                </p>
+              </div>
+              <Button className="self-start" onClick={handleDownloadLedger}>
+                <Download className="w-4 h-4 mr-2" /> Download Ledger
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card>
+                <CardContent>
+                  <p className="text-xs uppercase text-muted-foreground">
+                    Grand Total
+                  </p>
+                  <p className="text-2xl font-semibold mt-3">
+                    {formatCurrency(totalLedgerBillAmount)}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent>
+                  <p className="text-xs uppercase text-muted-foreground">
+                    Paid
+                  </p>
+                  <p className="text-2xl font-semibold text-emerald-600 mt-3">
+                    {formatCurrency(totalLedgerPaymentAmount)}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent>
+                  <p className="text-xs uppercase text-muted-foreground">
+                    Pending
+                  </p>
+                  <p className="text-2xl font-semibold text-red-600 mt-3">
+                    {formatCurrency(totalLedgerPending)}
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="overflow-x-auto rounded-xl border bg-background">
+              <table className="min-w-full text-left text-sm">
+                <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
+                  <tr>
+                    <th className="px-4 py-3">Date</th>
+                    <th className="px-4 py-3 text-right">Bill Amount</th>
+                    <th className="px-4 py-3 text-right">Payments</th>
+                    <th className="px-4 py-3 text-right">Balance</th>
+                    <th className="px-4 py-3 text-right">Loads</th>
+                    <th className="px-4 py-3 text-right">Payments</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {ledgerRows.length > 0 ? (
+                    ledgerRows.map((row) => (
+                      <tr key={row.date} className="hover:bg-muted/10">
+                        <td className="px-4 py-3 font-medium">{row.date}</td>
+                        <td className="px-4 py-3 text-right">
+                          {formatCurrency(row.billAmount)}
+                        </td>
+                        <td className="px-4 py-3 text-right text-emerald-600">
+                          {formatCurrency(row.paymentAmount)}
+                        </td>
+                        <td className="px-4 py-3 text-right font-medium">
+                          {formatCurrency(row.balance)}
+                        </td>
+                        <td className="px-4 py-3 text-right">{row.loads}</td>
+                        <td className="px-4 py-3 text-right">{row.payments}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td
+                        colSpan={6}
+                        className="p-6 text-center text-sm text-muted-foreground"
+                      >
+                        No ledger entries available for this agent yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
         </TabsContent>
 
@@ -188,7 +376,10 @@ const AgentViewPage = () => {
         <TabsContent value="loadings" className="space-y-4">
           {agent.agentLoadings && agent.agentLoadings.length > 0 ? (
             agent.agentLoadings.map((loading: any) => (
-              <Card key={loading.id} className="overflow-hidden border-l-4 border-l-primary">
+              <Card
+                key={loading.id}
+                className="overflow-hidden border-l-4 border-l-primary"
+              >
                 <div className="bg-muted/30 p-4 border-b flex flex-wrap items-center justify-between gap-4">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
@@ -260,10 +451,14 @@ const AgentViewPage = () => {
                 </CardContent>
 
                 <CardFooter className="bg-muted/5 p-3 flex justify-between items-center text-xs text-muted-foreground">
-                   <div className="flex items-center gap-4">
-                      <span>Total Trays: <strong>{loading.totalTrays}</strong></span>
-                      <span>Total Weight: <strong>{loading.totalKgs}kg</strong></span>
-                   </div>
+                  <div className="flex items-center gap-4">
+                    <span>
+                      Total Trays: <strong>{loading.totalTrays}</strong>
+                    </span>
+                    <span>
+                      Total Weight: <strong>{loading.totalKgs}kg</strong>
+                    </span>
+                  </div>
                 </CardFooter>
               </Card>
             ))

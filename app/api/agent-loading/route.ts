@@ -1,5 +1,7 @@
 // app\api\agent-loading\route.ts
 import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/lib/auditLogger";
+import { withAuth } from "@/lib/withAuth";
 import { NextResponse } from "next/server";
 
 const TRAY_KG = 35;
@@ -35,7 +37,7 @@ const toNum = (v: unknown): number => {
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
-export async function POST(req: Request) {
+export const POST = withAuth(async (req: Request) => {
   try {
     const body = (await req.json()) as AgentLoadingBody;
 
@@ -150,6 +152,27 @@ export async function POST(req: Request) {
       },
     });
 
+    await logAudit({
+      user: (req as any).user,
+      action: "CREATE",
+      module: "Agent Loading",
+      recordId: saved.id,
+      request: req,
+      label: `Agent loading created: ${saved.billNo}`,
+      oldValues: null,
+      newValues: {
+        billNo: saved.billNo,
+        agentName: saved.agentName,
+        agentId: saved.agentId ?? null,
+        fishCode: saved.fishCode,
+        totalKgs: saved.totalKgs,
+        totalPrice: saved.totalPrice,
+        grandTotal: saved.grandTotal,
+        vehicleNo: saved.vehicle?.vehicleNumber ?? saved.vehicleNo ?? null,
+        localVehicle: saved.localVehicle ?? null,
+      },
+    });
+
     return NextResponse.json({ success: true, data: saved }, { status: 201 });
   } catch (err: any) {
     console.error("AgentLoading POST error:", err);
@@ -164,7 +187,7 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-}
+});
 
 export async function GET(req: Request) {
   try {

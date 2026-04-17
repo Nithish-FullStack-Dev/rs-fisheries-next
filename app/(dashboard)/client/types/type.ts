@@ -72,6 +72,9 @@ export interface Client extends ClientFormValues {
   updatedAt?: string;
   payments?: ClientPayment[];
   loadings?: ClientLoading[];
+  totalLoadings?: number;
+  totalPayments?: number;
+  pendingBalance?: number;
 }
 
 export interface ClientPayment {

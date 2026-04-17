@@ -206,17 +206,10 @@ export const GET = apiHandler(async (_req: Request, context: any) => {
 
 
   // totals
-  const totalLoadings = client.loadings.reduce((sum, l) => {
-    const itemTotal = Number(l.totalPrice || 0)
-    const dispatch = Number(l.dispatchChargesTotal || 0)
-    const packing = Number(l.packingAmountTotal || 0)
-
-    if (dispatch > 0 || packing > 0) {
-      return sum + itemTotal + dispatch + packing
-    }
-
-    return sum + itemTotal
-  }, 0)
+  const totalLoadings = client.loadings.reduce(
+    (sum, l) => sum + Number(l.grandTotal || 0),
+    0
+  );
 
   const totalPayments = client.payments.reduce(
     (sum, p) => sum + Number(p.amount || 0),
