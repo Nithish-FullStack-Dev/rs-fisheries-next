@@ -109,8 +109,10 @@ export async function PUT(
       where: { id },
       data: {
         agentName: body.agentName,
+        agentId: body.agentId || null,
         village: body.village || "",
         date: new Date(body.date),
+        localVehicle: body.localVehicle || null,
 
         totalKgs,
         grandTotal,

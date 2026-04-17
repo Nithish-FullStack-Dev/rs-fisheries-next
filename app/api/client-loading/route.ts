@@ -1,5 +1,6 @@
 // app/api/client-loading/route.ts
 import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/lib/auditLogger";
 import { withAuth } from "@/lib/withAuth";
 import { NextResponse, NextRequest } from "next/server";
 
@@ -61,6 +62,7 @@ export const POST = withAuth(
         useVehicle?: boolean; //  checkbox flag
         vehicleId?: string | null;
         vehicleNo?: string | null;
+        localVehicle?: string | null;
 
         items?: CreateItemInput[];
       };
@@ -168,6 +170,7 @@ export const POST = withAuth(
         totalPrice: 0,
         grandTotal,
         clientId,
+        localVehicle: body.localVehicle?.trim() || null,
 
         //  IMPORTANT: to avoid DB null violation, keep vehicleNo always string
         vehicleNo: "",
@@ -203,6 +206,25 @@ export const POST = withAuth(
         },
       });
 
+      await logAudit({
+        user: (req as any).user,
+        action: "CREATE",
+        module: "Client Loading",
+        recordId: saved.id,
+        request: req,
+        label: `Client loading created: ${saved.billNo}`,
+        oldValues: null,
+        newValues: {
+          billNo: saved.billNo,
+          clientName: saved.clientName,
+          clientId: saved.clientId,
+          totalKgs: saved.totalKgs,
+          totalPrice: saved.totalPrice,
+          grandTotal: saved.grandTotal,
+          vehicleNo: saved.vehicle?.vehicleNumber ?? saved.vehicleNo ?? null,
+          localVehicle: saved.localVehicle ?? null,
+        },
+      });
 
       return NextResponse.json({ success: true, data: saved }, { status: 201 });
     } catch (e) {

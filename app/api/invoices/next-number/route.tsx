@@ -43,10 +43,10 @@ export async function GET(request: Request) {
   let invoiceNumber: string;
 
   if (type === "vendor") {
-    invoiceNumber = `RS-V-${shortFY}-${padded}`;
+    invoiceNumber = `RSFV/${shortFY}/${padded}`;
   } else {
     // client (default)
-    invoiceNumber = `RS-INV-${shortFY}-${padded}`;
+    invoiceNumber = `RSF/${shortFY}/${padded}`;
   }
 
   return NextResponse.json({
@@ -100,9 +100,9 @@ export async function POST(request: Request) {
   let invoiceNumber: string;
 
   if (type === "vendor") {
-    invoiceNumber = `RS-V-${shortFY}-${padded}`;
+    invoiceNumber = `RSFV/${shortFY}/${padded}`;
   } else {
-    invoiceNumber = `RS-INV-${shortFY}-${padded}`;
+    invoiceNumber = `RSF/${shortFY}/${padded}`;
   }
 
   return NextResponse.json({

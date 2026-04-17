@@ -77,6 +77,7 @@ export default function FormerLoading() {
   const [useVehicle, setUseVehicle] = useState(false);
   const [vehicleId, setVehicleId] = useState("");
   const [otherVehicleNo, setOtherVehicleNo] = useState("");
+  const [localVehicle, setLocalVehicle] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -193,6 +194,7 @@ export default function FormerLoading() {
     setUseVehicle(false);
     setVehicleId("");
     setOtherVehicleNo("");
+    setLocalVehicle("");
 
     setItems([
       { id: crypto.randomUUID(), varietyCode: "", noTrays: 0, loose: 0 },
@@ -240,6 +242,7 @@ export default function FormerLoading() {
     setUseVehicle(Boolean(loading.vehicleId || loading.vehicleNo));
     setVehicleId(loading.vehicleId || "");
     setOtherVehicleNo(loading.vehicleNo || "");
+    setLocalVehicle(loading.localVehicle || "");
 
     const rows = loading.items.map((i: any) => ({
       id: crypto.randomUUID(),
@@ -329,6 +332,7 @@ export default function FormerLoading() {
       useVehicle,
       vehicleId: useVehicle && !isOtherVehicle ? vehicleId : null,
       vehicleNo: useVehicle && isOtherVehicle ? otherVehicleNo.trim() : null,
+      localVehicle: localVehicle.trim() || null,
       items: activeRows.map((i) => ({
         varietyCode: i.varietyCode,
         noTrays: safeNum(i.noTrays),
@@ -437,6 +441,15 @@ export default function FormerLoading() {
             type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
+          />
+        </Field>
+
+        <Field>
+          <FieldLabel>Local Transport Vehicle</FieldLabel>
+          <Input
+            value={localVehicle}
+            onChange={(e) => setLocalVehicle(e.target.value.toUpperCase())}
+            placeholder="Local vehicle number"
           />
         </Field>
 

@@ -77,6 +77,7 @@ model FormerLoading {
   vehicleId String?
   vehicle   Vehicle? @relation(fields: [vehicleId], references: [id])
   vehicleNo String?
+  localVehicle String?
 
   tripStatus  TripStatus @default(RUNNING)
   startedAt   DateTime   @default(now())
@@ -95,7 +96,7 @@ model FormerLoading {
   items           FormerItem[]
   dispatchCharges DispatchCharge[] @relation("FormerDispatchCharges")
   packingAmounts  PackingAmount[]  @relation("FormerPackingAmounts")
-
+dispatchBreakdown   Json?
   createdAt DateTime @default(now())
 }
 
@@ -126,6 +127,7 @@ model AgentLoading {
   vehicleId String?
   vehicle   Vehicle? @relation(fields: [vehicleId], references: [id])
   vehicleNo String?
+  localVehicle String?
 
   tripStatus  TripStatus @default(RUNNING)
   startedAt   DateTime   @default(now())
@@ -145,6 +147,9 @@ model AgentLoading {
   dispatchCharges DispatchCharge[] @relation("AgentDispatchCharges")
   packingAmounts  PackingAmount[]  @relation("AgentPackingAmounts")
 
+  agentId String?
+  agent   Agent? @relation(fields: [agentId], references: [id], onDelete: SetNull)
+  dispatchBreakdown   Json?
   createdAt DateTime @default(now())
 }
 
@@ -173,6 +178,7 @@ model ClientLoading {
   vehicleId String?
   vehicle   Vehicle? @relation(fields: [vehicleId], references: [id])
   vehicleNo String?
+  localVehicle String?
 
   tripStatus  TripStatus @default(RUNNING)
   startedAt   DateTime   @default(now())
@@ -733,4 +739,20 @@ model AuditLog {
   @@index([module, recordId])
   @@index([userId])
   @@index([createdAt])
+}
+
+model Agent {
+  id       String  @id @default(uuid())
+  name     String
+  phone    String  @unique
+  address  String?
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  agentLoadings AgentLoading[]
+
+  @@index([name])
+  @@index([phone])
 }

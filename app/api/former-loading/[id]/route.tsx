@@ -114,6 +114,7 @@ export async function PUT(
           FarmerName: body.FarmerName,
           village: body.village,
           date: new Date(body.date),
+          localVehicle: body.localVehicle || null,
           totalTrays,
           totalLooseKgs,
           totalTrayKgs,

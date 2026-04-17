@@ -1,4 +1,3 @@
-// app\(dashboard)\loadings\components\AgentLoading.tsx
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
@@ -17,8 +16,7 @@ import {
 } from "@/components/ui/select";
 import { PlusCircle, Save, Trash2 } from "lucide-react";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { fi } from "date-fns/locale";
-import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import AgentLoadingList from "./AgentLoadingList";
 
 const TRAY_WEIGHT = 35;
@@ -33,8 +31,8 @@ const todayYMD = () => {
 };
 
 //  Text rules
-const AGENT_NAME_REGEX = /^[A-Za-z][A-Za-z .'-]*$/; // letters + space + . ' -
-const VILLAGE_REGEX = /^[A-Za-z][A-Za-z ]*$/; // letters + space
+const AGENT_NAME_REGEX = /^.+$/; // Allow any characters for agent name
+const VILLAGE_REGEX = /^.+$/; // Allow any characters for village/address
 
 const cleanAgentName = (v: string) =>
   v
@@ -67,8 +65,11 @@ export default function AgentLoading() {
   const [agentName, setAgentName] = useState("");
   const [village, setVillage] = useState("");
   const [date, setDate] = useState(todayYMD());
+  const [agentSelectId, setAgentSelectId] = useState<string>("");
+
   const [vehicleId, setVehicleId] = useState("");
   const [otherVehicleNo, setOtherVehicleNo] = useState("");
+  const [localVehicle, setLocalVehicle] = useState("");
   const [loading, setLoading] = useState(false);
   const [useVehicle, setUseVehicle] = useState(false);
 
@@ -100,6 +101,27 @@ export default function AgentLoading() {
       return res.data.data || [];
     },
   });
+
+  const { data: agentsList = [] } = useQuery({
+    queryKey: ["agents-all"],
+    queryFn: async () => {
+      const res = await axios.get("/api/agent?all=true");
+      return res.data.data || [];
+    },
+  });
+
+  const selectedAgent = useMemo(() => {
+    if (!agentSelectId) return null;
+    return agentsList.find((a: any) => a.id === agentSelectId) ?? null;
+  }, [agentsList, agentSelectId]);
+
+  // Auto-fill when agent selected
+  useEffect(() => {
+    if (selectedAgent) {
+      setAgentName(selectedAgent.name || "");
+      setVillage(selectedAgent.address || "");
+    }
+  }, [selectedAgent]);
 
   const { data: vehicles = [] } = useQuery({
     queryKey: ["assigned-vehicles"],
@@ -150,6 +172,7 @@ export default function AgentLoading() {
     setUseVehicle(Boolean(loading.vehicleId || loading.vehicleNo));
     setVehicleId(loading.vehicleId || "");
     setOtherVehicleNo(loading.vehicleNo || "");
+    setLocalVehicle(loading.localVehicle || "");
 
     const rows = loading.items.map((i: any) => {
       const trayKgs = i.noTrays * TRAY_WEIGHT;
@@ -263,8 +286,10 @@ export default function AgentLoading() {
     setAgentName("");
     setVillage("");
     setDate(todayYMD());
+    setAgentSelectId("");
     setVehicleId("");
     setOtherVehicleNo("");
+    setLocalVehicle("");
     setItems([
       {
         id: crypto.randomUUID(),
@@ -289,10 +314,12 @@ export default function AgentLoading() {
     }
 
     const name = agentName.trim();
-    if (!name) return (toast.error("Enter Agent Name"), false);
-    if (!AGENT_NAME_REGEX.test(name))
+    if (!name && !agentSelectId) return (toast.error("Enter Agent Name"), false);
+    
+    // Regex skip if agent is selected from dropdown, otherwise validate
+    if (name && !AGENT_NAME_REGEX.test(name))
       return (
-        toast.error("Agent Name should contain only letters and spaces"),
+        toast.error("Agent Name contains invalid characters"),
         false
       );
 
@@ -347,6 +374,7 @@ export default function AgentLoading() {
 
     const payload = {
       agentName: agentName.trim(),
+      agentId: agentSelectId || null,
       fishCode: fishCodeValue,
       village: village.trim(),
       date,
@@ -355,6 +383,7 @@ export default function AgentLoading() {
 
       vehicleId: useVehicle && !isOtherVehicle ? vehicleId : null,
       vehicleNo: useVehicle && isOtherVehicle ? otherVehicleNo.trim() : null,
+      localVehicle: localVehicle.trim() || null,
 
       items: activeRows.map((r) => ({
         varietyCode: r.varietyCode,
@@ -427,21 +456,34 @@ export default function AgentLoading() {
 
           <Field>
             <FieldLabel>Agent Name *</FieldLabel>
-            <Input
-              value={agentName}
-              onChange={(e) => setAgentName(cleanAgentName(e.target.value))}
-              placeholder="Enter agent name"
-              className="border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
-            />
+            <Select
+              value={agentSelectId}
+              onValueChange={(val) => setAgentSelectId(val)}
+            >
+              <SelectTrigger className="border-slate-200 focus:ring-2 focus:ring-[#139BC3]/30">
+                <SelectValue placeholder="Select agent" />
+              </SelectTrigger>
+              <SelectContent>
+                {agentsList.map((a: any) => (
+                  <SelectItem key={a.id} value={a.id}>
+                    {a.name} — {a.phone}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </Field>
 
           <Field>
             <FieldLabel>Address</FieldLabel>
-            <Textarea
+            <Input
               value={village}
-              onChange={(e) => setVillage(cleanVillage(e.target.value))}
+              readOnly={!!agentSelectId}
+              onChange={(e) => setVillage(e.target.value)}
               placeholder="Enter full address"
-              className="border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
+              className={cn(
+                "border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30",
+                !!agentSelectId && "bg-slate-50"
+              )}
             />
           </Field>
 
@@ -451,6 +493,15 @@ export default function AgentLoading() {
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
+              className="border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
+            />
+          </Field>
+          <Field>
+            <FieldLabel>Local Transport Vehicle</FieldLabel>
+            <Input
+              value={localVehicle}
+              onChange={(e) => setLocalVehicle(e.target.value.toUpperCase())}
+              placeholder="Local vehicle number"
               className="border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
             />
           </Field>

@@ -14,10 +14,10 @@ const globalForPrisma = globalThis as unknown as {
 };
 
 export const prisma =
-    globalForPrisma.prisma ??
+    (globalForPrisma.prisma ??
     new PrismaClient({
         adapter,
-    });
+    })) as PrismaClient; // Force cast to ensure latest types are picked up
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 

@@ -1,5 +1,7 @@
 // app/api/former-loading/route.ts
 import { prisma } from "@/lib/prisma";
+import { logAudit } from "@/lib/auditLogger";
+import { withAuth } from "@/lib/withAuth";
 import { NextResponse } from "next/server";
 
 const TRAY_KG = 35;
@@ -23,6 +25,7 @@ type FormerLoadingBody = {
 
   vehicleId?: string | null;
   vehicleNo?: string | null;
+  localVehicle?: string | null;
 
   items: FormerItemInput[];
 };
@@ -36,7 +39,7 @@ const toNum = (v: unknown): number => {
 
 const round2 = (n: number): number => Math.round(n * 100) / 100;
 
-export async function POST(req: Request) {
+export const POST = withAuth(async (req: Request) => {
   try {
     const body = (await req.json()) as FormerLoadingBody;
 
@@ -119,6 +122,7 @@ export async function POST(req: Request) {
       FarmerName: farmerName, // keep string (not null)
       village: asTrim(body.village) || "", // avoid null
       date: loadingDate,
+      localVehicle: asTrim(body.localVehicle) || null,
 
       totalTrays,
       totalLooseKgs,
@@ -150,6 +154,26 @@ export async function POST(req: Request) {
       include: { items: true, vehicle: { select: { vehicleNumber: true } } },
     });
 
+    await logAudit({
+      user: (req as any).user,
+      action: "CREATE",
+      module: "Farmer Loading",
+      recordId: saved.id,
+      request: req,
+      label: `Farmer loading created: ${saved.billNo}`,
+      oldValues: null,
+      newValues: {
+        billNo: saved.billNo,
+        farmerName: saved.FarmerName,
+        fishCode: saved.fishCode,
+        totalKgs: saved.totalKgs,
+        totalPrice: saved.totalPrice,
+        grandTotal: saved.grandTotal,
+        vehicleNo: saved.vehicle?.vehicleNumber ?? saved.vehicleNo ?? null,
+        localVehicle: saved.localVehicle ?? null,
+      },
+    });
+
     return NextResponse.json({ success: true, data: saved }, { status: 201 });
   } catch (err: any) {
     console.error("FormerLoading POST error:", err);
@@ -162,7 +186,7 @@ export async function POST(req: Request) {
       { status: 500 }
     );
   }
-}
+});
 
 export async function GET(req: Request) {
   try {

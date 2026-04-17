@@ -105,6 +105,7 @@ export default function ClientLoadingForm() {
   const [useVehicle, setUseVehicle] = useState(false);
   const [vehicleId, setVehicleId] = useState("");
   const [otherVehicleNo, setOtherVehicleNo] = useState("");
+  const [localVehicle, setLocalVehicle] = useState("");
   const isOtherVehicle = vehicleId === OTHER_VEHICLE_VALUE;
 
   const [grandTotal, setGrandTotal] = useState(0);
@@ -383,6 +384,7 @@ export default function ClientLoadingForm() {
     setUseVehicle(false);
     setVehicleId("");
     setOtherVehicleNo("");
+    setLocalVehicle("");
 
     setItems([
       {
@@ -503,6 +505,7 @@ export default function ClientLoadingForm() {
       useVehicle,
       vehicleId: useVehicle && !isOtherVehicle ? vehicleId : null,
       vehicleNo: useVehicle && isOtherVehicle ? otherVehicleNo.trim() : null,
+      localVehicle: localVehicle.trim() || null,
 
       fishCode: firstCode,
 
@@ -648,6 +651,16 @@ export default function ClientLoadingForm() {
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
+              className="border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
+            />
+          </Field>
+
+          <Field>
+            <FieldLabel>Local Transport Vehicle</FieldLabel>
+            <Input
+              value={localVehicle}
+              onChange={(e) => setLocalVehicle(e.target.value.toUpperCase())}
+              placeholder="Local vehicle number"
               className="border-slate-200 focus-visible:ring-2 focus-visible:ring-[#139BC3]/30"
             />
           </Field>

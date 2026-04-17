@@ -46,14 +46,14 @@ export type VendorInvoiceAssets = {
 // 9494288997 , 9440011704
 // n.vamsikiran4@gmail.com
 const COMPANY = {
-    name: "R S F",
+    name: "RSF",
     title: " Receipt ",
-    addressLine: `Office NH16, Jio PetrolPump,
-     Golden Ice Factory, Kovuru, Nellore, 524366.`,
+    fullName: `Rama Satyanarayana Fisheries`,
+    addressLine: `NH16, Jio Petrol Pump, Golden Ice Factory, Kovuru, Nellore - 524366.`,
 
     phone: "+919494288997 , +919440011704",
     email: "n.vamsikiran4@gmail.com",
-    // gstin: "36AAAAA0000A1Z5",
+    gstin: "36AAAAA0000A1Z5",
     state: "Telangana",
     placeOfSupplyDefault: "Telangana",
 
@@ -191,7 +191,39 @@ function oneLineClamp(doc: Doc, text: string, x: number, y: number, maxW: number
     t = t.slice(0, Math.max(0, lo - 1)) + ell;
     doc.text(t, x, y);
 }
+function multiLineClamp(
+    doc: Doc,
+    text: string,
+    x: number,
+    y: number,
+    maxW: number,
+    maxLines = 2,
+    fontSize = 7.2,
+    lineH = 3.6
+) {
+    doc.setFont("Helvetica", "normal");
+    doc.setFontSize(fontSize);
 
+    const cleanText = (text || "").replace(/\r/g, "").replace(/\n+/g, " ").trim();
+    const lines = doc.splitTextToSize(cleanText, maxW);
+
+    const output: string[] = lines.slice(0, maxLines);
+
+    if (lines.length > maxLines) {
+        let last = output[maxLines - 1];
+        const ell = "…";
+
+        while (last.length > 0 && doc.getTextWidth(last + ell) > maxW) {
+            last = last.slice(0, -1);
+        }
+
+        output[maxLines - 1] = last + ell;
+    }
+
+    output.forEach((line: string, i: number) => {
+        doc.text(line, x, y + i * lineH);
+    });
+}
 function detectImageFormat(dataUrl: string): "PNG" | "JPEG" | null {
     if (!dataUrl.startsWith("data:image/")) return null;
     if (dataUrl.startsWith("data:image/png")) return "PNG";
@@ -357,21 +389,23 @@ async function renderVendorInvoice(doc: Doc, data: VendorInvoiceData, assets?: V
         assets?.logoHeight
     );
 
-    doc.setFont("Helvetica", "bold");
-    doc.setFontSize(12);
+    doc.setFont("Cinzel", "bold");
+    doc.setFontSize(18);
+    doc.setTextColor(31, 95, 139); // #1f5f8b
     doc.text(COMPANY.name, centerX + centerAreaW / 2, y + 9, { align: "center" });
-
-    doc.setFont("Helvetica", "normal");
-    doc.setFontSize(7.2);
-    doc.text(COMPANY.addressLine, centerX + centerAreaW / 2, y + 14, { align: "center" });
+    doc.setTextColor(0, 0, 0); // reset back to black
+    doc.setFont("Cinzel", "normal");
+    doc.setFontSize(12);
+    doc.text(COMPANY.fullName, centerX + centerAreaW / 2, y + 14, { align: "center" });
 
     const pad = 2;
     const maxW = rightAreaW - pad * 2;
     doc.setFont("Helvetica", "normal");
     doc.setFontSize(7.2);
-    oneLineClamp(doc, `Phone: ${COMPANY.phone}`, rightX + pad, y + 7.0, maxW, 7.2);
-    oneLineClamp(doc, `Email: ${COMPANY.email}`, rightX + pad, y + 10.6, maxW, 7.2);
-    // oneLineClamp(doc, `GSTIN: ${COMPANY.gstin}`, rightX + pad, y + 14.2, maxW, 7.2);
+    multiLineClamp(doc, COMPANY.addressLine, rightX + pad, y + 7.0, maxW, 7.2);
+    oneLineClamp(doc, `Phone: ${COMPANY.phone}`, rightX + pad, y + 14.2, maxW, 7.2);
+    oneLineClamp(doc, `Email: ${COMPANY.email}`, rightX + pad, y + 17.8, maxW, 7.2);
+    oneLineClamp(doc, `GSTIN: ${COMPANY.gstin}`, rightX + pad, y + 21.4, maxW, 7.2);
     // oneLineClamp(doc, `State: ${COMPANY.state}`, rightX + pad, y + 17.8, maxW, 7.2);
 
     y += headerH;

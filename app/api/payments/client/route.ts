@@ -245,6 +245,16 @@ export async function GET(req: NextRequest) {
         installments: true,
         installmentNumber: true,
         createdAt: true,
+        client: {
+          select: {
+            billNo: true,
+          },
+        },
+        clientInvoice: {
+          select: {
+            invoiceNo: true,
+          },
+        },
       },
     });
 

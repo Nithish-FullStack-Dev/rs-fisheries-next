@@ -47,11 +47,14 @@ export function ClientPayments() {
 
   const { data: billData = [], isLoading: loadingBills } = useQuery<
     {
-      id: string; // Use loading ID as the key for payment
-      loadingId: string; // or whatever the loading record ID is
+      id: string;
+      billNo: string;
+      date?: string;
+      createdAt: string;
+      loadingId: string;
       clientDetailsId: string;
       clientName: string;
-      billAmount: number; // grandTotal of this loading
+      billAmount: number;
       totalPaid: number;
       remaining: number;
       accountNumber?: string;
@@ -104,6 +107,8 @@ export function ClientPayments() {
             return {
               id: loadingId,
               loadingId,
+              billNo: load.billNo || load.loadingNo || "—",
+              createdAt: load.createdAt,
               clientName: load.clientName?.trim() || "Unknown",
               clientDetailsId: load.clientId?.toString(),
               billAmount,
@@ -179,6 +184,7 @@ export function ClientPayments() {
       clientDetailsId: selectedClient!.clientDetailsId,
       loadingId: selectedClient!.id, // Send the selected loading ID to apply payment to this bill only
       clientName: selectedClient!.clientName,
+      createdAt: selectedClient!.createdAt,
       date,
       amount: Math.round(Number(amount)),
       paymentMode: paymentMode.toUpperCase(),
@@ -282,9 +288,17 @@ export function ClientPayments() {
                             <span className="font-medium text-slate-800 text-base">
                               {c.clientName}
                             </span>
+
                             <span className="text-sm text-slate-500 leading-tight">
-                              Bill: {currency(c.billAmount)} | Remaining:{" "}
-                              {currency(c.remaining)}
+                              Bill No: {c.billNo} | {currency(c.billAmount)} |
+                              Remaining: {currency(c.remaining)}
+                            </span>
+
+                            <span className="text-xs text-slate-400">
+                              Date:{" "}
+                              {new Date(c.createdAt).toLocaleDateString(
+                                "en-GB",
+                              )}
                             </span>
                           </div>
                         </SelectItem>

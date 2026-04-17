@@ -22,6 +22,7 @@ import {
   Plus,
   ChevronDown,
   ChevronRight,
+  Minus,
 } from "lucide-react";
 import { toast } from "sonner";
 import * as XLSX from "xlsx";
@@ -60,10 +61,18 @@ interface LoadingRecord {
 
   vehicleNo?: string;
   village?: string;
+  localVehicle?: string;
 
   totalKgs?: number;
   grandTotal?: number;
   totalPrice?: number;
+
+  dispatchBreakdown?: {
+    iceCooling: number;
+    transportCharges: number;
+    otherCharges: { label: string; amount: number }[];
+    dispatchChargesTotal: number;
+  };
 }
 
 type FishVariety = {
@@ -96,6 +105,23 @@ const fetchAgentLoadings = async (): Promise<LoadingRecord[]> => {
   return (res.data?.data ?? []) as LoadingRecord[];
 };
 
+const fetchVendorPayments = async () => {
+  const res = await axios.get("/api/payments/vendor");
+
+  return (res.data?.data ?? []) as Array<{
+    id: string;
+    sourceRecordId?: string;
+    amount?: number;
+    source?: string;
+    vendorName?: string;
+    vendorInvoice?: {
+      invoiceNo?: string;
+    }[];
+    paymentMode?: string;
+    date?: string;
+  }>;
+};
+
 const fetchFishVarieties = async (): Promise<FishVariety[]> => {
   const res = await axios.get("/api/fish-varieties");
   return (res.data?.data ?? []) as FishVariety[];
@@ -117,26 +143,51 @@ function calcTotalPrice(totalKgs: number, pricePerKg: number): number {
 }
 
 type BillRow = {
-  id: string; // loading record id
+  id: string;
   source: "farmer" | "agent";
   billNo: string;
   name: string;
-  date: string; // YYYY-MM-DD
+  date: string;
+  createdAt?: string;
   vehicleNo?: string;
   village?: string;
-
+  localVehicle?: string;
   items: VendorItem[];
 
   varietyCount: number;
   totalTrays: number;
-  uniqueVarietyCount: number; // unique codes count
-  totalPrice: number; // sum of item.totalPrice
+  uniqueVarietyCount: number;
+
+  totalPrice: number;
+  totalCharges: number;
+  grandTotal: number;
+
+  dispatchBreakdown?: {
+    iceCooling: number;
+    transportCharges: number;
+    otherCharges: { label: string; amount: number }[];
+    dispatchChargesTotal: number;
+  };
 };
 
 export default function VendorBillsPage() {
   const [activeTab, setActiveTab] = useState<"farmer" | "agent">("farmer");
   const [loading, setLoading] = useState(true);
   const [records, setRecords] = useState<LoadingRecord[]>([]);
+  const [vendorPayments, setVendorPayments] = useState<
+    Array<{
+      id: string;
+      sourceRecordId?: string;
+      amount?: number;
+      source?: string;
+      vendorName?: string;
+      vendorInvoice?: {
+        invoiceNo?: string;
+      }[];
+      paymentMode?: string;
+      date?: string;
+    }>
+  >([]);
   const [editing, setEditing] = useState<Record<string, EditingRow>>({});
   const [savingIds, setSavingIds] = useState<Record<string, boolean>>({});
 
@@ -170,6 +221,28 @@ export default function VendorBillsPage() {
   const [newPrice, setNewPrice] = useState<number>(0);
   const [adding, setAdding] = useState(false);
 
+  // Other Charges State
+  const [otherChargesInput, setOtherChargesInput] = useState<
+    Record<
+      string,
+      {
+        id: string;
+        label: string;
+        amount: string;
+      }[]
+    >
+  >({});
+  const [editableCharges, setEditableCharges] = useState<
+    Record<
+      string,
+      {
+        label: string;
+        amount: number | string;
+      }[]
+    >
+  >({});
+  const [addingCharge, setAddingCharge] = useState<Record<string, boolean>>({});
+
   // Fish varieties master list
   const [fishVarieties, setFishVarieties] = useState<FishVariety[]>([]);
   const [fishLoading, setFishLoading] = useState(false);
@@ -179,9 +252,10 @@ export default function VendorBillsPage() {
   const [page, setPage] = useState(1);
 
   const refreshRecords = useCallback(async () => {
-    const [farmers, agents] = await Promise.all([
+    const [farmers, agents, payments] = await Promise.all([
       fetchFarmerLoadings(),
       fetchAgentLoadings(),
+      fetchVendorPayments(),
     ]);
 
     const tagged: LoadingRecord[] = [
@@ -190,6 +264,7 @@ export default function VendorBillsPage() {
     ];
 
     setRecords(tagged);
+    setVendorPayments(payments);
   }, []);
 
   useEffect(() => {
@@ -372,10 +447,11 @@ export default function VendorBillsPage() {
         const date = (rec.date || "").split("T")[0] || "";
 
         const items = Array.isArray(rec.items) ? rec.items : [];
-        const totalPrice =
-          n(rec.grandTotal) ||
-          items.reduce((sum, it) => sum + n(it.totalPrice), 0);
+        const totalPrice = items.reduce((sum, it) => sum + n(it.totalPrice), 0);
+        const totalCharges = n(rec.dispatchBreakdown?.dispatchChargesTotal);
+        const grandTotal = totalPrice + totalCharges;
         const totalTrays = items.reduce((sum, it) => sum + n(it.noTrays), 0);
+        const createdAt = rec.createdAt || rec.date || "";
         const varietyCount = items.length;
         const uniqueVarietyCount = new Set(
           items.map((it) => (it.varietyCode || "").trim().toUpperCase()),
@@ -387,13 +463,18 @@ export default function VendorBillsPage() {
           billNo,
           name,
           date,
+          createdAt,
           vehicleNo: rec.vehicleNo,
+          localVehicle: rec.localVehicle,
           village: rec.village,
           items,
           varietyCount,
           uniqueVarietyCount,
           totalTrays,
           totalPrice,
+          grandTotal,
+          totalCharges,
+          dispatchBreakdown: rec.dispatchBreakdown,
         };
       });
 
@@ -408,7 +489,10 @@ export default function VendorBillsPage() {
         const varietyMatch = b.items.some((it) =>
           (it.varietyCode || "").toLowerCase().includes(term),
         );
-        return billMatch || nameMatch || varietyMatch;
+        const localVehicleMatch = (b.localVehicle || "")
+          .toLowerCase()
+          .includes(term);
+        return billMatch || nameMatch || varietyMatch || localVehicleMatch;
       });
     }
 
@@ -444,6 +528,42 @@ export default function VendorBillsPage() {
     const start = (page - 1) * PAGE_SIZE;
     return bills.slice(start, start + PAGE_SIZE);
   }, [bills, page]);
+
+  const calculatePreviousPending = useCallback(
+    (currentBill: BillRow) => {
+      const matchingBills = bills
+        .filter(
+          (b) => b.source === currentBill.source && b.name === currentBill.name,
+        )
+        .sort(
+          (a, b) =>
+            new Date(a.createdAt || a.date || "").getTime() -
+            new Date(b.createdAt || b.date || "").getTime(),
+        );
+
+      const paymentMap = new Map<string, number>();
+      vendorPayments.forEach((payment) => {
+        const recordId = payment.sourceRecordId;
+        if (!recordId) return;
+        paymentMap.set(
+          recordId,
+          (paymentMap.get(recordId) || 0) + Number(payment.amount || 0),
+        );
+      });
+
+      let previousPending = 0;
+      for (const bill of matchingBills) {
+        if (bill.id === currentBill.id) break;
+
+        const paid = paymentMap.get(bill.id) || 0;
+        const pending = Math.max(0, bill.grandTotal - paid);
+        previousPending += pending;
+      }
+
+      return previousPending;
+    },
+    [bills, vendorPayments],
+  );
 
   const pageNumbers = useMemo(() => {
     const delta = 1;
@@ -616,6 +736,167 @@ export default function VendorBillsPage() {
       setDeletingItem(false);
     }
   };
+  const addChargeField = (billId: string) => {
+    setOtherChargesInput((prev) => ({
+      ...prev,
+      [billId]: [
+        ...(prev[billId] || []),
+        {
+          id: Date.now().toString() + Math.random().toString(),
+          label: "",
+          amount: "",
+        },
+      ],
+    }));
+  };
+
+  const removeChargeField = (billId: string, chargeId: string) => {
+    setOtherChargesInput((prev) => ({
+      ...prev,
+      [billId]: (prev[billId] || []).filter((item) => item.id !== chargeId),
+    }));
+  };
+
+  const updateChargeField = (
+    billId: string,
+    chargeId: string,
+    field: "label" | "amount",
+    value: string,
+  ) => {
+    setOtherChargesInput((prev) => ({
+      ...prev,
+      [billId]: (prev[billId] || []).map((item) =>
+        item.id === chargeId ? { ...item, [field]: value } : item,
+      ),
+    }));
+  };
+  const handleAddOtherCharge = async (billId: string) => {
+    const charges = otherChargesInput[billId] || [];
+
+    const validCharges = charges.filter(
+      (item) =>
+        item.label.trim() &&
+        item.amount.trim() &&
+        !isNaN(Number(item.amount)) &&
+        Number(item.amount) > 0,
+    );
+
+    if (validCharges.length === 0) {
+      toast.error("Please add at least one valid charge");
+      return;
+    }
+
+    try {
+      setAddingCharge((prev) => ({ ...prev, [billId]: true }));
+
+      await Promise.all(
+        validCharges.map((charge) =>
+          axios.post("/api/payments/dispatch", {
+            sourceRecordId: billId,
+            sourceType: "AGENT",
+            type: "OTHER",
+            label: charge.label.trim(),
+            amount: Number(charge.amount),
+          }),
+        ),
+      );
+
+      toast.success("Other charges added successfully");
+
+      setOtherChargesInput((prev) => ({
+        ...prev,
+        [billId]: [],
+      }));
+
+      await refreshRecords();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || "Failed to add charges");
+    } finally {
+      setAddingCharge((prev) => ({ ...prev, [billId]: false }));
+    }
+  };
+
+  const handleEditExistingCharge = (
+    billId: string,
+    index: number,
+    field: "label" | "amount",
+    value: string,
+  ) => {
+    setEditableCharges((prev) => ({
+      ...prev,
+      [billId]: (prev[billId] || []).map((charge, idx) =>
+        idx === index
+          ? {
+              ...charge,
+              [field]: field === "amount" ? Number(value || 0) : value,
+            }
+          : charge,
+      ),
+    }));
+  };
+  const handleSaveExistingCharges = async (billId: string) => {
+    try {
+      const updatedCharges = editableCharges[billId] || [];
+
+      await axios.delete(`/api/vendor-bills/${billId}/other-charges`, {
+        data: {
+          charges: updatedCharges.map((charge) => ({
+            label: charge.label,
+            amount: Number(charge.amount) || 0,
+          })),
+        },
+      });
+
+      toast.success("Charges updated successfully");
+      await refreshRecords();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to update charges");
+    }
+  };
+  const handleDeleteExistingCharge = async (
+    billId: string,
+    chargeIndex: number,
+  ) => {
+    try {
+      const updatedCharges = (editableCharges[billId] || []).filter(
+        (_, index) => index !== chargeIndex,
+      );
+
+      setEditableCharges((prev) => ({
+        ...prev,
+        [billId]: updatedCharges,
+      }));
+
+      await axios.delete(`/api/vendor-bills/${billId}/other-charges`, {
+        data: {
+          chargeIndex,
+        },
+      });
+      toast.success("Charge deleted successfully");
+      await refreshRecords();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || "Failed to delete charge");
+    }
+  };
+  useEffect(() => {
+    const mapped: Record<
+      string,
+      {
+        label: string;
+        amount: number | string;
+      }[]
+    > = {};
+
+    bills.forEach((bill) => {
+      mapped[bill.id] =
+        bill.dispatchBreakdown?.otherCharges?.map((charge) => ({
+          label: charge.label,
+          amount: charge.amount,
+        })) || [];
+    });
+
+    setEditableCharges(mapped);
+  }, [bills]);
   const handlePrint = (billId: string) => {
     const printContent = document.getElementById(`print-bill-${billId}`);
     if (!printContent) {
@@ -781,28 +1062,43 @@ font-family: 'Cinzel', cursive;
 }
 
 .farmer-row {
-  display: grid;
-    grid-template-columns: 1.2fr 2fr 1.2fr;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  width: 100%;
+  flex-wrap: nowrap;
+}
+
+.farmer-row-left,
+.farmer-row-center,
+.farmer-row-right {
+  min-width: 0;
+  font-size: 13px;
+  line-height: 1.35;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .farmer-row-left {
+  flex: 1.2;
   text-align: left;
 }
 
 .farmer-row-center {
+  flex: 2;
   text-align: left;
-  word-break: break-word;
 }
 
-
-
 .farmer-row-right {
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  flex: 1;
+  text-align: left;
+  white-space: normal;
+}
+
+.farmer-row-right strong {
+  margin-right: 4px;
 }
 
 .vehicle-line {
@@ -863,12 +1159,48 @@ font-family: 'Cinzel', cursive;
   top: 45%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 380px;
+  width: 60%;
   opacity: 0.1;
   z-index: 0;
   pointer-events: none;
 }
+.charges-wrapper {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
 
+.amount-section {
+  width: 360px;
+ 
+  padding-top: 10px;
+}
+
+.amount-row {
+  display: grid;
+  grid-template-columns: 1fr 20px 140px;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+
+.amount-row span:first-child {
+  text-transform: capitalize;
+}
+
+.value {
+  text-align: right;
+  font-weight: 600;
+}
+
+.grand-total {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 2px solid #000;
+  font-size: 18px;
+  font-weight: 700;
+}
 /* Ensure all content stays above */
 .bill-body * {
   z-index: 2;
@@ -924,6 +1256,215 @@ font-family: 'Cinzel', cursive;
     );
   };
 
+  const downloadFarmerLedger = () => {
+    // Get all unique farmers from records
+    const farmerRecords = records.filter((r) => r.source === "farmer");
+    const uniqueFarmers = Array.from(
+      new Set(farmerRecords.map((r) => r.FarmerName)),
+    ).filter(Boolean);
+
+    if (uniqueFarmers.length === 0) {
+      toast.error("No farmer records found");
+      return;
+    }
+
+    type LedgerEntry = {
+      Date: string;
+      "Invoice / Bill": string;
+      "Bill Amount": number;
+      Payment: number;
+      Mode: string;
+      Debit: number;
+      Credit: number;
+      "Closing Balance": number;
+    };
+
+    const allLedgerData: LedgerEntry[] = [];
+
+    uniqueFarmers.forEach((farmerName) => {
+      if (!farmerName) return;
+
+      const farmerBills = farmerRecords.filter(
+        (r) => r.FarmerName === farmerName,
+      );
+
+      type LedgerRow = {
+        id: string;
+        date: string;
+        billNo?: string;
+        invoiceNo?: string;
+        billAmount: number;
+        paymentAmount: number;
+        paymentMode?: string;
+        debit: number;
+        credit: number;
+        balance: number;
+        type: "bill" | "payment";
+      };
+
+      const entries: LedgerRow[] = [];
+
+      // Add bill entries
+      farmerBills.forEach((bill) => {
+        const billAmount = n(bill.grandTotal);
+        if (billAmount > 0) {
+          entries.push({
+            id: bill.id || "",
+            date: bill.date || "",
+            billNo: bill.billNo,
+            invoiceNo: undefined,
+            billAmount,
+            paymentAmount: 0,
+            paymentMode: undefined,
+            debit: billAmount,
+            credit: 0,
+            balance: 0,
+            type: "bill",
+          });
+        }
+      });
+
+      // Add payment entries for this farmer - match by vendor name
+      const farmerPayments = vendorPayments.filter(
+        (payment) =>
+          payment.source === "farmer" &&
+          payment.vendorName &&
+          payment.vendorName.toLowerCase() === farmerName.toLowerCase(),
+      );
+
+      farmerPayments.forEach((payment) => {
+        const amount = n(payment.amount);
+        const invoiceNo =
+          payment.vendorInvoice && payment.vendorInvoice.length > 0
+            ? payment.vendorInvoice[0].invoiceNo
+            : undefined;
+        const mode = payment.paymentMode || "CASH";
+
+        entries.push({
+          id: payment.id || "",
+          date: payment.date || "",
+          billNo: undefined,
+          invoiceNo: invoiceNo,
+          billAmount: 0,
+          paymentAmount: amount,
+          paymentMode: mode,
+          debit: 0,
+          credit: amount,
+          balance: 0,
+          type: "payment",
+        });
+      });
+
+      // Sort entries by date and type
+      entries.sort((a, b) => {
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        if (dateA !== dateB) return dateA - dateB;
+        return a.type === b.type ? 0 : a.type === "bill" ? -1 : 1;
+      });
+
+      // Calculate running balance
+      let runningBalance = 0;
+      const balancedEntries = entries.map((entry) => {
+        runningBalance += entry.debit - entry.credit;
+        return {
+          ...entry,
+          balance: runningBalance,
+        };
+      });
+
+      // Convert to ledger format
+      const formatDate = (dateString: string) => {
+        if (!dateString) return "-";
+        return new Date(dateString).toLocaleDateString("en-IN", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        });
+      };
+
+      const ledgerEntries = balancedEntries.map((row) => ({
+        Date: formatDate(row.date),
+        "Invoice / Bill": row.billNo ?? row.invoiceNo ?? "-",
+        "Bill Amount": row.billAmount,
+        Payment: row.paymentAmount,
+        Mode: row.paymentMode ?? "-",
+        Debit: row.debit,
+        Credit: row.credit,
+        "Closing Balance": row.balance,
+      }));
+
+      // Add ledger entries for this farmer
+      if (ledgerEntries.length > 0) {
+        allLedgerData.push(
+          {
+            Date: farmerName,
+            "Invoice / Bill": "",
+            "Bill Amount": 0,
+            Payment: 0,
+            Mode: "",
+            Debit: 0,
+            Credit: 0,
+            "Closing Balance": 0,
+          },
+          ...ledgerEntries,
+        );
+
+        // Add total row for this farmer
+        const totalDebit = ledgerEntries.reduce(
+          (sum, entry) => sum + entry.Debit,
+          0,
+        );
+        const totalCredit = ledgerEntries.reduce(
+          (sum, entry) => sum + entry.Credit,
+          0,
+        );
+        const balance =
+          ledgerEntries.length > 0
+            ? ledgerEntries[ledgerEntries.length - 1]["Closing Balance"]
+            : 0;
+
+        allLedgerData.push({
+          Date: "TOTAL",
+          "Invoice / Bill": "",
+          "Bill Amount": totalDebit,
+          Payment: totalCredit,
+          Mode: "",
+          Debit: totalDebit,
+          Credit: totalCredit,
+          "Closing Balance": balance,
+        });
+
+        allLedgerData.push({
+          Date: "",
+          "Invoice / Bill": "",
+          "Bill Amount": 0,
+          Payment: 0,
+          Mode: "",
+          Debit: 0,
+          Credit: 0,
+          "Closing Balance": 0,
+        });
+      }
+    });
+
+    if (allLedgerData.length === 0) {
+      toast.error("No ledger data to export");
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(allLedgerData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Farmer Ledger");
+
+    XLSX.writeFile(
+      wb,
+      `farmer_ledger_${new Date().toISOString().slice(0, 10)}.xlsx`,
+    );
+
+    toast.success("Farmer ledger downloaded successfully");
+  };
+
   return (
     <div className="p-3 sm:p-4 md:p-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
@@ -969,7 +1510,7 @@ font-family: 'Cinzel', cursive;
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full sm:w-auto">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 w-full sm:w-auto">
                   <Button
                     onClick={openAddVarietyModal}
                     className="w-full bg-[#139BC3] hover:bg-[#139BC3]/80 text-white"
@@ -986,6 +1527,17 @@ font-family: 'Cinzel', cursive;
                     <Download className="w-4 h-4 mr-2" />
                     Export Farmers
                   </Button>
+
+                  {activeTab === "farmer" && (
+                    <Button
+                      variant="outline"
+                      onClick={downloadFarmerLedger}
+                      className="w-full border-blue-600 text-blue-700 hover:bg-blue-50"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Farmer Ledger
+                    </Button>
+                  )}
 
                   <Button
                     variant="outline"
@@ -1138,7 +1690,7 @@ font-family: 'Cinzel', cursive;
                             </td>
 
                             <td className="p-4 text-right font-semibold text-green-600">
-                              {n(bill.totalPrice).toLocaleString("en-IN", {
+                              {n(bill.grandTotal).toLocaleString("en-IN", {
                                 minimumFractionDigits: 2,
                                 maximumFractionDigits: 2,
                               })}
@@ -1195,6 +1747,15 @@ font-family: 'Cinzel', cursive;
                                           Vehicle: {bill.vehicleNo}
                                         </>
                                       ) : null}
+                                      {bill.localVehicle ? (
+                                        <>
+                                          {" "}
+                                          <span className="text-gray-400">
+                                            •
+                                          </span>{" "}
+                                          Local Vehicle: {bill.localVehicle}
+                                        </>
+                                      ) : null}
                                       {bill.village ? (
                                         <>
                                           {" "}
@@ -1207,10 +1768,14 @@ font-family: 'Cinzel', cursive;
                                     </div>
 
                                     <div className="text-sm font-semibold text-green-700">
-                                      Total: {n(bill.totalPrice).toLocaleString("en-IN", {
-                                        minimumFractionDigits: 2,
-                                        maximumFractionDigits: 2,
-                                      })}
+                                      Total:{" "}
+                                      {n(bill.grandTotal).toLocaleString(
+                                        "en-IN",
+                                        {
+                                          minimumFractionDigits: 2,
+                                          maximumFractionDigits: 2,
+                                        },
+                                      )}
                                     </div>
                                   </div>
 
@@ -1331,7 +1896,9 @@ font-family: 'Cinzel', cursive;
                                                     className="w-40 text-right bg-green-50"
                                                   />
                                                 ) : (
-                                                  n(it.totalPrice).toLocaleString("en-IN", {
+                                                  n(
+                                                    it.totalPrice,
+                                                  ).toLocaleString("en-IN", {
                                                     minimumFractionDigits: 2,
                                                     maximumFractionDigits: 2,
                                                   })
@@ -1396,6 +1963,207 @@ font-family: 'Cinzel', cursive;
                                       </tbody>
                                     </table>
                                   </div>
+
+                                  {/* Other Charges Management (Agent Only) */}
+                                  {activeTab === "agent" && (
+                                    <div className="border-t border-gray-200 bg-gray-50 p-4">
+                                      <div className="space-y-4">
+                                        <div className="flex items-center justify-between">
+                                          <h4 className="text-sm font-semibold text-gray-900">
+                                            Other Charges
+                                          </h4>
+
+                                          <div className="flex items-center gap-2">
+                                            <Button
+                                              type="button"
+                                              size="icon"
+                                              variant="outline"
+                                              onClick={() =>
+                                                addChargeField(bill.id)
+                                              }
+                                              className="h-9 w-9 border-[#139BC3] text-[#139BC3] hover:bg-blue-50"
+                                            >
+                                              <Plus className="h-4 w-4" />
+                                            </Button>
+
+                                            {(otherChargesInput[bill.id] || [])
+                                              .length > 0 && (
+                                              <Button
+                                                type="button"
+                                                size="icon"
+                                                variant="outline"
+                                                onClick={() => {
+                                                  const current =
+                                                    otherChargesInput[
+                                                      bill.id
+                                                    ] || [];
+                                                  if (current.length === 0)
+                                                    return;
+
+                                                  removeChargeField(
+                                                    bill.id,
+                                                    current[current.length - 1]
+                                                      .id,
+                                                  );
+                                                }}
+                                                className="h-9 w-9 border-red-300 text-red-500 hover:bg-red-50"
+                                              >
+                                                <Minus className="h-4 w-4" />
+                                              </Button>
+                                            )}
+                                          </div>
+                                        </div>
+
+                                        {(editableCharges[bill.id] || [])
+                                          .length > 0 ? (
+                                          <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                                            <table className="w-full min-w-[700px]">
+                                              <thead className="bg-gray-100">
+                                                <tr>
+                                                  <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">
+                                                    Charge Name
+                                                  </th>
+                                                  <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-600 w-[220px]">
+                                                    Amount
+                                                  </th>
+                                                  <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-600 w-[140px]">
+                                                    Actions
+                                                  </th>
+                                                </tr>
+                                              </thead>
+
+                                              <tbody>
+                                                {(
+                                                  editableCharges[bill.id] || []
+                                                ).map((oc, i) => (
+                                                  <tr
+                                                    key={i}
+                                                    className="border-t border-gray-200 hover:bg-gray-50"
+                                                  >
+                                                    <td className="px-4 py-4">
+                                                      <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-medium text-gray-900">
+                                                        {oc.label}
+                                                      </div>
+                                                    </td>
+
+                                                    <td className="px-4 py-4">
+                                                      <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-right text-sm font-semibold text-gray-900">
+                                                        ₹
+                                                        {Number(
+                                                          oc.amount || 0,
+                                                        ).toLocaleString(
+                                                          "en-IN",
+                                                        )}
+                                                      </div>
+                                                    </td>
+
+                                                    <td className="px-4 py-4">
+                                                      <div className="flex items-center justify-center">
+                                                        <Button
+                                                          size="sm"
+                                                          variant="outline"
+                                                          onClick={() =>
+                                                            handleDeleteExistingCharge(
+                                                              bill.id,
+                                                              i,
+                                                            )
+                                                          }
+                                                          className="h-10 border-red-300 text-red-500 hover:bg-red-50"
+                                                        >
+                                                          <Trash2 className="h-4 w-4" />
+                                                        </Button>
+                                                      </div>
+                                                    </td>
+                                                  </tr>
+                                                ))}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        ) : (
+                                          <div className="rounded-xl border border-dashed border-gray-300 bg-white px-4 py-8 text-center text-sm text-gray-500">
+                                            No charges added yet
+                                          </div>
+                                        )}
+
+                                        {(otherChargesInput[bill.id] || [])
+                                          .length > 0 && (
+                                          <div className="space-y-3 rounded-2xl border border-dashed border-blue-200 bg-white p-4">
+                                            <h5 className="text-sm font-medium text-gray-700">
+                                              Add New Charges
+                                            </h5>
+
+                                            {(
+                                              otherChargesInput[bill.id] || []
+                                            ).map((charge) => (
+                                              <div
+                                                key={charge.id}
+                                                className="grid grid-cols-[1fr_220px_60px] gap-3"
+                                              >
+                                                <Input
+                                                  placeholder="Label (e.g. Toll, Driver Bata)"
+                                                  value={charge.label}
+                                                  onChange={(e) =>
+                                                    updateChargeField(
+                                                      bill.id,
+                                                      charge.id,
+                                                      "label",
+                                                      e.target.value,
+                                                    )
+                                                  }
+                                                  className="h-10"
+                                                />
+
+                                                <Input
+                                                  placeholder="Amount"
+                                                  type="number"
+                                                  value={charge.amount}
+                                                  onChange={(e) =>
+                                                    updateChargeField(
+                                                      bill.id,
+                                                      charge.id,
+                                                      "amount",
+                                                      e.target.value,
+                                                    )
+                                                  }
+                                                  className="h-10"
+                                                />
+
+                                                <Button
+                                                  size="icon"
+                                                  type="button"
+                                                  variant="ghost"
+                                                  onClick={() =>
+                                                    removeChargeField(
+                                                      bill.id,
+                                                      charge.id,
+                                                    )
+                                                  }
+                                                  className="h-10 w-10 text-red-500 hover:bg-red-50"
+                                                >
+                                                  <Trash2 className="h-4 w-4" />
+                                                </Button>
+                                              </div>
+                                            ))}
+
+                                            <div className="flex justify-end">
+                                              <Button
+                                                size="sm"
+                                                onClick={() =>
+                                                  handleAddOtherCharge(bill.id)
+                                                }
+                                                disabled={addingCharge[bill.id]}
+                                                className="bg-blue-600 text-white hover:bg-blue-700"
+                                              >
+                                                {addingCharge[bill.id]
+                                                  ? "Saving..."
+                                                  : "Save All Charges"}
+                                              </Button>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -1489,6 +2257,9 @@ font-family: 'Cinzel', cursive;
                             {bill.vehicleNo && (
                               <>Vehicle: {bill.vehicleNo} • </>
                             )}
+                            {bill.localVehicle && (
+                              <>Local Vehicle: {bill.localVehicle} • </>
+                            )}
                             {bill.village && <>Village: {bill.village}</>}
                           </div>
 
@@ -1513,14 +2284,20 @@ font-family: 'Cinzel', cursive;
                                         Total:{" "}
                                         <span className="font-semibold text-green-700">
                                           {isEditing
-                                            ? n(edit.totalPrice).toLocaleString("en-IN", {
-                                                minimumFractionDigits: 2,
-                                                maximumFractionDigits: 2,
-                                              })
-                                            : n(it.totalPrice).toLocaleString("en-IN", {
-                                                minimumFractionDigits: 2,
-                                                maximumFractionDigits: 2,
-                                              })}
+                                            ? n(edit.totalPrice).toLocaleString(
+                                                "en-IN",
+                                                {
+                                                  minimumFractionDigits: 2,
+                                                  maximumFractionDigits: 2,
+                                                },
+                                              )
+                                            : n(it.totalPrice).toLocaleString(
+                                                "en-IN",
+                                                {
+                                                  minimumFractionDigits: 2,
+                                                  maximumFractionDigits: 2,
+                                                },
+                                              )}
                                         </span>
                                       </div>
                                     </div>
@@ -1655,6 +2432,205 @@ font-family: 'Cinzel', cursive;
                               );
                             })}
                           </div>
+
+                          {/* Other Charges (Mobile) */}
+                          {activeTab === "agent" && (
+                            <div className="pt-4 border-t space-y-4">
+                              <div className="flex items-center justify-between px-1">
+                                <h4 className="text-sm font-semibold text-gray-900">
+                                  Other Charges
+                                </h4>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => addChargeField(bill.id)}
+                                  className="h-8 gap-1 text-[#139BC3] border-[#139BC3]"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                  Add
+                                </Button>
+                              </div>
+                              {(editableCharges[bill.id] || []).length > 0 ? (
+                                <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
+                                  <table className="w-full">
+                                    <thead className="bg-gray-100">
+                                      <tr>
+                                        <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">
+                                          Charge Name
+                                        </th>
+                                        <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-600 w-[180px]">
+                                          Amount
+                                        </th>
+                                        <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-600 w-[140px]">
+                                          Actions
+                                        </th>
+                                      </tr>
+                                    </thead>
+
+                                    <tbody>
+                                      {(editableCharges[bill.id] || []).map(
+                                        (oc, i) => (
+                                          <tr
+                                            key={i}
+                                            className="border-t border-gray-200"
+                                          >
+                                            <td className="px-4 py-3">
+                                              <Input
+                                                value={
+                                                  editableCharges[bill.id]?.[i]
+                                                    ?.label || ""
+                                                }
+                                                onChange={(e) =>
+                                                  handleEditExistingCharge(
+                                                    bill.id,
+                                                    i,
+                                                    "label",
+                                                    e.target.value,
+                                                  )
+                                                }
+                                                className="h-9 border-gray-300"
+                                              />
+                                            </td>
+
+                                            <td className="px-4 py-3">
+                                              <Input
+                                                type="number"
+                                                value={
+                                                  editableCharges[bill.id]?.[i]
+                                                    ?.amount || ""
+                                                }
+                                                onChange={(e) =>
+                                                  handleEditExistingCharge(
+                                                    bill.id,
+                                                    i,
+                                                    "amount",
+                                                    e.target.value,
+                                                  )
+                                                }
+                                                className="h-9 text-right border-gray-300"
+                                              />
+                                            </td>
+
+                                            <td className="px-4 py-3">
+                                              <div className="flex items-center justify-center gap-2">
+                                                <Button
+                                                  size="sm"
+                                                  className="h-8 bg-green-600 hover:bg-green-700 text-white"
+                                                  onClick={() =>
+                                                    handleSaveExistingCharges(
+                                                      bill.id,
+                                                    )
+                                                  }
+                                                >
+                                                  <Check className="w-4 h-4" />
+                                                </Button>
+
+                                                <Button
+                                                  size="sm"
+                                                  variant="outline"
+                                                  className="h-8 border-red-300 text-red-500 hover:bg-red-50"
+                                                  onClick={() =>
+                                                    handleDeleteExistingCharge(
+                                                      bill.id,
+                                                      i,
+                                                    )
+                                                  }
+                                                >
+                                                  <Trash2 className="w-4 h-4" />
+                                                </Button>
+                                              </div>
+                                            </td>
+                                          </tr>
+                                        ),
+                                      )}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ) : (
+                                <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
+                                  No charges added yet
+                                </div>
+                              )}
+
+                              {/* Dynamic rows for new charges (Mobile) */}
+                              {(otherChargesInput[bill.id] || []).length >
+                                0 && (
+                                <div className="space-y-3 pt-1">
+                                  {(otherChargesInput[bill.id] || []).map(
+                                    (charge) => (
+                                      <div
+                                        key={charge.id}
+                                        className="bg-gray-50 p-3 rounded-xl border border-gray-200 space-y-3"
+                                      >
+                                        <div className="flex items-center justify-between">
+                                          <span className="text-xs font-medium text-gray-500">
+                                            New Charge
+                                          </span>
+                                          <Button
+                                            size="icon"
+                                            type="button"
+                                            variant="ghost"
+                                            onClick={() =>
+                                              removeChargeField(
+                                                bill.id,
+                                                charge.id,
+                                              )
+                                            }
+                                            className="h-7 w-7 text-red-500"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </Button>
+                                        </div>
+                                        <div className="grid grid-cols-1 gap-2">
+                                          <Input
+                                            placeholder="Label (e.g. Toll)"
+                                            value={charge.label}
+                                            onChange={(e) =>
+                                              updateChargeField(
+                                                bill.id,
+                                                charge.id,
+                                                "label",
+                                                e.target.value,
+                                              )
+                                            }
+                                            className="h-9 text-sm"
+                                          />
+                                          <Input
+                                            placeholder="Amount"
+                                            type="number"
+                                            value={charge.amount}
+                                            onChange={(e) =>
+                                              updateChargeField(
+                                                bill.id,
+                                                charge.id,
+                                                "amount",
+                                                e.target.value,
+                                              )
+                                            }
+                                            className="h-9 text-sm"
+                                          />
+                                        </div>
+                                      </div>
+                                    ),
+                                  )}
+
+                                  <Button
+                                    size="sm"
+                                    onClick={() =>
+                                      handleAddOtherCharge(bill.id)
+                                    }
+                                    disabled={addingCharge[bill.id]}
+                                    className="w-full bg-blue-600 hover:bg-blue-700 text-white h-10 shadow-sm"
+                                  >
+                                    {addingCharge[bill.id]
+                                      ? "Saving..."
+                                      : "Save All Charges"}
+                                  </Button>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1962,10 +2938,9 @@ font-family: 'Cinzel', cursive;
                 <div className="farmer-row-center">
                   <strong>Address:</strong> {bill.village || "—"}
                 </div>
-
                 <div className="farmer-row-right">
-                  <strong>Vehicle No:</strong>
-                  {/* <span className="vehicle-line"></span> */}
+                  <strong>Vehicle No:</strong>{" "}
+                  <span>{bill.localVehicle || " "}</span>
                 </div>
               </div>
               <img src="/assets/bg-fish.png" className="watermark" />
@@ -2000,23 +2975,21 @@ font-family: 'Cinzel', cursive;
                 </tbody>
                 <tfoot>
                   <tr>
-                    {/* Total trays label */}
-                    <td></td>
-                    <td className="text-right font-semibold">Total Trays :</td>
-
-                    <td className="text-center font-semibold">
-                      {bill.items.reduce(
-                        (sum, it) => sum + (it.noTrays || 0),
-                        0,
-                      )}
+                    <td />
+                    <td
+                      colSpan={2}
+                      style={{ textAlign: "right", fontWeight: 700 }}
+                    >
+                      Total Trays :
                     </td>
-                    <td></td>
-
-                    {/* bill label */}
-                    <td className="text-right font-semibold">Bill Amount :</td>
-
-                    {/* bill value */}
-                    <td className="text-right font-semibold">
+                    <td style={{ textAlign: "center", fontWeight: 700 }}>
+                      {bill.totalTrays}
+                    </td>
+                    <td style={{ textAlign: "right", fontWeight: 700 }}>
+                      Bill Amount :
+                    </td>
+                    <td style={{ textAlign: "right", fontWeight: 700 }}>
+                      ₹
                       {n(bill.totalPrice).toLocaleString("en-IN", {
                         minimumFractionDigits: 2,
                         maximumFractionDigits: 2,
@@ -2025,12 +2998,79 @@ font-family: 'Cinzel', cursive;
                   </tr>
                 </tfoot>
               </table>
-              <div className="net-amount-row">
-                <strong>Net Amount :</strong>{" "}
-                {bill?.totalPrice.toLocaleString("en-IN", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}
+              {/* Charges Summary */}
+              <div className="charges-wrapper">
+                <div className="amount-section">
+                  <div className="amount-row">
+                    <span>Bill Amount :</span>
+                    <span>:</span>
+                    <span className="value">
+                      {n(bill.totalPrice).toLocaleString("en-IN", {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2,
+                      })}
+                    </span>
+                  </div>
+                  {bill.dispatchBreakdown?.otherCharges?.map(
+                    (charge, index) => (
+                      <div key={index} className="amount-row">
+                        <span>{charge.label}</span>
+                        <span>:</span>
+                        <span className="value">
+                          ₹
+                          {n(charge.amount).toLocaleString("en-IN", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+                    ),
+                  )}
+
+                  {(() => {
+                    const previousPending = calculatePreviousPending(bill);
+                    return previousPending > 0 ? (
+                      <>
+                        <div className="amount-row">
+                          <span>Old Balance</span>
+                          <span>:</span>
+                          <span className="value">
+                            ₹
+                            {n(previousPending).toLocaleString("en-IN", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </span>
+                        </div>
+                        <div className="amount-row grand-total">
+                          <span>Grand Total</span>
+                          <span>:</span>
+                          <span className="value">
+                            ₹
+                            {n(
+                              bill.grandTotal + previousPending,
+                            ).toLocaleString("en-IN", {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="amount-row grand-total">
+                        <span>Grand Total</span>
+                        <span>:</span>
+                        <span className="value">
+                          ₹
+                          {n(bill.grandTotal).toLocaleString("en-IN", {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
             </div>
           </div>
