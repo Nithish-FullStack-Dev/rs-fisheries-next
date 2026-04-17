@@ -1243,6 +1243,213 @@ font-family: 'Cinzel', cursive;
     );
   };
 
+  const downloadFarmerLedger = () => {
+    // Get all unique farmers from records
+    const farmerRecords = records.filter((r) => r.source === "farmer");
+    const uniqueFarmers = Array.from(
+      new Set(farmerRecords.map((r) => r.FarmerName)),
+    ).filter(Boolean);
+
+    if (uniqueFarmers.length === 0) {
+      toast.error("No farmer records found");
+      return;
+    }
+
+    type LedgerEntry = {
+      Date: string;
+      "Invoice / Bill": string;
+      "Bill Amount": number;
+      Payment: number;
+      Mode: string;
+      Debit: number;
+      Credit: number;
+      "Closing Balance": number;
+    };
+
+    const allLedgerData: LedgerEntry[] = [];
+
+    uniqueFarmers.forEach((farmerName) => {
+      const farmerBills = farmerRecords.filter(
+        (r) => r.FarmerName === farmerName,
+      );
+
+      type LedgerRow = {
+        id: string;
+        date: string;
+        billNo?: string;
+        invoiceNo?: string;
+        billAmount: number;
+        paymentAmount: number;
+        paymentMode?: string;
+        debit: number;
+        credit: number;
+        balance: number;
+        type: "bill" | "payment";
+      };
+
+      const entries: LedgerRow[] = [];
+
+      // Add bill entries
+      farmerBills.forEach((bill) => {
+        const billAmount = n(bill.grandTotal);
+        if (billAmount > 0) {
+          entries.push({
+            id: bill.id || "",
+            date: bill.date || "",
+            billNo: bill.billNo,
+            invoiceNo: undefined,
+            billAmount,
+            paymentAmount: 0,
+            paymentMode: undefined,
+            debit: billAmount,
+            credit: 0,
+            balance: 0,
+            type: "bill",
+          });
+        }
+      });
+
+      // Add payment entries for this farmer - match by vendor name
+      const farmerPayments = vendorPayments.filter(
+        (payment) =>
+          payment.source === "farmer" &&
+          payment.vendorName &&
+          payment.vendorName.toLowerCase() === farmerName.toLowerCase(),
+      );
+
+      farmerPayments.forEach((payment) => {
+        const amount = n(payment.amount);
+        const invoiceNo =
+          payment.vendorInvoice && payment.vendorInvoice.length > 0
+            ? payment.vendorInvoice[0].invoiceNo
+            : undefined;
+        const mode = payment.paymentMode || "CASH";
+
+        entries.push({
+          id: payment.id || "",
+          date: payment.date || "",
+          billNo: undefined,
+          invoiceNo: invoiceNo,
+          billAmount: 0,
+          paymentAmount: amount,
+          paymentMode: mode,
+          debit: 0,
+          credit: amount,
+          balance: 0,
+          type: "payment",
+        });
+      });
+
+      // Sort entries by date and type
+      entries.sort((a, b) => {
+        const dateA = new Date(a.date).getTime();
+        const dateB = new Date(b.date).getTime();
+        if (dateA !== dateB) return dateA - dateB;
+        return a.type === b.type ? 0 : a.type === "bill" ? -1 : 1;
+      });
+
+      // Calculate running balance
+      let runningBalance = 0;
+      const balancedEntries = entries.map((entry) => {
+        runningBalance += entry.debit - entry.credit;
+        return {
+          ...entry,
+          balance: runningBalance,
+        };
+      });
+
+      // Convert to ledger format
+      const formatDate = (dateString: string) => {
+        if (!dateString) return "-";
+        return new Date(dateString).toLocaleDateString("en-IN", {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        });
+      };
+
+      const ledgerEntries = balancedEntries.map((row) => ({
+        Date: formatDate(row.date),
+        "Invoice / Bill": row.billNo ?? row.invoiceNo ?? "-",
+        "Bill Amount": row.billAmount,
+        Payment: row.paymentAmount,
+        Mode: row.paymentMode ?? "-",
+        Debit: row.debit,
+        Credit: row.credit,
+        "Closing Balance": row.balance,
+      }));
+
+      // Add ledger entries for this farmer
+      if (ledgerEntries.length > 0) {
+        allLedgerData.push(
+          {
+            Date: farmerName,
+            "Invoice / Bill": "",
+            "Bill Amount": 0,
+            Payment: 0,
+            Mode: "",
+            Debit: 0,
+            Credit: 0,
+            "Closing Balance": 0,
+          },
+          ...ledgerEntries,
+        );
+
+        // Add total row for this farmer
+        const totalDebit = ledgerEntries.reduce(
+          (sum, entry) => sum + entry.Debit,
+          0,
+        );
+        const totalCredit = ledgerEntries.reduce(
+          (sum, entry) => sum + entry.Credit,
+          0,
+        );
+        const balance =
+          ledgerEntries.length > 0
+            ? ledgerEntries[ledgerEntries.length - 1]["Closing Balance"]
+            : 0;
+
+        allLedgerData.push({
+          Date: "TOTAL",
+          "Invoice / Bill": "",
+          "Bill Amount": totalDebit,
+          Payment: totalCredit,
+          Mode: "",
+          Debit: totalDebit,
+          Credit: totalCredit,
+          "Closing Balance": balance,
+        });
+
+        allLedgerData.push({
+          Date: "",
+          "Invoice / Bill": "",
+          "Bill Amount": 0,
+          Payment: 0,
+          Mode: "",
+          Debit: 0,
+          Credit: 0,
+          "Closing Balance": 0,
+        });
+      }
+    });
+
+    if (allLedgerData.length === 0) {
+      toast.error("No ledger data to export");
+      return;
+    }
+
+    const ws = XLSX.utils.json_to_sheet(allLedgerData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Farmer Ledger");
+
+    XLSX.writeFile(
+      wb,
+      `farmer_ledger_${new Date().toISOString().slice(0, 10)}.xlsx`,
+    );
+
+    toast.success("Farmer ledger downloaded successfully");
+  };
+
   return (
     <div className="p-3 sm:p-4 md:p-6 bg-gray-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
@@ -1288,7 +1495,7 @@ font-family: 'Cinzel', cursive;
                   </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full sm:w-auto">
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 w-full sm:w-auto">
                   <Button
                     onClick={openAddVarietyModal}
                     className="w-full bg-[#139BC3] hover:bg-[#139BC3]/80 text-white"
@@ -1305,6 +1512,17 @@ font-family: 'Cinzel', cursive;
                     <Download className="w-4 h-4 mr-2" />
                     Export Farmers
                   </Button>
+
+                  {activeTab === "farmer" && (
+                    <Button
+                      variant="outline"
+                      onClick={downloadFarmerLedger}
+                      className="w-full border-blue-600 text-blue-700 hover:bg-blue-50"
+                    >
+                      <Download className="w-4 h-4 mr-2" />
+                      Farmer Ledger
+                    </Button>
+                  )}
 
                   <Button
                     variant="outline"
