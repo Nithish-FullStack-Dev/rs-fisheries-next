@@ -107,11 +107,18 @@ const fetchAgentLoadings = async (): Promise<LoadingRecord[]> => {
 
 const fetchVendorPayments = async () => {
   const res = await axios.get("/api/payments/vendor");
+
   return (res.data?.data ?? []) as Array<{
     id: string;
     sourceRecordId?: string;
     amount?: number;
     source?: string;
+    vendorName?: string;
+    vendorInvoice?: {
+      invoiceNo?: string;
+    }[];
+    paymentMode?: string;
+    date?: string;
   }>;
 };
 
@@ -173,6 +180,12 @@ export default function VendorBillsPage() {
       sourceRecordId?: string;
       amount?: number;
       source?: string;
+      vendorName?: string;
+      vendorInvoice?: {
+        invoiceNo?: string;
+      }[];
+      paymentMode?: string;
+      date?: string;
     }>
   >([]);
   const [editing, setEditing] = useState<Record<string, EditingRow>>({});
@@ -1269,6 +1282,8 @@ font-family: 'Cinzel', cursive;
     const allLedgerData: LedgerEntry[] = [];
 
     uniqueFarmers.forEach((farmerName) => {
+      if (!farmerName) return;
+
       const farmerBills = farmerRecords.filter(
         (r) => r.FarmerName === farmerName,
       );
