@@ -79,23 +79,52 @@ export const GET = withAuth(
 
     const agent = await prisma.agent.findUnique({
       where: { id },
-      include: {
-        agentLoadings: {
-          include: {
-            items: true,
-            vehicle: true,
-          },
-          orderBy: {
-            date: "desc",
-          },
-        },
-      },
     });
 
     if (!agent) throw new ApiError(404, "Agent not found");
 
+    const agentLoadings = await prisma.agentLoading.findMany({
+      where: {
+        OR: [
+          { agentId: id },
+          { agentId: null, agentName: agent.name },
+        ],
+      },
+      include: {
+        items: true,
+        vehicle: true,
+      },
+      orderBy: {
+        date: "desc",
+      },
+    });
+
+    const agentLoadingIds = agentLoadings.map((loading) => loading.id);
+    const payments = await prisma.vendorPayment.findMany({
+      where: {
+        source: "agent",
+        sourceRecordId: {
+          in: agentLoadingIds,
+        },
+      },
+      include: {
+        vendorInvoice: true,
+      },
+      orderBy: {
+        date: "desc",
+      },
+    });
+
     return NextResponse.json(
-      new ApiResponse(200, agent, "Agent fetched successfully"),
+      new ApiResponse(
+        200,
+        {
+          ...agent,
+          agentLoadings,
+          payments,
+        },
+        "Agent fetched successfully"
+      ),
       { status: 200 }
     );
   })

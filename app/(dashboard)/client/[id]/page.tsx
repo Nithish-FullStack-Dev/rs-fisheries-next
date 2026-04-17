@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import axios, { AxiosError } from "axios";
@@ -43,6 +43,8 @@ import { Client, ClientPayment } from "../types/type";
 const ClientViewPage = () => {
   const { id } = useParams();
   const router = useRouter();
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
 
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ["client", id],
@@ -62,65 +64,117 @@ const ClientViewPage = () => {
     )[0];
   }, [loadings]);
 
-  const ledgerRows = useMemo(() => {
-    const rows = new Map<
-      string,
-      {
-        date: string;
-        billAmount: number;
-        paymentAmount: number;
-        loadingCount: number;
-        paymentCount: number;
-      }
-    >();
+  const getLoadingBillAmount = (loading: any) => {
+    const grandTotal = Number(loading.grandTotal || 0);
+    if (grandTotal > 0) return grandTotal;
 
-    const normalizeDate = (value: string) =>
-      new Date(value).toISOString().slice(0, 10);
+    const itemTotal = (loading.items || []).reduce(
+      (sum: number, item: any) => sum + Number(item.totalPrice || 0),
+      0,
+    );
+    const dispatchCharges = Number(loading.dispatchChargesTotal || 0);
+    const packingCharges = Number(loading.packingAmountTotal || 0);
+
+    return itemTotal + dispatchCharges + packingCharges;
+  };
+
+  type ClientLedgerEntry = {
+    id: string;
+    date: string;
+    billNo?: string;
+    invoiceNo?: string;
+    billAmount: number;
+    paymentAmount: number;
+    paymentMode?: string;
+    debit: number;
+    credit: number;
+    balance: number;
+    type: "bill" | "payment";
+  };
+
+  const ledgerRows = useMemo<ClientLedgerEntry[]>(() => {
+    const entries: ClientLedgerEntry[] = [];
 
     loadings.forEach((loading) => {
-      const dateKey = normalizeDate(loading.date);
-      const existing = rows.get(dateKey) ?? {
-        date: dateKey,
-        billAmount: 0,
+      const amount = getLoadingBillAmount(loading);
+      entries.push({
+        id: loading.billNo,
+        date: loading.date,
+        billNo: loading.billNo,
+        invoiceNo: undefined,
+        billAmount: amount,
         paymentAmount: 0,
-        loadingCount: 0,
-        paymentCount: 0,
-      };
-      existing.billAmount += Number(loading.grandTotal || 0);
-      existing.loadingCount += 1;
-      rows.set(dateKey, existing);
+        paymentMode: undefined,
+        debit: amount,
+        credit: 0,
+        balance: 0,
+        type: "bill",
+      });
     });
 
     payments.forEach((payment) => {
-      const dateKey = normalizeDate(payment.date);
-      const existing = rows.get(dateKey) ?? {
-        date: dateKey,
+      const amount = Number(payment.amount || 0);
+      entries.push({
+        id: payment.id,
+        date: payment.date,
+        billNo: undefined,
+        invoiceNo: payment.clientInvoice?.invoiceNo ?? payment.client?.billNo,
         billAmount: 0,
-        paymentAmount: 0,
-        loadingCount: 0,
-        paymentCount: 0,
-      };
-      existing.paymentAmount += Number(payment.amount || 0);
-      existing.paymentCount += 1;
-      rows.set(dateKey, existing);
+        paymentAmount: amount,
+        paymentMode: payment.paymentMode,
+        debit: 0,
+        credit: amount,
+        balance: 0,
+        type: "payment",
+      });
     });
 
-    return Array.from(rows.values()).sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
-    );
+    entries.sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      if (dateA !== dateB) return dateA - dateB;
+      if (a.type === b.type) return 0;
+      return a.type === "bill" ? -1 : 1;
+    });
+
+    let runningBalance = 0;
+    return entries.map((entry) => {
+      runningBalance += entry.debit - entry.credit;
+      return {
+        ...entry,
+        balance: runningBalance,
+      };
+    });
   }, [loadings, payments]);
+
+  // Filter ledger rows by date range
+  const filteredLedgerRows = useMemo<ClientLedgerEntry[]>(() => {
+    return ledgerRows.filter((row) => {
+      const rowDate = new Date(row.date);
+      if (fromDate) {
+        const from = new Date(fromDate);
+        if (rowDate < from) return false;
+      }
+      if (toDate) {
+        const to = new Date(toDate);
+        to.setHours(23, 59, 59, 999);
+        if (rowDate > to) return false;
+      }
+      return true;
+    });
+  }, [ledgerRows, fromDate, toDate]);
 
   if (isLoading) return <LoadingSkeleton />;
   if (isError) return <ErrorState error={error} />;
 
   const client = data!;
 
-  const totalLedgerBillAmount = ledgerRows.reduce(
-    (sum, row) => sum + row.billAmount,
+  const totalLedgerBillAmount = loadings.reduce(
+    (sum, loading) => sum + getLoadingBillAmount(loading),
     0,
   );
-  const totalLedgerPaymentAmount = ledgerRows.reduce(
-    (sum, row) => sum + row.paymentAmount,
+  const totalLedgerPaymentAmount = payments.reduce(
+    (sum, payment) => sum + Number(payment.amount || 0),
     0,
   );
   const totalLedgerPending = Math.max(
@@ -145,22 +199,37 @@ const ClientViewPage = () => {
   };
 
   const handleDownloadLedger = () => {
-    const sheetData = ledgerRows.map((row) => ({
+    // Calculate totals for filtered data
+    const filteredBillAmount = filteredLedgerRows.reduce(
+      (sum, row) => sum + row.debit,
+      0,
+    );
+    const filteredPaymentAmount = filteredLedgerRows.reduce(
+      (sum, row) => sum + row.credit,
+      0,
+    );
+    const filteredPending = filteredBillAmount - filteredPaymentAmount;
+
+    const sheetData = filteredLedgerRows.map((row) => ({
       Date: formatDate(row.date),
+      "Invoice / Bill": row.billNo ?? row.invoiceNo ?? "-",
       "Bill Amount": row.billAmount,
-      "Payment Amount": row.paymentAmount,
-      Balance: Math.max(0, row.billAmount - row.paymentAmount),
-      "Loading Count": row.loadingCount,
-      "Payment Count": row.paymentCount,
+      Payment: row.paymentAmount,
+      "Payment Mode": row.paymentMode ?? "-",
+      Debit: row.debit,
+      Credit: row.credit,
+      "Closing Balance": row.balance,
     }));
 
     sheetData.push({
       Date: "TOTAL",
-      "Bill Amount": totalLedgerBillAmount,
-      "Payment Amount": totalLedgerPaymentAmount,
-      Balance: totalLedgerPending,
-      "Loading Count": client.loadings?.length ?? 0,
-      "Payment Count": client.payments?.length ?? 0,
+      "Invoice / Bill": "",
+      "Bill Amount": filteredBillAmount,
+      Payment: filteredPaymentAmount,
+      "Payment Mode": "",
+      Debit: filteredBillAmount,
+      Credit: filteredPaymentAmount,
+      "Closing Balance": filteredPending,
     });
 
     const ws = XLSX.utils.json_to_sheet(sheetData);
@@ -251,7 +320,7 @@ const ClientViewPage = () => {
         <TabsList className="grid w-full md:w-[400px] grid-cols-4">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="banking">Banking</TabsTrigger>
-          {/* <TabsTrigger value="ledger">Ledger</TabsTrigger> */}
+          <TabsTrigger value="ledger">Ledger</TabsTrigger>
           <TabsTrigger value="loadings">Loadings</TabsTrigger>
         </TabsList>
 
@@ -344,22 +413,48 @@ const ClientViewPage = () => {
         {/* Ledger Tab */}
         <TabsContent value="ledger" className="space-y-4">
           <Card>
-            <CardHeader className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <History className="h-5 w-5" /> Ledger
-                </CardTitle>
-                <CardDescription>
-                  Date-wise bill totals, payments and pending balances.
-                </CardDescription>
+            <CardHeader className="flex flex-col gap-4">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <History className="h-5 w-5" /> Ledger
+                  </CardTitle>
+                  <CardDescription>
+                    Date-wise bill totals, payments and pending balances.
+                  </CardDescription>
+                </div>
+                <div className="flex flex-col md:flex-row gap-2 items-end">
+                  <div>
+                    <label className="text-xs font-medium mb-1 block">
+                      From Date
+                    </label>
+                    <input
+                      type="date"
+                      value={fromDate}
+                      onChange={(e) => setFromDate(e.target.value)}
+                      className="px-3 py-2 border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium mb-1 block">
+                      To Date
+                    </label>
+                    <input
+                      type="date"
+                      value={toDate}
+                      onChange={(e) => setToDate(e.target.value)}
+                      className="px-3 py-2 border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDownloadLedger}
+                  >
+                    <Download className="w-4 h-4 mr-2" /> Download Ledger
+                  </Button>
+                </div>
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleDownloadLedger}
-              >
-                <Download className="w-4 h-4 mr-2" /> Download Ledger
-              </Button>
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -395,49 +490,66 @@ const ClientViewPage = () => {
                 </Card>
               </div>
 
-              {ledgerRows.length > 0 ? (
+              {filteredLedgerRows.length > 0 ? (
                 <div className="rounded-md border overflow-hidden">
                   <table className="w-full text-sm text-left">
                     <thead className="text-xs text-muted-foreground uppercase bg-muted/50">
                       <tr>
                         <th className="px-4 py-3 font-medium">Date</th>
+                        <th className="px-4 py-3 font-medium">
+                          Invoice / Bill
+                        </th>
                         <th className="px-4 py-3 font-medium text-right">
                           Bill Amount
                         </th>
                         <th className="px-4 py-3 font-medium text-right">
-                          Payments
+                          Payment
                         </th>
                         <th className="px-4 py-3 font-medium text-right">
-                          Balance
+                          Mode
                         </th>
                         <th className="px-4 py-3 font-medium text-right">
-                          Loads
+                          Debit
                         </th>
                         <th className="px-4 py-3 font-medium text-right">
-                          Payments
+                          Credit
+                        </th>
+                        <th className="px-4 py-3 font-medium text-right">
+                          Closing Balance
                         </th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
-                      {ledgerRows.map((row) => (
-                        <tr key={row.date} className="hover:bg-muted/10">
+                      {filteredLedgerRows.map((row) => (
+                        <tr
+                          key={`${row.type}-${row.id}`}
+                          className="hover:bg-muted/10"
+                        >
                           <td className="px-4 py-3">{formatDate(row.date)}</td>
+                          <td className="px-4 py-3">
+                            {row.billNo ?? row.invoiceNo ?? "-"}
+                          </td>
                           <td className="px-4 py-3 text-right font-medium">
-                            {formatCurrency(row.billAmount)}
+                            {row.billAmount > 0
+                              ? formatCurrency(row.billAmount)
+                              : "-"}
                           </td>
                           <td className="px-4 py-3 text-right text-emerald-600 font-medium">
-                            {formatCurrency(row.paymentAmount)}
+                            {row.paymentAmount > 0
+                              ? formatCurrency(row.paymentAmount)
+                              : "-"}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {row.paymentMode ?? "-"}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {row.debit > 0 ? formatCurrency(row.debit) : "-"}
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            {row.credit > 0 ? formatCurrency(row.credit) : "-"}
                           </td>
                           <td className="px-4 py-3 text-right font-medium">
-                            {formatCurrency(
-                              Math.max(0, row.billAmount - row.paymentAmount),
-                            )}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            {row.loadingCount}
-                          </td>
-                          <td className="px-4 py-3 text-right">
-                            {row.paymentCount}
+                            {formatCurrency(row.balance)}
                           </td>
                         </tr>
                       ))}

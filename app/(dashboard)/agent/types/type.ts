@@ -36,9 +36,24 @@ export interface AgentLoadingRecord {
   }[];
 }
 
+export interface AgentPaymentRecord {
+  id: string;
+  source: "agent";
+  sourceRecordId: string;
+  date: string;
+  amount: number;
+  paymentMode?: string;
+  vendorInvoice?: {
+    invoiceNo: string;
+    totalAmount: number;
+    isFinalized: boolean;
+  }[];
+}
+
 export interface Agent extends AgentFormValues {
   id: string;
   createdAt: string;
   updatedAt?: string;
   agentLoadings?: AgentLoadingRecord[];
+  payments?: AgentPaymentRecord[];
 }

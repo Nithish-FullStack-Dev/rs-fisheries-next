@@ -149,6 +149,7 @@ export const GET = apiHandler(async (_req: Request, context: any) => {
     include: {
       payments: {
         select: {
+          id: true,
           clientKey: true,
           clientName: true,
           date: true,
@@ -158,6 +159,11 @@ export const GET = apiHandler(async (_req: Request, context: any) => {
           client: {
             select: {
               billNo: true,
+            },
+          },
+          clientInvoice: {
+            select: {
+              invoiceNo: true,
             },
           },
         },

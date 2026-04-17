@@ -78,14 +78,18 @@ export interface Client extends ClientFormValues {
 }
 
 export interface ClientPayment {
+  id: string;
   clientKey: string;
   clientName: string;
   date: string; // ISO string
   amount: number;
   paymentMode: "CASH" | "AC" | "UPI" | "CHEQUE";
   isInstallment: boolean;
-  client: {
+  client?: {
     billNo: string;
+  };
+  clientInvoice?: {
+    invoiceNo: string;
   };
 }
 

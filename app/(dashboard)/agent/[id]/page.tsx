@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import axios, { AxiosError } from "axios";
@@ -31,23 +31,29 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Agent } from "../types/type";
+import { Agent, AgentPaymentRecord } from "../types/type";
 
 // --- Page Component ---
 const AgentViewPage = () => {
   const { id } = useParams();
   const router = useRouter();
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
 
-  const { data, isLoading, isError, error } = useQuery<Agent, AxiosError>({
+  const { data, isLoading, isError, error } = useQuery<
+    Agent & { payments?: AgentPaymentRecord[] },
+    AxiosError
+  >({
     queryKey: ["agent", id],
     queryFn: async () => {
       const { data } = await axios.get(`/api/agent/${id}`);
-      return data.data; // Includes agentLoadings with items/vehicle
+      return data.data; // Includes agentLoadings and payments
     },
     enabled: !!id,
   });
 
   const agentLoadings = data?.agentLoadings || [];
+  const agentPayments = data?.payments || [];
 
   // Formatting helpers
   const formatCurrency = (val: number) =>
@@ -65,81 +71,169 @@ const AgentViewPage = () => {
     });
   };
 
-  const ledgerRows = useMemo(() => {
-    const rows = new Map<
-      string,
-      {
-        date: string;
-        billAmount: number;
-        paymentAmount: number;
-        balance: number;
-        loads: number;
-        payments: number;
-      }
-    >();
+  const getLoadingBillAmount = (loading: any) => {
+    const grandTotal = Number(loading.grandTotal || 0);
+
+    if (grandTotal > 0) {
+      return grandTotal;
+    }
+
+    const itemTotal = (loading.items || []).reduce(
+      (sum: number, item: any) => sum + Number(item.totalPrice || 0),
+      0,
+    );
+    const dispatchCharges = Number(loading.dispatchChargesTotal || 0);
+    const packingCharges = Number(loading.packingAmountTotal || 0);
+
+    return itemTotal + dispatchCharges + packingCharges;
+  };
+
+  type AgentLedgerEntry = {
+    id: string;
+    date: string;
+    billNo?: string;
+    invoiceNo?: string;
+    billAmount: number;
+    paymentAmount: number;
+    paymentMode?: string;
+    debit: number;
+    credit: number;
+    balance: number;
+    type: "bill" | "payment";
+  };
+
+  const ledgerRows = useMemo<AgentLedgerEntry[]>(() => {
+    const entries: AgentLedgerEntry[] = [];
 
     agentLoadings.forEach((loading: any) => {
-      const dateKey = formatDate(loading.date);
-      const billAmount = Number(loading.grandTotal || 0);
-      const existing = rows.get(dateKey);
-
-      if (existing) {
-        existing.billAmount += billAmount;
-        existing.balance += billAmount;
-        existing.loads += 1;
-      } else {
-        rows.set(dateKey, {
-          date: dateKey,
-          billAmount,
-          paymentAmount: 0,
-          balance: billAmount,
-          loads: 1,
-          payments: 0,
-        });
-      }
+      const amount = getLoadingBillAmount(loading);
+      entries.push({
+        id: loading.id,
+        date: loading.date,
+        billNo: loading.billNo,
+        invoiceNo: undefined,
+        billAmount: amount,
+        paymentAmount: 0,
+        paymentMode: undefined,
+        debit: amount,
+        credit: 0,
+        balance: 0,
+        type: "bill",
+      });
     });
 
-    return Array.from(rows.values());
-  }, [agentLoadings]);
+    agentPayments.forEach((payment) => {
+      const amount = Number(payment.amount || 0);
+      const invoiceNo = payment.vendorInvoice?.[0]?.invoiceNo;
 
-  const totalLedgerBillAmount = ledgerRows.reduce(
-    (sum, row) => sum + row.billAmount,
+      entries.push({
+        id: payment.id,
+        date: payment.date,
+        billNo: undefined,
+        invoiceNo,
+        billAmount: 0,
+        paymentAmount: amount,
+        paymentMode: payment.paymentMode,
+        debit: 0,
+        credit: amount,
+        balance: 0,
+        type: "payment",
+      });
+    });
+
+    entries.sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      if (dateA !== dateB) return dateA - dateB;
+      if (a.type === b.type) return 0;
+      return a.type === "bill" ? -1 : 1;
+    });
+
+    let runningBalance = 0;
+    return entries.map((entry) => {
+      runningBalance += entry.debit - entry.credit;
+      return {
+        ...entry,
+        balance: runningBalance,
+      };
+    });
+  }, [agentLoadings, agentPayments]);
+
+  // Filter ledger rows by date range
+  const filteredLedgerRows = useMemo<AgentLedgerEntry[]>(() => {
+    return ledgerRows.filter((row) => {
+      const rowDate = new Date(row.date);
+      if (fromDate) {
+        const from = new Date(fromDate);
+        if (rowDate < from) return false;
+      }
+      if (toDate) {
+        const to = new Date(toDate);
+        to.setHours(23, 59, 59, 999);
+        if (rowDate > to) return false;
+      }
+      return true;
+    });
+  }, [ledgerRows, fromDate, toDate]);
+
+  const totalLedgerBillAmount = agentLoadings.reduce(
+    (sum, loading) => sum + getLoadingBillAmount(loading),
     0,
   );
-  const totalLedgerPaymentAmount = ledgerRows.reduce(
-    (sum, row) => sum + row.paymentAmount,
+
+  const totalLedgerPaymentAmount = agentPayments.reduce(
+    (sum, payment) => sum + Number(payment.amount || 0),
     0,
   );
-  const totalLedgerPending = Math.max(
-    0,
-    totalLedgerBillAmount - totalLedgerPaymentAmount,
-  );
+
+  const totalLedgerPending = totalLedgerBillAmount - totalLedgerPaymentAmount;
 
   if (isLoading) return <LoadingSkeleton />;
   if (isError) return <ErrorState error={error} />;
 
   const agent = data!;
-  const totalLoadings = agent.agentLoadings?.length || 0;
-  const lastLoadingDate = totalLoadings > 0 ? agentLoadings[0].date : null;
+  const totalLoadings = agentLoadings.length;
+
+  const sortedLoadings = [...agentLoadings].sort(
+    (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+  );
+
+  const lastLoadingDate =
+    sortedLoadings.length > 0 ? sortedLoadings[0].date : null;
 
   const handleDownloadLedger = () => {
-    const sheetData = ledgerRows.map((row) => ({
-      Date: row.date,
+    // Calculate totals for filtered data
+    const filteredBillAmount = filteredLedgerRows.reduce(
+      (sum, row) => sum + row.debit,
+      0,
+    );
+    const filteredPaymentAmount = filteredLedgerRows.reduce(
+      (sum, row) => sum + row.credit,
+      0,
+    );
+    const filteredPending = filteredBillAmount - filteredPaymentAmount;
+
+    const sheetData = filteredLedgerRows.map((row) => ({
+      Date: formatDate(row.date),
+      "Invoice / Bill": row.billNo ?? row.invoiceNo ?? "-",
       "Bill Amount": row.billAmount,
-      "Payment Amount": row.paymentAmount,
-      Balance: row.balance,
-      Loads: row.loads,
-      Payments: row.payments,
+      Payment: row.paymentAmount,
+      "Payment Mode": row.paymentMode ?? "-",
+      Debit: row.debit,
+      Credit: row.credit,
+      "Closing Balance": row.balance,
     }));
 
     const ws = XLSX.utils.json_to_sheet(sheetData);
     const summaryRow = {
       Date: "TOTAL",
-      "Bill Amount": totalLedgerBillAmount,
-      "Payment Amount": totalLedgerPaymentAmount,
-      Balance: totalLedgerPending,
-      Loads: ledgerRows.reduce((sum, row) => sum + row.loads, 0),
-      Payments: ledgerRows.reduce((sum, row) => sum + row.payments, 0),
+      "Invoice / Bill": "",
+      "Bill Amount": filteredBillAmount,
+      Payment: filteredPaymentAmount,
+      "Payment Mode": "",
+      Debit: filteredBillAmount,
+      Credit: filteredPaymentAmount,
+      "Closing Balance": filteredPending,
     };
 
     XLSX.utils.sheet_add_json(ws, [summaryRow], {
@@ -219,7 +313,7 @@ const AgentViewPage = () => {
       <Tabs defaultValue="overview" className="w-full">
         <TabsList className="grid w-full md:w-[300px] grid-cols-3">
           <TabsTrigger value="overview">Overview</TabsTrigger>
-          {/* <TabsTrigger value="ledger">Ledger</TabsTrigger> */}
+          <TabsTrigger value="ledger">Ledger</TabsTrigger>
           <TabsTrigger value="loadings">Loadings</TabsTrigger>
         </TabsList>
 
@@ -288,9 +382,33 @@ const AgentViewPage = () => {
                   Date-wise bill totals, payments and pending balances.
                 </p>
               </div>
-              <Button className="self-start" onClick={handleDownloadLedger}>
-                <Download className="w-4 h-4 mr-2" /> Download Ledger
-              </Button>
+              <div className="flex flex-col md:flex-row gap-2 items-end">
+                <div>
+                  <label className="text-xs font-medium mb-1 block">
+                    From Date
+                  </label>
+                  <input
+                    type="date"
+                    value={fromDate}
+                    onChange={(e) => setFromDate(e.target.value)}
+                    className="px-3 py-2 border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-medium mb-1 block">
+                    To Date
+                  </label>
+                  <input
+                    type="date"
+                    value={toDate}
+                    onChange={(e) => setToDate(e.target.value)}
+                    className="px-3 py-2 border border-input rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <Button className="self-start" onClick={handleDownloadLedger}>
+                  <Download className="w-4 h-4 mr-2" /> Download Ledger
+                </Button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -331,35 +449,56 @@ const AgentViewPage = () => {
                 <thead className="bg-muted/50 text-xs uppercase text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3">Date</th>
+                    <th className="px-4 py-3">Invoice / Bill</th>
                     <th className="px-4 py-3 text-right">Bill Amount</th>
-                    <th className="px-4 py-3 text-right">Payments</th>
-                    <th className="px-4 py-3 text-right">Balance</th>
-                    <th className="px-4 py-3 text-right">Loads</th>
-                    <th className="px-4 py-3 text-right">Payments</th>
+                    <th className="px-4 py-3 text-right">Payment</th>
+                    <th className="px-4 py-3 text-right">Mode</th>
+                    <th className="px-4 py-3 text-right">Debit</th>
+                    <th className="px-4 py-3 text-right">Credit</th>
+                    <th className="px-4 py-3 text-right">Closing Balance</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
-                  {ledgerRows.length > 0 ? (
-                    ledgerRows.map((row) => (
-                      <tr key={row.date} className="hover:bg-muted/10">
-                        <td className="px-4 py-3 font-medium">{row.date}</td>
+                  {filteredLedgerRows.length > 0 ? (
+                    filteredLedgerRows.map((row) => (
+                      <tr
+                        key={`${row.type}-${row.id}`}
+                        className="hover:bg-muted/10"
+                      >
+                        <td className="px-4 py-3 font-medium">
+                          {formatDate(row.date)}
+                        </td>
+                        <td className="px-4 py-3">
+                          {row.billNo ?? row.invoiceNo ?? "-"}
+                        </td>
                         <td className="px-4 py-3 text-right">
-                          {formatCurrency(row.billAmount)}
+                          {row.billAmount > 0
+                            ? formatCurrency(row.billAmount)
+                            : "-"}
                         </td>
                         <td className="px-4 py-3 text-right text-emerald-600">
-                          {formatCurrency(row.paymentAmount)}
+                          {row.paymentAmount > 0
+                            ? formatCurrency(row.paymentAmount)
+                            : "-"}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {row.paymentMode ?? "-"}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {row.debit > 0 ? formatCurrency(row.debit) : "-"}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {row.credit > 0 ? formatCurrency(row.credit) : "-"}
                         </td>
                         <td className="px-4 py-3 text-right font-medium">
                           {formatCurrency(row.balance)}
                         </td>
-                        <td className="px-4 py-3 text-right">{row.loads}</td>
-                        <td className="px-4 py-3 text-right">{row.payments}</td>
                       </tr>
                     ))
                   ) : (
                     <tr>
                       <td
-                        colSpan={6}
+                        colSpan={8}
                         className="p-6 text-center text-sm text-muted-foreground"
                       >
                         No ledger entries available for this agent yet.
@@ -374,8 +513,8 @@ const AgentViewPage = () => {
 
         {/* Loadings Tab */}
         <TabsContent value="loadings" className="space-y-4">
-          {agent.agentLoadings && agent.agentLoadings.length > 0 ? (
-            agent.agentLoadings.map((loading: any) => (
+          {agentLoadings.length > 0 ? (
+            agentLoadings.map((loading: any) => (
               <Card
                 key={loading.id}
                 className="overflow-hidden border-l-4 border-l-primary"
@@ -406,7 +545,7 @@ const AgentViewPage = () => {
                   <div className="text-right">
                     <p className="text-xs text-muted-foreground">Grand Total</p>
                     <p className="text-xl font-bold text-primary">
-                      {formatCurrency(loading.grandTotal)}
+                      {formatCurrency(getLoadingBillAmount(loading))}
                     </p>
                   </div>
                 </div>
