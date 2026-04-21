@@ -1065,40 +1065,46 @@ font-family: 'Cinzel', cursive;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 16px;
+  gap: 24px;
   margin-bottom: 14px;
   width: 100%;
-  flex-wrap: nowrap;
-}
-
-.farmer-row-left,
-.farmer-row-center,
-.farmer-row-right {
-  min-width: 0;
-  font-size: 13px;
-  line-height: 1.35;
-  word-break: break-word;
-  overflow-wrap: anywhere;
 }
 
 .farmer-row-left {
-  flex: 1.2;
+  flex: 0 0 38%;
+  min-width: 0;
   text-align: left;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .farmer-row-center {
-  flex: 2;
+  flex: 0 0 32%;
+  min-width: 0;
   text-align: left;
+  font-size: 13px;
+  line-height: 1.4;
 }
 
 .farmer-row-right {
-  flex: 1;
-  text-align: left;
-  white-space: normal;
+  flex: 0 0 26%;
+  min-width: 220px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 6px;
+  text-align: right;
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
 .farmer-row-right strong {
-  margin-right: 4px;
+  flex-shrink: 0;
+}
+
+.farmer-row-right span {
+  flex-shrink: 0;
 }
 
 .vehicle-line {
