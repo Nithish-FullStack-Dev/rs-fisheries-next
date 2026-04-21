@@ -2981,16 +2981,12 @@ font-family: 'Cinzel', cursive;
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td />
-                    <td
-                      colSpan={2}
-                      style={{ textAlign: "right", fontWeight: 700 }}
-                    >
-                      Total Trays :
-                    </td>
+                    <td></td>
+                    <td className="text-right font-semibold">Total Trays :</td>
                     <td style={{ textAlign: "center", fontWeight: 700 }}>
                       {bill.totalTrays}
                     </td>
+                    <td></td>
                     <td style={{ textAlign: "right", fontWeight: 700 }}>
                       Bill Amount :
                     </td>
